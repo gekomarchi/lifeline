@@ -42,9 +42,9 @@ CRON100 = topic("Cron100(uint256)")
 
 # The heights that a first run pins on the test network.
 HEIGHTS = {
-    "lasna": {"chainId": 5318007, "from": 1000, "to": 21000},
-    "base-sepolia": {"chainId": 84532, "from": 1000, "to": 11000},
-    "unichain-sepolia": {"chainId": 1301, "from": 500, "to": 20500},
+    "lasna": {"chainId": 5318007, "from": 1000, "to": 21000, "toTimestamp": START + 20000},
+    "base-sepolia": {"chainId": 84532, "from": 1000, "to": 11000, "toTimestamp": START + 20000},
+    "unichain-sepolia": {"chainId": 1301, "from": 500, "to": 20500, "toTimestamp": START + 20000},
 }
 
 SUBJECTS = {
@@ -179,10 +179,18 @@ class Network:
     def data(self, out) -> dict:
         return json.loads((self.tmp_path / out / "data.json").read_text())
 
-    def heights_file(self):
-        """A snapshot with the heights that a first run pins, written without a run."""
+    def heights_file(self, **to):
+        """A snapshot with the heights that a first run pins, written without a run.
+
+        `to` gives another `to` block for a chain, by its attribute name: `base=9000`.
+        """
+        chains = {name: dict(heights) for name, heights in HEIGHTS.items()}
+        for attribute, block in to.items():
+            chain = getattr(self, attribute)
+            name = next(name for name, value in self.chains.items() if value is chain)
+            chains[name].update(to=block, toTimestamp=chain.timestamp(block))
         path = self.tmp_path / "pinned.json"
-        path.write_text(json.dumps({"version": 1, "chains": HEIGHTS, "params": DEFAULT_PARAMS, "state": []}))
+        path.write_text(json.dumps({"version": 1, "chains": chains, "params": DEFAULT_PARAMS, "state": []}))
         return path
 
     def clear_requests(self):

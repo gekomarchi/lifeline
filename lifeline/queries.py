@@ -260,21 +260,24 @@ def dropped_callbacks(scan):
     start_before_from = 0
     for chain, recipient, log in matched:
         time = request_time[block_of(log)]
+        # The ledger of the destination chain is known up to its `to`. From the margin before
+        # that time, an interval that is open at `to` gives no certain answer.
+        known_to = scan.snapshot.chains[chain]["toTimestamp"] - margin
         intervals = [
             (start and edge_time[chain][block_of(start)], end and edge_time[chain][block_of(end)])
             for start, end in debt_intervals(events[chain][recipient])
         ]
         edges = [edge for interval in intervals for edge in interval if edge is not None]
-        inside = [start for start, end in intervals
+        inside = [(start, end) for start, end in intervals
                   if (start is None or start < time) and (end is None or time < end)]
-        if any(abs(time - edge) <= margin for edge in edges):
+        if any(abs(time - edge) <= margin for edge in edges) or (inside and inside[0][1] is None and time >= known_to):
             counts[chain]["uncertain"] += 1
         elif inside:
             counts[chain]["dropped"] += 1
-            if inside[0] is None:
+            if inside[0][0] is None:
                 start_before_from += 1
             else:
-                delays.append(time - inside[0])
+                delays.append(time - inside[0][0])
         else:
             counts[chain]["notInDebt"] += 1
 
@@ -289,8 +292,8 @@ def dropped_callbacks(scan):
         ),
         "limit": (
             "An interval that opened before `from` and did not close in the range is not visible. "
-            "An interval that is open at `to` of the destination chain counts as open for each later request "
-            "in the Lasna range; the heights of all chains are pinned at the same time."
+            "A request at or after the `to` timestamp of the destination chain minus the margin, to a "
+            "recipient whose interval is open at `to`, is counted as uncertain."
         ),
         "latencyMarginSeconds": margin,
         "requests": len(requests),
@@ -325,7 +328,8 @@ def dropped_callbacks(scan):
         ("requests within 60 s of the debt event", delay["within60"], everywhere),
         ("median delay, seconds", delay["median"], everywhere),
         ("requests sooner than 10800 s after the debt event", delay["below10800"], everywhere),
-        (f"uncertain: within {margin} s of an interval edge", result["uncertain"], everywhere),
+        (f"uncertain: within {margin} s of an interval edge or of the end of the window",
+         result["uncertain"], everywhere),
         ("not scanned: destination chain is not configured", result["notScanned"]["requests"], [scan.reactive]),
         (f"difference from the specification figure {SPEC_DROPPED_CALLBACKS}",
          result["differenceFromSpecification"], everywhere),
@@ -498,7 +502,7 @@ QUERIES = (
           "its recipient has an open debt interval on the destination proxy (from BlacklistContract(recipient) "
           "to the next WhitelistContract(recipient), or to `to`); the number is derived from debt intervals "
           "and the proxy rule (InDebt), not from observed reverted transactions, and a request within the "
-          "latency margin of an interval edge is counted as uncertain."),
+          "latency margin of an interval edge, or of the end of the destination window, is counted as uncertain."),
     Query("fastfill_fill_times", fastfill_fill_times,
           "A fill is a fill log whose join field is equal to the join field of a deposit log in from..to; "
           "its time is the fill block timestamp minus the deposit block timestamp, and the 90th percentile "

@@ -36,7 +36,7 @@ A run with `--heights` asks the node for each state value again. If the node has
 |---|---|
 | `data.json` | Heights, parameters, and for each query its chains, its definition, its status (`ok` or `not_configured`) and its result. Amounts are decimal strings in wei. |
 | `table.md` | One row for each number, with query name, chain, `from` and `to`, and the definition of each query. |
-| `heights.json` | The heights snapshot: `from` and `to` for each chain, the parameters, and each state value read at `to`. |
+| `heights.json` | The heights snapshot: `from`, `to` and the block timestamp of `to` (`toTimestamp`) for each chain, the parameters, and each state value read at `to`. |
 
 No file contains a run time or an RPC URL. Standard output shows each number with its query name, chain and heights, and the RPC methods that each query sent.
 
@@ -44,11 +44,11 @@ Queries: `lasna_debt_events`, `destination_debt_events`, `stopped_contracts`, `c
 
 ### Dropped callbacks
 
-The `dropped_callbacks` number is derived from debt intervals. It is not a count of observed reverted transactions. The query joins `CallbackRequest` logs on Lasna with debt intervals on each destination proxy: from `BlacklistContract(recipient)` to the next `WhitelistContract(recipient)`, or to `to`. A request is counted as dropped if its recipient has an open interval at the block timestamp of the request, because the proxy rejects a callback to a contract in debt with `InDebt`. A request within the latency margin of an interval edge (5 s) is counted separately as uncertain. A request to a chain that is not configured is counted separately as not scanned. An interval that opened before `from` and did not close in the range is not visible. The query sends log queries and block-header reads only.
+The `dropped_callbacks` number is derived from debt intervals. It is not a count of observed reverted transactions. The query joins `CallbackRequest` logs on Lasna with debt intervals on each destination proxy: from `BlacklistContract(recipient)` to the next `WhitelistContract(recipient)`, or to `to`. A request is counted as dropped if its recipient has an open interval at the block timestamp of the request, because the proxy rejects a callback to a contract in debt with `InDebt`. A request within the latency margin (5 s) of an interval edge is counted separately as uncertain. So is a request to a recipient whose interval is open at `to`, if the request comes within the margin of the end of the destination window or after it. A request to a chain that is not configured is counted separately as not scanned. An interval that opened before `from` and did not close in the range is not visible. The query sends log queries and block-header reads only.
 
 ### Failures and the cache
 
-The reader scans logs in block chunks and uses a smaller chunk after a block-range or response-size error. It retries rate-limit, timeout and server errors with exponential backoff. If the retries of one request are used, the run exits with a non-zero status and writes no file. Finished chunks stay in `.cache/chain`, so the next run continues from there.
+The reader scans logs in block chunks and uses a smaller chunk after a block-range or response-size error. It retries rate-limit, timeout and server errors with exponential backoff. If the retries of one request are used, the run exits with a non-zero status and writes no file. The three files are written together: a run that cannot write all of them leaves the output directory as it was. Finished chunks stay in `.cache/chain`, so the next run continues from there.
 
 ### `config/network.json`
 

@@ -58,11 +58,12 @@ class TransportError(Exception):
 
 
 class _Failure(Exception):
-    """One failed attempt. `kind` is retry, timeout, range, state or revert.
+    """One failed attempt. `kind` is rate, timeout, retry, range, state or revert.
 
-    `timeout` is no answer or a server error: a retry of a log request then
-    also uses a smaller chunk. `retry` is any other failure that a retry can
-    cure, for example a rate limit.
+    `rate` is a rate limit. `timeout` is no answer or a server error: a retry
+    of a log request then also uses a smaller chunk. `retry` is any other
+    failure that a retry can cure. A request is sent again after each of
+    these three.
     """
 
     def __init__(self, kind, message, hint=None, retry_after=None):
@@ -120,7 +121,8 @@ def _classify(method, status, body, retry_after):
         if status == 200 and body is not None and body.get("result") is not None:
             return body["result"]
         if status == 200 and body is not None and "result" in body:
-            raise _Failure("retry", "the node has no such block yet")
+            # A null header: the node has pruned the block, or does not have it yet.
+            raise _Failure("state", "the node has no such block")
         if status == 413 and method == "eth_getLogs":
             raise _Failure("range", "HTTP 413")
         raise _Failure(transient, f"HTTP {status}", retry_after=retry_after)
@@ -134,7 +136,7 @@ def _classify(method, status, body, retry_after):
     if method == "eth_call" and (error.get("code") == 3 or _REVERT.search(text)):
         raise _Failure("revert", summary)
     if status == 429 or _RATE_LIMIT.search(text):
-        raise _Failure("retry", summary, retry_after=retry_after)
+        raise _Failure("rate", summary, retry_after=retry_after)
     if method == "eth_getLogs" and (status == 413 or _RANGE.search(text)):
         numbers = [int(n) for n in re.findall(r"\b\d+\b", text)]
         raise _Failure("range", summary, hint=numbers)
@@ -308,7 +310,7 @@ class ChainReader:
                     continue
                 if failure.kind == "no batch":
                     self.batch = 1
-                if failure.kind not in ("retry", "timeout"):
+                if failure.kind not in ("rate", "timeout", "retry"):
                     break
                 self._bad_until[index] = time.monotonic() + self.cooldown
                 tried.add(index)
@@ -341,7 +343,7 @@ class ChainReader:
             try:
                 _classify(method, status, body, retry_after)
             except _Failure as failure:
-                if status == 200 or failure.kind == "range":
+                if failure.kind not in ("rate", "timeout"):
                     failure.kind = "no batch"  # the node answers, but not to a batch
                 return {}, failure
             return {}, _Failure("no batch", "one answer for a batch")
@@ -547,7 +549,12 @@ def first_block_at(reader: ChainReader, timestamp: int, head: int) -> int:
 
 
 class Snapshot:
-    """Heights for each chain, the parameters, and each state value read at `to`."""
+    """Heights for each chain, the parameters, and each state value read at `to`.
+
+    `chains[name]` has `chainId`, `from`, `to` and `toTimestamp`, the block
+    timestamp of `to`: the end of the window in time, with no header read in
+    a later run.
+    """
 
     VERSION = 1
 
@@ -567,6 +574,7 @@ class Snapshot:
             chains[name] = {"chainId": reader.chain_id(), "from": 0, "to": reader.head()}
             reader.cache_to = chains[name]["to"]
         for name, reader in readers.items():
+            chains[name]["toTimestamp"] = reader.timestamp(chains[name]["to"])
             chains[name]["from"] = from_block(reader, chains[name]["to"])
         return cls(chains, params)
 
@@ -585,6 +593,9 @@ class Snapshot:
                 f"{path}: chains {sorted(chains)} do not match the configured chains {sorted(readers)}"
             )
         for name, reader in readers.items():
+            absent = {"chainId", "from", "to", "toTimestamp"} - chains[name].keys()
+            if absent:
+                raise SnapshotError(f"{path}: chains.{name} has no {', '.join(sorted(absent))}")
             if reader.chain_id() != chains[name]["chainId"]:
                 raise ChainMismatch(
                     f"{name}: the node answers for chain {reader.chain_id()}, "

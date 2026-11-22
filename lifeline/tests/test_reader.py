@@ -141,8 +141,10 @@ def test_first_block_search_reads_no_header_below_the_answer_region(network):
     assert min(int(params[0], 16) for params in network.lasna.methods("eth_getBlockByNumber")) >= 900
 
 
-def test_first_block_search_when_the_block_time_changes_and_old_blocks_are_pruned(network):
+@pytest.mark.parametrize("pruned_is_null", [False, True])
+def test_first_block_search_when_the_block_time_changes_and_old_blocks_are_pruned(network, pruned_is_null):
     """Five blocks per second near the head, one before: the first estimate lands in pruned history."""
+    network.lasna.pruned_is_null = pruned_is_null
     network.lasna.timestamp_of = lambda block: (
         START + 500 + (block - 19500) // 5 if block >= 19500 else START + block - 19000)
     network.lasna.earliest_block = 18500
@@ -175,7 +177,7 @@ def test_timestamps_are_cached_at_or_below_the_pinned_height(network):
 def test_snapshot_pins_saves_and_loads(network):
     readers = {name: reader_for(network, name) for name in network.chains}
     snapshot = Snapshot.pin(readers, lambda reader, to: first_block_at(reader, START, to), {"margin": 5})
-    assert snapshot.chains["lasna"] == {"chainId": 5318007, "from": 1000, "to": 21000}
+    assert snapshot.chains["lasna"] == {"chainId": 5318007, "from": 1000, "to": 21000, "toTimestamp": START + 20000}
     assert readers["lasna"].cache_to == 21000
     data = ledger_call(DEBT, A1)
     assert int(snapshot.call(readers["lasna"], LASNA_LEDGER, data, "debt of A1"), 16) == 5
@@ -241,3 +243,22 @@ def test_batch_with_no_state_is_not_sent_again(network):
     with pytest.raises(StateUnavailable):
         reader.calls(requests, 21000)
     assert network.lasna.posts == [2, 1, 1]  # the reader knows that the block has no state
+
+
+def test_rate_limit_in_one_error_object_for_a_batch_keeps_batching(network):
+    """A node can answer a batch with one error object and HTTP 200."""
+    reader = reader_for(network)
+    reader.chain_id()
+    network.clear_requests()
+    network.lasna.batch_error = [{"code": -32005, "message": "rate limit exceeded"}]
+    assert reader.timestamps([4000, 4001]) == {4000: START + 3000, 4001: START + 3001}
+    assert network.lasna.posts == [2, 2]
+    assert reader.batch > 1
+
+
+def test_snapshot_file_with_no_window_end_is_refused(network):
+    path = network.tmp_path / "old.json"
+    chains = {name: {"chainId": chain.chain_id, "from": 1, "to": 2} for name, chain in network.chains.items()}
+    path.write_text(json.dumps({"version": 1, "chains": chains, "params": {}, "state": []}))
+    with pytest.raises(SnapshotError, match="toTimestamp"):
+        Snapshot.load(path, {name: reader_for(network, name) for name in network.chains})

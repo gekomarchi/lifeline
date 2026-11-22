@@ -33,6 +33,8 @@ class MockChain:
         self.fail_methods = set()  # each request of these methods gives HTTP 503
         self.refuse_state = False  # eth_call and eth_getBalance give "missing trie node"
         self.earliest_block = 0  # headers below this block are not available
+        self.pruned_is_null = False  # a pruned header gives a null result, not an error
+        self.batch_error = None  # one JSON-RPC error object (HTTP 200) for each batch
         self.timestamp_of = None  # optional function of the block number, for a block time that changes
         self.max_range = None  # eth_getLogs over more blocks gives a range error that names this limit
 
@@ -74,6 +76,8 @@ class MockChain:
             return "result", hex(self.head)
         if method == "eth_getBlockByNumber":
             number = int(params[0], 16)
+            if number < self.earliest_block and self.pruned_is_null:
+                return "result", None
             if number < self.earliest_block:
                 return "error", -32014, f"block not found with number {params[0]}", None
             if number > self.head:
@@ -144,6 +148,8 @@ class MockNode:
                 elif chain.no_batch and isinstance(body, list):
                     answer = {"jsonrpc": "2.0", "id": None, "error": {
                         "code": -32600, "message": "batch requests are not supported"}}
+                elif chain.batch_error and isinstance(body, list):
+                    answer = {"jsonrpc": "2.0", "id": None, "error": chain.batch_error.pop(0)}
                 elif fault:
                     chain.faults.remove(fault)
                     if fault[1] == "rate":

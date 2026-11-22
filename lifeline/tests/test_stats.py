@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+import pytest
 
 from lifeline.config import load_config, open_readers
 from lifeline.queries import Scan, dropped_callbacks
@@ -201,6 +204,22 @@ def test_dropped_callback_join(network, capsys):
     assert header_reads(network.uni) == block_numbers([network.r5_start])
 
 
+@pytest.mark.parametrize("base_to, expected", [
+    (11000, "dropped"),  # the request at 17200 s is 2800 s before the end of the base-sepolia window
+    (9601, "uncertain"),  # 2 s before the end: inside the margin
+    (9000, "uncertain"),  # 1200 s after the end: the ledger was not observed at that time
+])
+def test_request_near_or_after_the_end_of_the_destination_window_is_uncertain(network, base_to, expected):
+    """R2 is in debt from 10000 s and its interval is open at `to`. One request to R2 comes at 17200 s."""
+    assert network.run("out", heights=network.heights_file(base=base_to)) == 0
+    base = network.data("out")["queries"]["dropped_callbacks"]["result"]["byChain"]["base-sepolia"]
+    assert base["dropped"] == (3 if expected == "dropped" else 2)
+    assert base["uncertain"] == (1 if expected == "dropped" else 2)
+    assert base["requests"] == 7 and base["notInDebt"] == 3
+    # The end of the window comes from the snapshot: no header read for the `to` block.
+    assert base_to not in header_reads(network.base)
+
+
 def test_dropped_callback_query_sends_log_queries_and_header_reads_only(network):
     """The query alone, with the real reader: no eth_call, no transaction, no receipt, no block body."""
     config = load_config(network.config())
@@ -283,12 +302,36 @@ def test_state_that_differs_from_the_snapshot_is_reported_and_the_saved_value_is
         network.tmp_path / "first" / "heights.json").read_bytes()
 
 
-def test_output_that_cannot_be_written_leaves_no_file(network, capsys):
+@pytest.mark.parametrize("blocker", ["table.md.tmp", "table.md"])
+def test_output_that_cannot_be_written_leaves_no_file(network, capsys, blocker):
     out = network.tmp_path / "out"
-    (out / "table.md.tmp").mkdir(parents=True)  # the table cannot be written
+    (out / blocker).mkdir(parents=True)  # the table cannot be written
     assert network.run("out") == 1
-    assert [path.name for path in out.iterdir()] == ["table.md.tmp"]
+    assert [path.name for path in out.iterdir()] == [blocker]
     assert "cannot write the output files" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("failing_move", [1, 2, 3, 4, 5, 6])
+def test_failure_while_the_files_are_moved_keeps_the_previous_set(network, monkeypatch, failing_move):
+    """A second run moves 3 old files away and 3 new files in. Each of the 6 moves fails in turn."""
+    assert network.run("out") == 0
+    out = network.tmp_path / "out"
+    before = {name: (out / name).read_bytes() for name in FILES}
+    network.set_ledger("lasna", A2, debt=1)  # the next run has other numbers
+
+    moves = []
+    real_replace = os.replace
+
+    def replace(source, target):
+        if str(out) in str(source):
+            moves.append(target)
+            if len(moves) == failing_move:
+                raise PermissionError("no move")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(os, "replace", replace)
+    assert network.run("out") == 1
+    assert {path.name: path.read_bytes() for path in out.iterdir()} == before
 
 
 def test_wrong_chain_behind_a_url_is_refused(network, capsys):

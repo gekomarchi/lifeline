@@ -125,6 +125,38 @@ def report(snapshot, chains, rows, notes) -> list:
     return lines
 
 
+def publish(out: Path, files: dict) -> None:
+    """Write all the files, or leave the directory as it was before the run."""
+    staged = {name: out / f"{name}.tmp" for name in files}
+    previous = {name: out / f"{name}.previous" for name in files}
+    kept, published = [], []
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            if (out / name).is_dir():
+                raise IsADirectoryError(f"{out / name} is a directory")
+        for name, text in files.items():
+            staged[name].write_text(text)
+        for name in files:
+            if (out / name).exists():
+                os.replace(out / name, previous[name])
+                kept.append(name)
+        for name in files:
+            os.replace(staged[name], out / name)
+            published.append(name)
+    except OSError:
+        for name in published:
+            (out / name).unlink()
+        for name in kept:
+            os.replace(previous[name], out / name)
+        for path in staged.values():
+            if path.is_file():
+                path.unlink()
+        raise
+    for name in kept:
+        previous[name].unlink()
+
+
 def main(argv=None) -> int:
     arguments = parse_arguments(argv)
     try:
@@ -151,23 +183,13 @@ def main(argv=None) -> int:
 
     out = Path(arguments.out)
     data = {"version": 1, "heights": snapshot.chains, "params": snapshot.params, "queries": records}
-    files = {
-        "data.json": json.dumps(data, indent=1, sort_keys=True) + "\n",
-        "table.md": render_table(snapshot, scan.chains, records, rows),
-        "heights.json": snapshot.text(),
-    }
-    # All three files or none: write each one beside its final name, then move them.
-    staged = [out / (name + ".tmp") for name in files]
     try:
-        out.mkdir(parents=True, exist_ok=True)
-        for path, text in zip(staged, files.values()):
-            path.write_text(text)
-        for path, name in zip(staged, files):
-            os.replace(path, out / name)
+        publish(out, {
+            "data.json": json.dumps(data, indent=1, sort_keys=True) + "\n",
+            "table.md": render_table(snapshot, scan.chains, records, rows),
+            "heights.json": snapshot.text(),
+        })
     except OSError as error:
-        for path in staged:
-            if path.is_file():
-                path.unlink()
         print(f"error: cannot write the output files: {error}", file=sys.stderr)
         return 1
 
