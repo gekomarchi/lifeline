@@ -19,6 +19,47 @@ uint256 constant SWEEP_MAX = 8;
 ///      gauge sweep is a block number, so the two can never be equal.
 uint256 constant REQUEST_ID_BASE = 1 << 128;
 
+/// @dev The most Lasna targets that one cron tick processes (spec §4.4). The next tick continues at the cursor.
+uint256 constant MAX_PER_TICK = 12;
+
+/// @dev The gas that the loop of a tick keeps for one target (spec §4.4): the start value. The loop stops
+///      when less than `ITER_RESERVE + TAIL_RESERVE` is left. Measured on the fork for one target, in gas:
+///      about 5,200 if it is not active, 15,500 with nothing to pay, 39,300 for a top-up, 59,200 for the
+///      first payment to a target, 76,300 if that target also has reserves of 0, and 108,300 for a rescue.
+///      `TAIL_RESERVE` covers the part of a target above this value.
+uint256 constant ITER_RESERVE = 60_000;
+
+/// @dev The gas that the loop of a tick keeps for the tail (spec §4.4). The start value was 150,000. With the
+///      two reserves below, the fork tests fail at 280,000 and pass at 290,000, in steps of 10,000. After a
+///      first payment to an empty target (about 16,300 above `ITER_RESERVE`) the tail of two vaults still has
+///      its largest need: about 3,600, then the first vault (at most about 67,100), then
+///      `SWEEP_RESERVE + END_RESERVE` at the check of the second vault. A rescue takes more: after it the
+///      tail can stop before the second vault, and the next tail starts there.
+uint256 constant TAIL_RESERVE = 290_000;
+
+/// @dev The gas that the tail of a tick keeps for one vault: the reads of its list, the request and its
+///      cursor. Measured on the fork, in gas: about 32,100 for 3 targets, 47,000 for 8, and 67,100 for a list
+///      of more than `SWEEP_MAX` targets with a first write of its cursor.
+uint256 constant SWEEP_RESERVE = 70_000;
+
+/// @dev The gas that the tail of a tick keeps for the end of the reaction. Measured on the fork, in gas:
+///      about 22,400 for the first tick write and `Tick` (5,300 after that); for self-care at most 44,500,
+///      and about 17,100 more if the reserves of the hub are 0; and the gas that the system contract needs
+///      after `react()` to charge the fee: 8,100, or 35,400 when the float does not cover the fee. A
+///      reaction that leaves less makes the whole trigger run out of gas. The fork tests of this end fail at
+///      110,000 and pass at 120,000; the value keeps one more step.
+uint256 constant END_RESERVE = 130_000;
+
+/// @dev The emitter of the cron logs on Reactive Network: `SYSTEM_CONTRACT_ADDR` of `src/SystemContract.sol` in
+///      `system-smart-contracts` at `72710d2`. It is not the ledger at `0x8888...8888`: the node calls
+///      `triggerCron()` on this address in each block, and a cron subscription on Lasna names this emitter.
+address constant CRON_EMITTER = 0x0000000000000000000000000000000000fffFfF;
+
+/// @dev `topic0` of `Cron1000(uint256 indexed number)` and of `Cron10000(uint256 indexed number)`: the events of
+///      `src/SystemContract.sol` in `system-smart-contracts` at `72710d2`. A block of Lasna is about 1 second.
+uint256 constant CRON_1000_TOPIC0 = uint256(keccak256("Cron1000(uint256)"));
+uint256 constant CRON_10000_TOPIC0 = uint256(keccak256("Cron10000(uint256)"));
+
 /// @title LifelineHub: the guardian of enrolled reactive contracts on Reactive Network (Lasna).
 /// @notice When the system contract reports a debt for an enrolled target, the hub clears the debt and
 ///         refills the target inside a policy. It counts rescues and quarantines a target that breaks.
@@ -33,9 +74,13 @@ uint256 constant REQUEST_ID_BASE = 1 << 128;
 ///         hub's own reserves at the system contract. The hub has no `pay()` and no fallback, so the
 ///         ledger can take only the float.
 ///
+///         Gauge. On each tick of one cron subscription the hub refills the Lasna targets that are below
+///         their low mark, in a batch with a gas guard and a cursor, and requests one `sweep` callback on
+///         each vault that is up and has an enrolled target. A target normally does not go into debt; the
+///         reactions to debt logs stay the backstop.
+///
 ///         The contract is not upgradeable. The storage layout, the `react()` dispatch and the external
-///         signatures of `enroll` and `disarm` are the ones of the full design: the handler for cron is a
-///         skip here and gets its body in a later unit.
+///         signatures of `enroll` and `disarm` are the ones of the full design.
 /// @dev The hub does not inherit a library contract, because the library base contracts add `pay()`.
 ///      It uses the log record type of `reactive-lib-omni` and matches the `react` selector.
 ///
@@ -67,7 +112,8 @@ contract LifelineHub {
         DepositFailed, // `depositTo` reverted
         Unhandled, // the event kind has no handler in this unit
         AlreadyPending, // the vault is down and the target is in the pending set already
-        RequestFailed // the system contract did not accept the callback request
+        RequestFailed, // the system contract did not accept the callback request
+        DuplicateTick // the origin block of the cron log is not above the last tick, or it has more than 192 bits
     }
 
     /// @notice The kinds of subscription tuple in the registry.
@@ -108,6 +154,13 @@ contract LifelineHub {
         bool up; // false while the vault is in debt at its proxy
     }
 
+    /// @notice The state of the gauge: one storage slot, which a tick reads one time and writes one time.
+    struct Gauge {
+        uint192 lastTick; // the `tickId` of the last tick that ran: the origin block of its cron log
+        uint32 fleetCursor; // the position in the Lasna list of the first target of the next tick
+        uint32 tailCursor; // the position in `_vaultChains` of the first vault of the next tail
+    }
+
     /// @notice The relay limit and the relay counter of one destination target: one storage slot.
     struct Relay {
         uint64 windowStart; // the time of the first relay of the current window
@@ -137,6 +190,7 @@ contract LifelineHub {
     event VaultDown(uint256 indexed chainId);
     event Pending(uint256 indexed chainId, address indexed target);
     event VaultUp(uint256 indexed chainId, uint256 indexed requestId, uint256 sent, uint256 remaining);
+    event Tick(uint256 indexed tickId, uint256 processed, uint256 cursor, uint256 sweeps);
 
     error UnknownChain(uint256 chainId);
     error NotOwner();
@@ -151,6 +205,7 @@ contract LifelineHub {
     error VaultInUse(uint256 chainId);
     error NotParked(uint256 chainId, address target);
     error RequestFailed(uint256 chainId);
+    error InvalidCronTopic(uint256 topic0);
 
     // ------------------------------------------------------------------------------------------
     // Constants and storage
@@ -213,6 +268,15 @@ contract LifelineHub {
 
     /// @dev The number of requests that the hub sent to vaults.
     uint256 internal _requestCount;
+
+    /// @dev The cron `topic0` that the owner selected. 0 = no selection: the default, Cron10000.
+    uint256 internal _cronTopic;
+
+    /// @dev The last tick and the two cursors of the gauge.
+    Gauge internal _gauge;
+
+    /// @dev The position in the target list of a destination chain of the first target of its next sweep.
+    mapping(uint256 chainId => uint256) internal _sweepCursor;
 
     // ------------------------------------------------------------------------------------------
     // Construction and funds
@@ -631,9 +695,135 @@ contract LifelineHub {
         emit VaultDown(chainId);
     }
 
-    /// @dev Handler: the cron tick. A skip in this unit.
+    /// @dev Handler: the cron tick, the gauge. The dispatch gives it only a log of the registered cron tuple:
+    ///      Lasna, the cron emitter and the selected `topic0`. The origin block of the log is the `tickId`. A
+    ///      tick runs only if its `tickId` is above the last one, so a log that the node sends two times runs
+    ///      one time.
+    ///
+    ///      Lasna batch: at most `MAX_PER_TICK` targets from the cursor, each through the reconcile path of
+    ///      the airbag. A target that is not active costs one storage read and gives no event. The loop stops
+    ///      while the gas still covers one target and the tail, so the cursor moves only past targets that
+    ///      were processed. The tail sends the sweeps. The tick writes come last. It never reverts.
     function _onCron(IReactive.LogRecord calldata log) internal {
-        emit Skipped(log.chainId, address(uint160(log.topic1)), SkipReason.Unhandled);
+        uint256 tickId = log.blockNumber;
+        Gauge memory gauge = _gauge;
+        // A block number of Lasna has far fewer than 192 bits. A larger value is never stored.
+        if (tickId <= gauge.lastTick || tickId > type(uint192).max) {
+            emit Skipped(log.chainId, address(uint160(log.topic1)), SkipReason.DuplicateTick);
+            return;
+        }
+
+        address[] storage fleet = _targetList[block.chainid];
+        uint256 size = fleet.length;
+        uint256 cursor = gauge.fleetCursor;
+        // `disarm` can make the list shorter than the cursor.
+        if (cursor >= size) cursor = 0;
+
+        uint256 processed;
+        while (processed < size && processed < MAX_PER_TICK) {
+            // Stop early, never run out. The next tick continues at the cursor.
+            if (gasleft() < ITER_RESERVE + TAIL_RESERVE) break;
+            _reconcileLasna(fleet[cursor]);
+            if (++cursor == size) cursor = 0;
+            ++processed;
+        }
+
+        (uint256 sweeps, uint256 tailCursor) = _sweepVaults(tickId, gauge.tailCursor);
+
+        // No truncation: `tickId` has at most 192 bits, and a cursor is below the length of its list.
+        _gauge = Gauge({ lastTick: uint192(tickId), fleetCursor: uint32(cursor), tailCursor: uint32(tailCursor) });
+        emit Tick(tickId, processed, cursor, sweeps);
+    }
+
+    /// @dev The tail of a tick: one sweep request for each vault that is up and has an enrolled target, with
+    ///      the next targets from the cursor of that vault, at most `SWEEP_MAX`. The list of a chain holds each
+    ///      enrolled target until `disarm`, whatever its state: the vault decides. A vault with an empty list
+    ///      or in state down gets no request. A cursor moves only when the request was sent.
+    ///
+    ///      The tail stops when the gas does not cover one more vault and the end of the reaction. The next
+    ///      tail then starts at the vault that got no request. It never reverts.
+    /// @param index The position in `_vaultChains` of the first vault of this tail. A vault chain is never
+    ///        removed, so the position is below the length.
+    /// @return sweeps The number of requests that were sent.
+    /// @return tailCursor The position in `_vaultChains` of the first vault of the next tail.
+    function _sweepVaults(uint256 tickId, uint256 index) internal returns (uint256 sweeps, uint256 tailCursor) {
+        uint256 chains = _vaultChains.length;
+        for (uint256 seen = 0; seen < chains; ++seen) {
+            // Stop early, never run out: the vault at `index` is the first one of the next tail.
+            if (gasleft() < SWEEP_RESERVE + END_RESERVE) break;
+
+            uint256 chainId = _vaultChains[index];
+            if (++index == chains) index = 0;
+
+            address[] storage list = _targetList[chainId];
+            uint256 total = list.length;
+            if (total == 0 || !_vaults[chainId].up) continue;
+
+            uint256 first = _sweepCursor[chainId];
+            // `disarm` can make the list shorter than the cursor.
+            if (first >= total) first = 0;
+
+            uint256 n = total < SWEEP_MAX ? total : SWEEP_MAX;
+            address[] memory targets = new address[](n);
+            uint256 next = first;
+            for (uint256 i = 0; i < n; ++i) {
+                targets[i] = list[next];
+                if (++next == total) next = 0;
+            }
+
+            if (_requestSweep(chainId, targets, tickId)) {
+                ++sweeps;
+                // A list of at most `SWEEP_MAX` targets goes out whole: its cursor does not move.
+                if (next != first) _sweepCursor[chainId] = next;
+            }
+        }
+        // After a tail that goes over each vault, `index` is at its start value again.
+        tailCursor = index;
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Cron
+    // ------------------------------------------------------------------------------------------
+
+    /// @notice Selects the cron period of the gauge: `topic0` of Cron1000 or of Cron10000. If a cron tuple is
+    ///         subscribed, the new tuple replaces it. If not, the selection takes effect at `resumeCron`.
+    function setCronTopic(uint256 topic0) external onlyOwner {
+        if (topic0 != CRON_1000_TOPIC0 && topic0 != CRON_10000_TOPIC0) revert InvalidCronTopic(topic0);
+        if (topic0 == cronTopic()) return;
+
+        _cronTopic = topic0;
+        if (cronSubscribed()) {
+            // The cron kind holds one tuple at most.
+            _unsubscribeKind(TupleKind.Cron);
+            _subscribeCron(topic0);
+        }
+    }
+
+    /// @notice Subscribes the cron tuple of the selected topic if no cron tuple is subscribed: the start of
+    ///         the gauge at deployment, and its restart after `HubLow` or `unsubscribeAll`.
+    function resumeCron() external onlyOwner {
+        if (!cronSubscribed()) _subscribeCron(cronTopic());
+    }
+
+    /// @notice The selected cron `topic0`. Before the first `setCronTopic` it is the one of Cron10000.
+    function cronTopic() public view returns (uint256) {
+        uint256 topic0 = _cronTopic;
+        return topic0 == 0 ? CRON_10000_TOPIC0 : topic0;
+    }
+
+    /// @notice The `tickId` of the last cron tick that ran: the origin block of its cron log. 0 = no tick ran.
+    function lastTick() external view returns (uint256) {
+        return _gauge.lastTick;
+    }
+
+    /// @notice True while the cron tuple is subscribed. `HubLow` and `unsubscribeAll` end it.
+    function cronSubscribed() public view returns (bool) {
+        return _tupleKeys[TupleKind.Cron].length != 0;
+    }
+
+    /// @dev The cron tuple: Lasna, the cron emitter, the cron `topic0`, each block number.
+    function _subscribeCron(uint256 topic0) internal {
+        _subscribe(TupleKind.Cron, block.chainid, CRON_EMITTER, topic0, REACTIVE_IGNORE);
     }
 
     // ------------------------------------------------------------------------------------------
