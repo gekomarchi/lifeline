@@ -31,3 +31,4 @@ runs = 64
 
 [rpc_endpoints]
 lasna = "${LASNA_RPC_URL}"
+base-sepolia = "${BASE_SEPOLIA_RPC_URL}"

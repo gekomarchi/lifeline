@@ -87,10 +87,13 @@ The contracts are one Foundry project at the repository root: `src/`, `test/`, `
 | `lib/forge-std` | v1.17.0 (commit `f3dae6e`) |
 | `LASNA_RPC_URL` | RPC URL of Reactive Network testnet (Lasna, chain ID 5318007). The node must serve the state of the fork block. |
 | Fork block | 8,918,212 on Lasna |
+| `BASE_SEPOLIA_RPC_URL` | RPC URL of Base Sepolia (chain ID 84532). The node must serve the state of the fork block. |
+| Base Sepolia fork block | 61,846,945 |
 
 ```
 git submodule update --init
 export LASNA_RPC_URL=<url>
+export BASE_SEPOLIA_RPC_URL=<url>
 forge test
 ```
 
