@@ -18,7 +18,11 @@ import { ICallbackProxy, IProxyLedger } from "../../src/interfaces/IProxyLedger.
 ///         - The transaction origin is the delivery account, so the proxy pays the fee to that account.
 ///
 ///         A test must use `_mine` and `_skipTime` to move the block number and the time.
-abstract contract ProxyDeliveryHarness is Test {
+///
+///         This contract has each member of the harness but the name `BLOCK_TIME`, so that `TwoForkHarness`
+///         can inherit it together with `LasnaForkHarness`. The functions for accounts, blocks, time and
+///         delivery are virtual for the same reason. A test of one fork inherits `ProxyDeliveryHarness`.
+abstract contract ProxyDelivery is Test {
     // ------------------------------------------------------------------------------------------
     // Pinned values
     // ------------------------------------------------------------------------------------------
@@ -49,7 +53,7 @@ abstract contract ProxyDeliveryHarness is Test {
     uint64 internal constant DELIVERY_GAS = 1_000_000;
 
     /// @dev Seconds for each block.
-    uint256 internal constant BLOCK_TIME = 2;
+    uint256 internal constant DESTINATION_BLOCK_TIME = 2;
 
     // ------------------------------------------------------------------------------------------
     // Types and state
@@ -94,13 +98,13 @@ abstract contract ProxyDeliveryHarness is Test {
 
     /// @dev Returns an address that has no balance, no nonce, no code and no ledger entry on the fork.
     ///      Default test accounts can hold real testnet funds on a fork.
-    function _freshAccount(string memory label) internal returns (address account) {
+    function _freshAccount(string memory label) internal virtual returns (address account) {
         account = makeAddr(string.concat("lifeline.proxy-harness.", label));
         _assertFresh(account);
     }
 
     /// @dev Fails if the address was used on the forked chain.
-    function _assertFresh(address account) internal view {
+    function _assertFresh(address account) internal view virtual {
         assertEq(account.balance, 0, "the address has a balance on the fork");
         assertEq(account.code.length, 0, "the address has code on the fork");
         assertEq(vm.getNonce(account), 0, "the address has a nonce on the fork");
@@ -109,7 +113,7 @@ abstract contract ProxyDeliveryHarness is Test {
     }
 
     /// @dev The address of the next contract that `deployer` creates. Fails if that address is not fresh.
-    function _nextFreshContract(address deployer) internal view returns (address created) {
+    function _nextFreshContract(address deployer) internal view virtual returns (address created) {
         created = vm.computeCreateAddress(deployer, vm.getNonce(deployer));
         _assertFresh(created);
     }
@@ -119,13 +123,13 @@ abstract contract ProxyDeliveryHarness is Test {
     // ------------------------------------------------------------------------------------------
 
     /// @dev Moves `blocks` blocks forward.
-    function _mine(uint256 blocks) internal {
-        _skipTime(blocks * BLOCK_TIME);
+    function _mine(uint256 blocks) internal virtual {
+        _skipTime(blocks * DESTINATION_BLOCK_TIME);
     }
 
     /// @dev Moves `secs` seconds forward, with the matching number of blocks.
-    function _skipTime(uint256 secs) internal {
-        vm.roll(vm.getBlockNumber() + (secs + BLOCK_TIME - 1) / BLOCK_TIME);
+    function _skipTime(uint256 secs) internal virtual {
+        vm.roll(vm.getBlockNumber() + (secs + DESTINATION_BLOCK_TIME - 1) / DESTINATION_BLOCK_TIME);
         vm.warp(vm.getBlockTimestamp() + secs);
     }
 
@@ -141,6 +145,7 @@ abstract contract ProxyDeliveryHarness is Test {
     /// @param firstArgument The value that the node writes into the first argument: the requester.
     function _deliver(address recipient, bytes memory payload, uint64 gasLimit, address firstArgument)
         internal
+        virtual
         returns (Delivery memory result)
     {
         _mine(1);
@@ -158,7 +163,7 @@ abstract contract ProxyDeliveryHarness is Test {
                 )
             )
         );
-        uint256 intrinsic = _intrinsicGas(callData);
+        uint256 intrinsic = _deliveryIntrinsicGas(callData);
         require(gasLimit > intrinsic, "ProxyDeliveryHarness: the gas limit is below the intrinsic gas");
         uint256 feeBefore = DELIVERY_ACCOUNT.balance;
         vm.getRecordedLogs();
@@ -190,7 +195,7 @@ abstract contract ProxyDeliveryHarness is Test {
     }
 
     /// @dev The intrinsic gas of a transaction with this calldata.
-    function _intrinsicGas(bytes memory callData) private pure returns (uint256 gas) {
+    function _deliveryIntrinsicGas(bytes memory callData) private pure returns (uint256 gas) {
         gas = 21_000;
         for (uint256 i = 0; i < callData.length; ++i) {
             gas += callData[i] == 0 ? 4 : 16;
@@ -253,4 +258,10 @@ abstract contract ProxyDeliveryHarness is Test {
         }
         return false;
     }
+}
+
+/// @title Delivery harness for the tests of one fork: `ProxyDelivery` with the name `BLOCK_TIME`.
+abstract contract ProxyDeliveryHarness is ProxyDelivery {
+    /// @dev Seconds for each block.
+    uint256 internal constant BLOCK_TIME = DESTINATION_BLOCK_TIME;
 }

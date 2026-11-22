@@ -39,6 +39,9 @@ interface ISystemContractNode {
 ///
 ///         A test must use `_mine` and `_skipTime` to move the block number and the time. A direct
 ///         `vm.roll` gives a wrong origin block to the logs that are not collected yet.
+///
+///         The functions for accounts, blocks and time are virtual: `TwoForkHarness` has a second fork and
+///         sends each of them to the harness of the active fork.
 abstract contract LasnaForkHarness is Test {
     // ------------------------------------------------------------------------------------------
     // Pinned values
@@ -133,13 +136,13 @@ abstract contract LasnaForkHarness is Test {
 
     /// @dev Returns an address that has no balance, no nonce, no code and no ledger entry on the fork.
     ///      Default test accounts can hold real testnet funds on a fork.
-    function _freshAccount(string memory label) internal returns (address account) {
+    function _freshAccount(string memory label) internal virtual returns (address account) {
         account = makeAddr(string.concat("lifeline.harness.", label));
         _assertFresh(account);
     }
 
     /// @dev Fails if the address was used on the forked chain.
-    function _assertFresh(address account) internal view {
+    function _assertFresh(address account) internal view virtual {
         assertEq(account.balance, 0, "the address has a balance on the fork");
         assertEq(account.code.length, 0, "the address has code on the fork");
         assertEq(vm.getNonce(account), 0, "the address has a nonce on the fork");
@@ -148,7 +151,7 @@ abstract contract LasnaForkHarness is Test {
     }
 
     /// @dev The address of the next contract that `deployer` creates. Fails if that address is not fresh.
-    function _nextFreshContract(address deployer) internal view returns (address created) {
+    function _nextFreshContract(address deployer) internal view virtual returns (address created) {
         created = vm.computeCreateAddress(deployer, vm.getNonce(deployer));
         _assertFresh(created);
     }
@@ -158,12 +161,12 @@ abstract contract LasnaForkHarness is Test {
     // ------------------------------------------------------------------------------------------
 
     /// @dev Moves `blocks` blocks forward. Logs that are not collected yet keep the old block.
-    function _mine(uint256 blocks) internal {
+    function _mine(uint256 blocks) internal virtual {
         _skipTime(blocks * BLOCK_TIME);
     }
 
     /// @dev Moves `secs` seconds forward, with the matching number of blocks.
-    function _skipTime(uint256 secs) internal {
+    function _skipTime(uint256 secs) internal virtual {
         _collect();
         vm.roll(vm.getBlockNumber() + (secs + BLOCK_TIME - 1) / BLOCK_TIME);
         vm.warp(vm.getBlockTimestamp() + secs);
@@ -321,14 +324,28 @@ abstract contract LasnaForkHarness is Test {
     }
 
     /// @dev The contracts with a subscription that was active at the log and matches it. Each contract is
-    ///      listed once.
+    ///      listed once. A subscription does not match its own `Subscribe` log or its own `Unsubscribe` log.
     function _matchingSubscribers(uint256 logIndex) private view returns (address[] memory subscribers) {
-        ChainLog storage log = _logs[logIndex];
+        return _subscribersOf(LASNA_CHAIN_ID, _logs[logIndex], logIndex, logIndex + 1);
+    }
+
+    /// @notice The contracts with a subscription that matches a log of a chain. Each contract is listed once.
+    /// @dev For a log of another chain, give the number of logs that the history had when that log was
+    ///      emitted as both positions.
+    /// @param chainId The chain of the log.
+    /// @param madeBefore The `Subscribe` log of the subscription has an index below this value.
+    /// @param notEndedBefore The `Unsubscribe` log of the subscription, if there is one, has this index or a
+    ///        higher one.
+    function _subscribersOf(uint256 chainId, ChainLog memory log, uint256 madeBefore, uint256 notEndedBefore)
+        internal
+        view
+        returns (address[] memory subscribers)
+    {
         address[] memory found = new address[](_subscriptions.length);
         uint256 count;
         for (uint256 i = 0; i < _subscriptions.length; ++i) {
             Subscription storage sub = _subscriptions[i];
-            if (sub.fromLog >= logIndex || sub.toLog <= logIndex || !_matches(sub, log)) continue;
+            if (sub.fromLog >= madeBefore || sub.toLog < notEndedBefore || !_matches(sub, chainId, log)) continue;
             bool listed;
             for (uint256 j = 0; j < count; ++j) {
                 if (found[j] == sub.subscriber) listed = true;
@@ -342,8 +359,8 @@ abstract contract LasnaForkHarness is Test {
     }
 
     /// @dev Chain ID 0 and emitter 0 match all. `REACTIVE_IGNORE` matches each topic value and a missing topic.
-    function _matches(Subscription storage sub, ChainLog storage log) private view returns (bool) {
-        if (sub.chainId != 0 && sub.chainId != LASNA_CHAIN_ID) return false;
+    function _matches(Subscription storage sub, uint256 chainId, ChainLog memory log) private view returns (bool) {
+        if (sub.chainId != 0 && sub.chainId != chainId) return false;
         if (sub.emitter != address(0) && sub.emitter != log.emitter) return false;
         for (uint256 i = 0; i < 4; ++i) {
             if (sub.topics[i] == REACTIVE_IGNORE) continue;

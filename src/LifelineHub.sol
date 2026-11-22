@@ -3,21 +3,43 @@ pragma solidity 0.8.30;
 
 import { IReactive } from "@reactive/src/interfaces/IReactive.sol";
 import { ISystemContract, REACTIVE_IGNORE } from "./interfaces/ISystemContract.sol";
+import { LifelineVault } from "./LifelineVault.sol";
 import { Policy, TargetKind, TargetState, validatePolicy } from "./LifelineTypes.sol";
+
+/// @dev The gas of a vault callback for each target of the request (spec §4.4). The start value of the
+///      specification was 50,000. The fork test `test_sweepFitsItsGasLimit` needs 79,986 for a sweep of one
+///      target, because the vault keeps 120,000 gas before each target: 80,000 is the smallest step of 1,000
+///      that passes on both proxy configurations.
+uint256 constant SWEEP_PER_TARGET = 80_000;
+
+/// @dev The most targets of one request to a vault.
+uint256 constant SWEEP_MAX = 8;
+
+/// @dev A `requestId` is `REQUEST_ID_BASE + n`, where n counts the requests of the hub from 1. The id of a
+///      gauge sweep is a block number, so the two can never be equal.
+uint256 constant REQUEST_ID_BASE = 1 << 128;
 
 /// @title LifelineHub: the guardian of enrolled reactive contracts on Reactive Network (Lasna).
 /// @notice When the system contract reports a debt for an enrolled target, the hub clears the debt and
 ///         refills the target inside a policy. It counts rescues and quarantines a target that breaks.
+///
+///         Destination chains. When the callback proxy of a destination chain reports a debt for an
+///         enrolled target, the hub requests one `reconcile` callback on the LifelineVault of that chain,
+///         inside a relay limit. The vault pays and decides; the hub only forwards. When a vault itself goes
+///         into debt, the hub reports it, sends no request to that vault, keeps the debt events that arrive
+///         as pending, and sends catch-up sweeps after the owner's `vaultUp`.
 ///
 ///         Funds. Principal is the contract balance; the owner can withdraw it. The fee float is the
 ///         hub's own reserves at the system contract. The hub has no `pay()` and no fallback, so the
 ///         ledger can take only the float.
 ///
 ///         The contract is not upgradeable. The storage layout, the `react()` dispatch and the external
-///         signatures of `enroll` and `disarm` are the ones of the full design: the handlers for
-///         destination targets, vault debt and cron are skips here and get their bodies in later units.
+///         signatures of `enroll` and `disarm` are the ones of the full design: the handler for cron is a
+///         skip here and gets its body in a later unit.
 /// @dev The hub does not inherit a library contract, because the library base contracts add `pay()`.
 ///      It uses the log record type of `reactive-lib-omni` and matches the `react` selector.
+///
+///      It imports LifelineVault only to encode the two callback payloads; it holds no vault code.
 ///
 ///      Reentrancy. The only contract that the hub calls is the system contract, apart from the transfer to
 ///      the owner in `withdraw`. Each function that changes state accepts only the owner or the system
@@ -43,7 +65,9 @@ contract LifelineHub {
         DailyCap, // the payment is above the remaining `dailyCap` of the calendar day
         Floor, // the payment is above the balance, or takes the balance below `principalFloor`
         DepositFailed, // `depositTo` reverted
-        Unhandled // the event kind has no handler in this unit
+        Unhandled, // the event kind has no handler in this unit
+        AlreadyPending, // the vault is down and the target is in the pending set already
+        RequestFailed // the system contract did not accept the callback request
     }
 
     /// @notice The kinds of subscription tuple in the registry.
@@ -76,12 +100,20 @@ contract LifelineHub {
         Policy policy;
     }
 
-    /// @notice The record of the vault of one destination chain. Empty in this unit.
+    /// @notice The record of the vault of one destination chain. `setVault` fills it.
     struct Vault {
         address proxy; // the callback proxy of that chain: the emitter of its debt logs
         address vault; // the LifelineVault of that chain
         uint64 sweepBase; // the base gas of a sweep callback on that proxy
         bool up; // false while the vault is in debt at its proxy
+    }
+
+    /// @notice The relay limit and the relay counter of one destination target: one storage slot.
+    struct Relay {
+        uint64 windowStart; // the time of the first relay of the current window
+        uint32 count; // relays in the current window; 0 = no window
+        uint32 maxRelays; // `2 * maxRescues + 2` of the policy
+        uint32 relayWindow; // `window` of the policy, seconds
     }
 
     // ------------------------------------------------------------------------------------------
@@ -98,6 +130,13 @@ contract LifelineHub {
     event Released(address indexed target);
     event HubLow(uint256 balance, uint256 principalFloor);
     event SelfCare(uint256 added);
+    event VaultSet(uint256 indexed chainId, address proxy, address vault, uint256 sweepBase);
+    event Relayed(uint256 indexed requestId, uint256 indexed chainId, address indexed target);
+    event RelayLimited(uint256 indexed chainId, address indexed target);
+    event Rearmed(uint256 indexed chainId, address indexed target);
+    event VaultDown(uint256 indexed chainId);
+    event Pending(uint256 indexed chainId, address indexed target);
+    event VaultUp(uint256 indexed chainId, uint256 indexed requestId, uint256 sent, uint256 remaining);
 
     error UnknownChain(uint256 chainId);
     error NotOwner();
@@ -108,6 +147,10 @@ contract LifelineHub {
     error NotQuarantined(address target);
     error InsufficientValue(uint256 value, uint256 feeFloat);
     error WithdrawFailed();
+    error InvalidVault(uint256 chainId, address proxy, address vault, uint256 sweepBase);
+    error VaultInUse(uint256 chainId);
+    error NotParked(uint256 chainId, address target);
+    error RequestFailed(uint256 chainId);
 
     // ------------------------------------------------------------------------------------------
     // Constants and storage
@@ -152,6 +195,24 @@ contract LifelineHub {
     /// @dev The subscription-tuple registry. Each subscribe and each unsubscribe goes through it.
     mapping(bytes32 key => Tuple) internal _tuples;
     mapping(TupleKind kind => bytes32[]) internal _tupleKeys;
+
+    /// @dev The largest `sweepBase`: the gas limit of the largest request fits the 64 bits of the request.
+    uint256 internal constant MAX_SWEEP_BASE = type(uint64).max - SWEEP_PER_TARGET * SWEEP_MAX;
+
+    /// @dev The destination chain IDs that have a vault record, in the order of their first `setVault`.
+    uint256[] internal _vaultChains;
+
+    mapping(uint256 chainId => mapping(address target => Relay)) internal _relays;
+
+    /// @dev The pending set of each destination chain: the active targets whose debt log came while the
+    ///      vault was down. Each entry is an enrolled target of that chain, one time.
+    mapping(uint256 chainId => address[]) internal _pending;
+
+    /// @dev The position of a target in `_pending[chainId]` plus 1; 0 = not pending.
+    mapping(uint256 chainId => mapping(address target => uint256)) internal _pendingIndex;
+
+    /// @dev The number of requests that the hub sent to vaults.
+    uint256 internal _requestCount;
 
     // ------------------------------------------------------------------------------------------
     // Construction and funds
@@ -222,6 +283,11 @@ contract LifelineHub {
 
     /// @notice Enrolls a target. A Lasna target is subscribed with the exact `topic1` and reconciled at once,
     ///         because a subscription does not replay an existing debt.
+    ///
+    ///         A destination target needs a registered vault on its chain. The hub subscribes with the exact
+    ///         `topic1` at the proxy of that chain and sends no callback: the vault reconciles locally. Of
+    ///         the policy the hub keeps `maxRescues` and `window` only; the vault owns the marks and the
+    ///         caps. The relay limit is `2 * maxRescues + 2` requests inside `window`.
     function enroll(uint256 chainId, address target, Policy calldata policy) external onlyOwner {
         if (chainId == block.chainid) {
             _addTarget(chainId, target, TargetKind.Lasna, policy);
@@ -229,18 +295,43 @@ contract LifelineHub {
             emit Enrolled(chainId, target);
             _reconcileLasna(target);
         } else {
-            revert UnknownChain(chainId);
+            Vault storage v = _vaults[chainId];
+            address proxy = v.proxy;
+            if (proxy == address(0)) revert UnknownChain(chainId);
+            // The debt log of the vault has its own handler and its own tuple.
+            if (target == v.vault) revert InvalidTarget(target);
+
+            _addTarget(chainId, target, TargetKind.Destination, policy);
+            Policy storage stored = _targets[chainId][target].policy;
+            stored.low = 0;
+            stored.high = 0;
+            stored.maxDebt = 0;
+            stored.dailyCap = 0;
+            // No overflow: `validatePolicy` keeps `maxRescues` in 1..4.
+            _relays[chainId][target] =
+                Relay({ windowStart: 0, count: 0, maxRelays: 2 * policy.maxRescues + 2, relayWindow: policy.window });
+
+            _subscribe(TupleKind.TargetDebt, chainId, proxy, BLACKLIST_TOPIC0, uint256(uint160(target)));
+            emit Enrolled(chainId, target);
         }
     }
 
-    /// @notice The intentional stop of a target. `enroll` is permitted again after it.
+    /// @notice The intentional stop of a target. `enroll` is permitted again after it. A destination target
+    ///         leaves the pending set of its chain.
     function disarm(uint256 chainId, address target) external onlyOwner {
         if (chainId == block.chainid) {
             _removeTarget(chainId, target);
             _unsubscribe(TupleKind.TargetDebt, chainId, address(SYSTEM), BLACKLIST_TOPIC0, uint256(uint160(target)));
             emit Disarmed(chainId, target);
         } else {
-            revert UnknownChain(chainId);
+            address proxy = _vaults[chainId].proxy;
+            if (proxy == address(0)) revert UnknownChain(chainId);
+
+            _removeTarget(chainId, target);
+            _removePending(chainId, target);
+            // A parked target has no tuple: the registry ignores it.
+            _unsubscribe(TupleKind.TargetDebt, chainId, proxy, BLACKLIST_TOPIC0, uint256(uint160(target)));
+            emit Disarmed(chainId, target);
         }
     }
 
@@ -257,7 +348,8 @@ contract LifelineHub {
     }
 
     /// @notice Unsubscribes each tuple in the registry with its stored fields and parks each active target.
-    ///         There is no bulk restore: a target is restored with `disarm` and `enroll`.
+    ///         There is no bulk restore: a Lasna target is restored with `disarm` and `enroll`, a destination
+    ///         target with `rearm`, and the debt tuple of a vault with `setVault`.
     function unsubscribeAll() external onlyOwner {
         bytes32[] storage keys = _tupleKeys[TupleKind.TargetDebt];
         uint256 count = keys.length;
@@ -479,19 +571,207 @@ contract LifelineHub {
         emit Skipped(block.chainid, target, reason);
     }
 
-    /// @dev Handler: `BlacklistContract(target)` of a registered destination proxy. A skip in this unit.
+    /// @dev Handler: `BlacklistContract(target)` of a registered destination proxy. The hub does not pay and
+    ///      has no quarantine state for this target: it requests one `reconcile` on the vault of that chain,
+    ///      inside the relay limit. While the vault is down it stores the target as pending and sends nothing.
     function _onDestinationTargetDebt(IReactive.LogRecord calldata log) internal {
-        emit Skipped(log.chainId, address(uint160(log.topic1)), SkipReason.Unhandled);
+        uint256 chainId = log.chainId;
+        address target = address(uint160(log.topic1));
+        Vault storage v = _vaults[chainId];
+        Target storage t = _targets[chainId][target];
+        TargetState state = t.state;
+        SkipReason reason;
+
+        if (target == v.vault || t.kind != TargetKind.Destination || state == TargetState.Disarmed) {
+            reason = SkipReason.NotEnrolled;
+        } else if (state != TargetState.Active) {
+            reason = SkipReason.NotActive;
+        } else if (!v.up) {
+            // Not a relay: the limit counts requests, and no request goes to a vault that is down.
+            if (_addPending(chainId, target)) {
+                emit Pending(chainId, target);
+                return;
+            }
+            reason = SkipReason.AlreadyPending;
+        } else {
+            Relay memory relay = _relays[chainId][target];
+            // A relay at or after the end of the window starts a new window.
+            if (relay.count == 0 || block.timestamp >= uint256(relay.windowStart) + relay.relayWindow) {
+                relay.windowStart = uint64(block.timestamp);
+                relay.count = 0;
+            }
+            if (relay.count >= relay.maxRelays) {
+                // The limit protects the fee float: the hub stops listening to this one target.
+                t.state = TargetState.Parked;
+                emit RelayLimited(chainId, target);
+                _unsubscribe(TupleKind.TargetDebt, chainId, v.proxy, BLACKLIST_TOPIC0, uint256(uint160(target)));
+                return;
+            }
+
+            uint256 requestId = REQUEST_ID_BASE + _requestCount + 1;
+            // The node overwrites the first argument with the address of the hub.
+            if (_requestVault(chainId, abi.encodeCall(LifelineVault.reconcile, (address(0), target, requestId)), 1)) {
+                ++relay.count;
+                _relays[chainId][target] = relay;
+                ++_requestCount;
+                emit Relayed(requestId, chainId, target);
+                return;
+            }
+            reason = SkipReason.RequestFailed;
+        }
+
+        emit Skipped(chainId, target, reason);
     }
 
-    /// @dev Handler: `BlacklistContract(vault)` of a registered destination proxy. A skip in this unit.
+    /// @dev Handler: `BlacklistContract(vault)` of a registered destination proxy. A vault in debt can run no
+    ///      callback, so the hub sends no request to it until the owner's `vaultUp`.
     function _onVaultDebt(IReactive.LogRecord calldata log) internal {
-        emit Skipped(log.chainId, address(uint160(log.topic1)), SkipReason.Unhandled);
+        uint256 chainId = log.chainId;
+        _vaults[chainId].up = false;
+        emit VaultDown(chainId);
     }
 
     /// @dev Handler: the cron tick. A skip in this unit.
     function _onCron(IReactive.LogRecord calldata log) internal {
         emit Skipped(log.chainId, address(uint160(log.topic1)), SkipReason.Unhandled);
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Vaults
+    // ------------------------------------------------------------------------------------------
+
+    /// @notice Registers the proxy, the vault and the base gas of a destination chain, and subscribes to the
+    ///         debt log of the vault at that proxy. A new pair starts in state up.
+    ///
+    ///         A second call with the same proxy and vault updates `sweepBase`, restores the debt tuple of
+    ///         the vault if it is absent, and keeps the up or down state: only `vaultUp` ends a down state.
+    ///         A different proxy or vault is accepted only while no target is enrolled on that chain.
+    /// @param sweepBase `90,000 + _extraGas + _maxChargeGas` of that proxy.
+    function setVault(uint256 chainId, address proxy, address vault, uint256 sweepBase) external onlyOwner {
+        // Chain ID 0 is the wildcard of `subscribe`. Lasna has no vault.
+        if (
+            chainId == block.chainid || chainId == 0 || proxy == address(0) || vault == address(0)
+                || sweepBase > MAX_SWEEP_BASE
+        ) revert InvalidVault(chainId, proxy, vault, sweepBase);
+
+        Vault storage v = _vaults[chainId];
+        address oldProxy = v.proxy;
+        address oldVault = v.vault;
+        if (oldProxy != proxy || oldVault != vault) {
+            if (oldProxy == address(0)) {
+                _vaultChains.push(chainId);
+            } else {
+                // No target is enrolled, so the pending set of this chain is empty.
+                if (_targetList[chainId].length != 0) revert VaultInUse(chainId);
+                _unsubscribe(TupleKind.VaultDebt, chainId, oldProxy, BLACKLIST_TOPIC0, uint256(uint160(oldVault)));
+            }
+            v.proxy = proxy;
+            v.vault = vault;
+            v.up = true;
+        }
+        // No truncation: `sweepBase <= MAX_SWEEP_BASE`.
+        v.sweepBase = uint64(sweepBase);
+
+        _subscribe(TupleKind.VaultDebt, chainId, proxy, BLACKLIST_TOPIC0, uint256(uint160(vault)));
+        emit VaultSet(chainId, proxy, vault, sweepBase);
+    }
+
+    /// @notice Restores a parked destination target: clears its relay count and subscribes again. It sends
+    ///         no callback.
+    function rearm(uint256 chainId, address target) external onlyOwner {
+        address proxy = _vaults[chainId].proxy;
+        if (proxy == address(0)) revert UnknownChain(chainId);
+
+        Target storage t = _targets[chainId][target];
+        if (t.kind != TargetKind.Destination || t.state != TargetState.Parked) revert NotParked(chainId, target);
+
+        t.state = TargetState.Active;
+        _relays[chainId][target].count = 0;
+        _subscribe(TupleKind.TargetDebt, chainId, proxy, BLACKLIST_TOPIC0, uint256(uint160(target)));
+        emit Rearmed(chainId, target);
+    }
+
+    /// @notice Sets the vault state up and sends one catch-up sweep with at most `SWEEP_MAX` pending targets.
+    ///         Call it again until `remaining` is 0. With no pending target it sends no request and emits
+    ///         `VaultUp(chainId, 0, 0, 0)`. A catch-up sweep counts no relay.
+    /// @dev The hub cannot read the destination ledger: call this after the debt of the vault is cleared. A
+    ///      request to a vault in debt is not delivered, and its targets are not pending any more.
+    function vaultUp(uint256 chainId) external onlyOwner {
+        Vault storage v = _vaults[chainId];
+        if (v.proxy == address(0)) revert UnknownChain(chainId);
+        v.up = true;
+
+        address[] storage pending = _pending[chainId];
+        uint256 total = pending.length;
+        uint256 sent = total < SWEEP_MAX ? total : SWEEP_MAX;
+        uint256 requestId;
+        if (sent != 0) {
+            // The targets come from the end of the set.
+            address[] memory targets = new address[](sent);
+            for (uint256 i = 0; i < sent; ++i) {
+                address target = pending[total - 1 - i];
+                pending.pop();
+                delete _pendingIndex[chainId][target];
+                targets[i] = target;
+            }
+            requestId = REQUEST_ID_BASE + ++_requestCount;
+            if (!_requestSweep(chainId, targets, requestId)) revert RequestFailed(chainId);
+        }
+        emit VaultUp(chainId, requestId, sent, total - sent);
+    }
+
+    /// @dev The one request function of the hub: the only place that calls `requestCallbackV_1_0`. It sends
+    ///      nothing if the vault is not registered or not up, or if `n` is 0 or above `SWEEP_MAX`. The proxy
+    ///      charges the gas used, not the limit. It never reverts.
+    /// @param payload The callback of the vault. The node overwrites its first argument.
+    /// @param n The number of targets of the callback.
+    /// @return sent True if the system contract accepted the request.
+    function _requestVault(uint256 chainId, bytes memory payload, uint256 n) internal returns (bool sent) {
+        Vault storage v = _vaults[chainId];
+        address vault = v.vault;
+        if (vault == address(0) || !v.up || n == 0 || n > SWEEP_MAX) return false;
+
+        // No truncation: `sweepBase <= MAX_SWEEP_BASE` and `n <= SWEEP_MAX`.
+        uint64 gasLimit = uint64(uint256(v.sweepBase) + SWEEP_PER_TARGET * n);
+        try SYSTEM.requestCallbackV_1_0(
+            ISystemContract.CallbackConfiguration_V_1_0({
+                chainId: chainId, recipient: vault, gasLimit: gasLimit, payload: payload
+            })
+        ) {
+            return true;
+        } catch { }
+    }
+
+    /// @dev Requests `sweep(address(0), targets, id)` on the vault of a chain. It never reverts.
+    function _requestSweep(uint256 chainId, address[] memory targets, uint256 id) internal returns (bool sent) {
+        return _requestVault(chainId, abi.encodeCall(LifelineVault.sweep, (address(0), targets, id)), targets.length);
+    }
+
+    /// @dev Adds a target to the pending set of its chain.
+    /// @return added False if the target is in the set already.
+    function _addPending(uint256 chainId, address target) internal returns (bool added) {
+        if (_pendingIndex[chainId][target] != 0) return false;
+
+        address[] storage pending = _pending[chainId];
+        pending.push(target);
+        _pendingIndex[chainId][target] = pending.length;
+        return true;
+    }
+
+    /// @dev Removes a target from the pending set of its chain. A target that is not in the set is ignored.
+    function _removePending(uint256 chainId, address target) internal {
+        uint256 index = _pendingIndex[chainId][target];
+        if (index == 0) return;
+
+        address[] storage pending = _pending[chainId];
+        uint256 last = pending.length;
+        if (index != last) {
+            address moved = pending[last - 1];
+            pending[index - 1] = moved;
+            _pendingIndex[chainId][moved] = index;
+        }
+        pending.pop();
+        delete _pendingIndex[chainId][target];
     }
 
     // ------------------------------------------------------------------------------------------
@@ -665,5 +945,24 @@ contract LifelineHub {
     {
         Target storage t = _targets[chainId][target];
         return (t.kind, t.state, t.policy);
+    }
+
+    /// @notice The vault record of a destination chain and the size of its pending set. All values are 0 if
+    ///         the chain has no vault.
+    function vaultInfo(uint256 chainId)
+        external
+        view
+        returns (address proxy, address vault, uint256 sweepBase, bool up, uint256 pending)
+    {
+        Vault storage v = _vaults[chainId];
+        return (v.proxy, v.vault, v.sweepBase, v.up, _pending[chainId].length);
+    }
+
+    function vaultChainCount() external view returns (uint256) {
+        return _vaultChains.length;
+    }
+
+    function vaultChainAt(uint256 index) external view returns (uint256 chainId) {
+        return _vaultChains[index];
     }
 }
