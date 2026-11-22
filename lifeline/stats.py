@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections import Counter
 from datetime import datetime
@@ -120,7 +121,7 @@ def report(snapshot, chains, rows, notes) -> list:
         lines.append(f"{name} | {','.join(row_chains)} | from {start} to {end} | {label} = {shown}")
     lines += notes
     lines += [f"from snapshot (the node has no state at the old block): {name}" for name in snapshot.from_saved]
-    lines += [f"changed (the node gives a value that differs from the snapshot): {name}" for name in snapshot.changed]
+    lines += [f"differs from snapshot (the saved value is used): {value}" for value in snapshot.differs]
     return lines
 
 
@@ -149,11 +150,26 @@ def main(argv=None) -> int:
         return 1
 
     out = Path(arguments.out)
-    out.mkdir(parents=True, exist_ok=True)
     data = {"version": 1, "heights": snapshot.chains, "params": snapshot.params, "queries": records}
-    (out / "data.json").write_text(json.dumps(data, indent=1, sort_keys=True) + "\n")
-    (out / "table.md").write_text(render_table(snapshot, scan.chains, records, rows))
-    snapshot.save(out / "heights.json")
+    files = {
+        "data.json": json.dumps(data, indent=1, sort_keys=True) + "\n",
+        "table.md": render_table(snapshot, scan.chains, records, rows),
+        "heights.json": snapshot.text(),
+    }
+    # All three files or none: write each one beside its final name, then move them.
+    staged = [out / (name + ".tmp") for name in files]
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        for path, text in zip(staged, files.values()):
+            path.write_text(text)
+        for path, name in zip(staged, files):
+            os.replace(path, out / name)
+    except OSError as error:
+        for path in staged:
+            if path.is_file():
+                path.unlink()
+        print(f"error: cannot write the output files: {error}", file=sys.stderr)
+        return 1
 
     print("\n".join(report(snapshot, scan.chains, rows, notes)))
     print(f"wrote {out / 'data.json'}, {out / 'table.md'}, {out / 'heights.json'}")

@@ -28,7 +28,7 @@ Chain names: `lasna`, `base-sepolia`, `unichain-sepolia`.
 
 A first run has no `--heights`. For each chain, `to` is the head block at the start of the run, and `from` is the first block with a timestamp at or after 2026-11-05 00:00 EET. Event scans cover `from..to`. State reads (`debt`, `reserves`) are made at `to`.
 
-A run with `--heights` asks the node for each state value again. If the node has no state at the old block, the run uses the value saved in the file and names that value on standard output.
+A run with `--heights` asks the node for each state value again. If the node has no state at the old block, the run uses the value saved in the file and names that value on standard output. If the node gives a different value, the run keeps the saved value and reports the difference on standard output.
 
 ### Output files
 

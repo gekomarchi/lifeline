@@ -40,6 +40,13 @@ FILL_EVENT = "Filled(uint256 indexed origin, uint256 indexed id, address indexed
 OTHER_TOPIC = topic("Ping(uint256)")
 CRON100 = topic("Cron100(uint256)")
 
+# The heights that a first run pins on the test network.
+HEIGHTS = {
+    "lasna": {"chainId": 5318007, "from": 1000, "to": 21000},
+    "base-sepolia": {"chainId": 84532, "from": 1000, "to": 11000},
+    "unichain-sepolia": {"chainId": 1301, "from": 500, "to": 20500},
+}
+
 SUBJECTS = {
     "fastfillReactive": {"chain": "lasna", "address": A3},
     "cronPoller": {"chain": "lasna", "address": A4, "ward": A1},
@@ -91,7 +98,8 @@ class Network:
 
     def _fill(self):
         # Lasna ledger: A1 goes into debt three times and stays in debt; A2 one time and recovers.
-        for event, time in ((BLACKLIST, 1000), (WHITELIST, 1100), (BLACKLIST, 2000), (WHITELIST, 2100), (BLACKLIST, 3000)):
+        for event, time in ((BLACKLIST, 1000), (WHITELIST, 1100), (BLACKLIST, 2000), (WHITELIST, 2100),
+                            (BLACKLIST, 3000)):
             self.ledger_event("lasna", event, A1, time)
         self.ledger_event("lasna", BLACKLIST, A2, 4000)
         self.ledger_event("lasna", WHITELIST, A2, 4200)
@@ -144,29 +152,26 @@ class Network:
 
     # ------------------------------------------------------------- command
 
-    def config(self, subjects=None, name="config.json"):
+    def config(self, subjects=None):
         chains = {
-            name_: {"chainId": chain.chain_id, "role": "reactive" if name_ == "lasna" else "destination",
-                    "ledger": self.ledgers[name_], "rpc": []}
-            for name_, chain in self.chains.items()
+            name: {"chainId": chain.chain_id, "role": "reactive" if name == "lasna" else "destination",
+                   "ledger": self.ledgers[name], "rpc": []}
+            for name, chain in self.chains.items()
         }
-        path = self.tmp_path / name
+        path = self.tmp_path / "config.json"
         path.write_text(json.dumps({"chains": chains, "subjects": subjects or {}}))
         return path
 
-    def rpc_arguments(self, suffixes=("",)):
-        arguments = []
-        for name in self.chains:
-            for suffix in suffixes:
-                arguments += ["--rpc", f"{name}={self.node.url(name, suffix)}"]
-        return arguments
-
     def arguments(self, out, *, subjects=None, heights=None, cache="cache", suffixes=("",)):
+        """Command arguments. `suffixes` gives one RPC URL of each chain for each suffix, in that order."""
         arguments = ["--config", str(self.config(subjects)), "--cache", str(self.tmp_path / cache),
                      "--out", str(self.tmp_path / out), "--retries", "2", "--backoff", "0.01"]
         if heights:
             arguments += ["--heights", str(heights)]
-        return arguments + self.rpc_arguments(suffixes)
+        for name in self.chains:
+            for suffix in suffixes:
+                arguments += ["--rpc", f"{name}={self.node.url(name, suffix)}"]
+        return arguments
 
     def run(self, out, **options) -> int:
         return main(self.arguments(out, **options))
@@ -174,15 +179,10 @@ class Network:
     def data(self, out) -> dict:
         return json.loads((self.tmp_path / out / "data.json").read_text())
 
-    def heights_file(self, name="pinned.json"):
+    def heights_file(self):
         """A snapshot with the heights that a first run pins, written without a run."""
-        chains = {
-            "lasna": {"chainId": 5318007, "from": 1000, "to": 21000},
-            "base-sepolia": {"chainId": 84532, "from": 1000, "to": 11000},
-            "unichain-sepolia": {"chainId": 1301, "from": 500, "to": 20500},
-        }
-        path = self.tmp_path / name
-        path.write_text(json.dumps({"version": 1, "chains": chains, "params": DEFAULT_PARAMS, "state": []}))
+        path = self.tmp_path / "pinned.json"
+        path.write_text(json.dumps({"version": 1, "chains": HEIGHTS, "params": DEFAULT_PARAMS, "state": []}))
         return path
 
     def clear_requests(self):

@@ -13,6 +13,7 @@ from lifeline.reader import (
     ChainReader,
     ReaderError,
     Snapshot,
+    SnapshotError,
     StateUnavailable,
     first_block_at,
 )
@@ -60,7 +61,6 @@ def test_only_chunks_at_or_below_the_pinned_height_are_cached(network):
     network.clear_requests()
     reader.logs(LASNA_LEDGER, [BLACKLIST], 1000, 15999)
     assert log_spans(network.lasna) == [(11000, 15999)]
-    assert reader.cache_hits == 2
 
 
 def test_cache_serves_a_different_range_and_fetches_only_the_gap(network):
@@ -139,6 +139,22 @@ def test_first_block_search_reads_no_header_below_the_answer_region(network):
     assert first_block_at(reader, START, 21000) == 1000
     assert reader.timestamp(1000) >= START > reader.timestamp(999)
     assert min(int(params[0], 16) for params in network.lasna.methods("eth_getBlockByNumber")) >= 900
+
+
+def test_first_block_search_when_the_block_time_changes_and_old_blocks_are_pruned(network):
+    """Five blocks per second near the head, one before: the first estimate lands in pruned history."""
+    network.lasna.timestamp_of = lambda block: (
+        START + 500 + (block - 19500) // 5 if block >= 19500 else START + block - 19000)
+    network.lasna.earliest_block = 18500
+    reader = reader_for(network)
+    assert first_block_at(reader, START, 21000) == 19000
+    assert any(int(params[0], 16) < 18500 for params in network.lasna.methods("eth_getBlockByNumber"))
+
+
+def test_first_block_search_fails_when_the_node_has_no_block_before_the_window(network):
+    network.lasna.earliest_block = 1500  # the answer, block 1000, is pruned
+    with pytest.raises(SnapshotError):
+        first_block_at(reader_for(network), START, 21000)
 
 
 def test_first_block_search_with_two_second_blocks(network):

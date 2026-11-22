@@ -29,7 +29,8 @@ READ_METHODS = frozenset({
     "eth_call",
     "eth_getBalance",
 })
-_STATE_METHODS = frozenset({"eth_call", "eth_getBalance"})
+# Methods that a node refuses for a block that it has pruned.
+_BLOCK_METHODS = frozenset({"eth_call", "eth_getBalance", "eth_getBlockByNumber"})
 
 
 class ReaderError(Exception):
@@ -37,7 +38,7 @@ class ReaderError(Exception):
 
 
 class StateUnavailable(Exception):
-    """No configured node can give state at the requested block."""
+    """No configured node can give state, or the header, at the requested block."""
 
 
 class CallReverted(Exception):
@@ -83,7 +84,7 @@ def http_transport(url, payload, timeout):
             status, raw, headers = response.status, response.read(), response.headers
     except urllib.error.HTTPError as error:
         status, raw, headers = error.code, error.read(), error.headers
-    except (urllib.error.URLError, OSError) as error:  # includes timeouts
+    except OSError as error:  # URLError, connection errors and timeouts
         raise TransportError(type(error).__name__) from None
     try:
         body = json.loads(raw)
@@ -93,7 +94,7 @@ def http_transport(url, payload, timeout):
         retry_after = float(headers.get("Retry-After", ""))
     except ValueError:
         retry_after = None
-    return status, body if isinstance(body, (dict, list)) else None, retry_after
+    return status, body, retry_after
 
 
 _RATE_LIMIT = re.compile(r"rate.?limit|too many requests|request limit|throttl|capacity|compute units|credits")
@@ -137,7 +138,7 @@ def _classify(method, status, body, retry_after):
     if method == "eth_getLogs" and (status == 413 or _RANGE.search(text)):
         numbers = [int(n) for n in re.findall(r"\b\d+\b", text)]
         raise _Failure("range", summary, hint=numbers)
-    if method in _STATE_METHODS and _STATE.search(text):
+    if method in _BLOCK_METHODS and _STATE.search(text):
         raise _Failure("state", summary)
     raise _Failure(transient, summary, retry_after=retry_after)
 
@@ -175,8 +176,6 @@ class ChainReader:
         max_backoff=60.0,
         cooldown=60.0,
         timeout=30.0,
-        transport=http_transport,
-        sleep=time.sleep,
     ):
         if not urls:
             raise ValueError(f"{name}: no RPC URL")
@@ -191,10 +190,7 @@ class ChainReader:
         self.timeout = timeout
         self.cache_to = None  # set by Snapshot: only data at or below this block is cached
         self.sent = Counter()  # requests sent, by method
-        self.cache_hits = 0  # log chunks served from the cache
 
-        self._transport = transport
-        self._sleep = sleep
         self._chain_id = chain_id
         self._verified = set()
         self._bad_until = [0.0] * len(self.urls)
@@ -230,7 +226,6 @@ class ChainReader:
             if hit:
                 chunk_logs = json.loads(hit[2].read_text())
                 chunk_end = hit[1]
-                self.cache_hits += 1
             else:
                 later = [seg[0] for seg in cached if seg[0] > cursor]
                 limit = min([to_block] + [start - 1 for start in later])
@@ -327,7 +322,7 @@ class ChainReader:
             for position, params in enumerate(params_list)
         ]
         try:
-            status, body, _ = self._transport(self.urls[index], payload, self.timeout)
+            status, body, _ = http_transport(self.urls[index], payload, self.timeout)
         except TransportError:
             return {}
         answers = {}
@@ -392,7 +387,7 @@ class ChainReader:
                     if state_failures >= 2 * len(self.urls):
                         raise StateUnavailable(f"{self.name}: {method}: {last}") from None
                     if state_failures % len(self.urls) == 0:
-                        self._sleep(self.backoff)
+                        time.sleep(self.backoff)
                     continue
                 failures += 1
                 if failures > self.retries:
@@ -404,7 +399,7 @@ class ChainReader:
                 delay = min(self.max_backoff, self.backoff * 2 ** (failures - 1))
                 if failure.retry_after:
                     delay = max(delay, min(failure.retry_after, self.max_backoff))
-                self._sleep(delay)
+                time.sleep(delay)
 
     def _pick(self, tried):
         """The first URL that this request did not use and that is not in its cooldown."""
@@ -438,7 +433,7 @@ class ChainReader:
         self.sent[method] += 1
         payload = {"jsonrpc": "2.0", "id": self._request_id, "method": method, "params": params}
         try:
-            status, body, retry_after = self._transport(self.urls[index], payload, self.timeout)
+            status, body, retry_after = http_transport(self.urls[index], payload, self.timeout)
         except TransportError as error:
             raise _Failure("timeout", f"no response ({error})") from None
         return _classify(method, status, body, retry_after)
@@ -483,33 +478,45 @@ def first_block_at(reader: ChainReader, timestamp: int, head: int) -> int:
     """The first block with a timestamp at or after `timestamp`, at or below `head`.
 
     The search starts at the head and estimates the block from the block
-    rate, so that it reads no header far below the answer. A node that keeps
-    no old blocks can then still answer.
+    rate, so that it reads few headers far below the answer: a node can keep
+    no old blocks. A block with no header on the node counts as below the
+    answer only while a later probe confirms a real block before `timestamp`.
     """
-    high, high_time = head, reader.timestamp(head)
-    if high_time < timestamp:
+
+    def is_before(block):
+        """True or False from the header; None if the node has no header for the block."""
+        try:
+            return reader.timestamp(block) < timestamp
+        except StateUnavailable:
+            return None
+
+    if reader.timestamp(head) < timestamp:
         raise SnapshotError(f"{reader.name}: the head block is older than the start of the window")
+    low, confirmed = -1, True  # block -1 stands for "before the chain": block 0 can be the answer
+    high = head
     step = min(1000, head)
-    low = None
-    while low is None and high > 0:
+    while high > 0:
         probe = max(0, high - step)
-        probe_time = reader.timestamp(probe)
-        if probe_time < timestamp:
-            low = probe
+        before = is_before(probe)
+        if before is not False:
+            low, confirmed = probe, before is True
             break
         # Blocks per second between the two known points give the next estimate.
-        seconds = max(1, high_time - probe_time)
-        rate = (high - probe) / seconds
-        high, high_time = probe, probe_time
-        step = max(1, int((high_time - timestamp) * rate) + 1)
-    if low is None:
-        return 0
+        seconds = max(1, reader.timestamp(high) - reader.timestamp(probe))
+        step = max(1, int((reader.timestamp(probe) - timestamp) * (high - probe) / seconds) + 1)
+        high = probe
     while high - low > 1:
         middle = (low + high) // 2
-        if reader.timestamp(middle) >= timestamp:
+        before = is_before(middle)
+        if before is False:
             high = middle
         else:
-            low = middle
+            low, confirmed = middle, before is True
+    if not confirmed:
+        raise SnapshotError(
+            f"{reader.name}: the node has no block header before the start of the window "
+            f"(its first header in the search is block {high})"
+        )
     return high
 
 
@@ -518,15 +525,13 @@ class Snapshot:
 
     VERSION = 1
 
-    def __init__(self, chains, params, state=(), loaded=False):
+    def __init__(self, chains, params, state=()):
         self.chains = chains
         self.params = params
-        self.loaded = loaded
         self.from_saved = []  # names of values that the node could not serve and the snapshot supplied
-        self.changed = []  # names of values that the node now reports differently
+        self.differs = []  # values that the node now gives differently; the saved value is used
         self._saved = {self._key(entry): entry["result"] for entry in state}
-        self._state = dict(self._saved)
-        self._read = set()
+        self._state = {}  # values read in this run
 
     @classmethod
     def pin(cls, readers, from_block, params):
@@ -560,15 +565,19 @@ class Snapshot:
                     f"the snapshot has {chains[name]['chainId']}"
                 )
             reader.cache_to = chains[name]["to"]
-        return cls(chains, document.get("params", {}), document.get("state", ()), loaded=True)
+        return cls(chains, document.get("params", {}), document.get("state", ()))
 
-    def save(self, path) -> None:
+    def text(self) -> str:
+        """The snapshot file: the saved state of a loaded file and each value read in this run."""
         state = [
             {"chain": chain, "block": block, "kind": kind, "to": to, "data": data, "result": result}
-            for (chain, block, kind, to, data), result in sorted(self._state.items())
+            for (chain, block, kind, to, data), result in sorted({**self._saved, **self._state}.items())
         ]
         document = {"version": self.VERSION, "chains": self.chains, "params": self.params, "state": state}
-        _write_atomic(Path(path), json.dumps(document, indent=1, sort_keys=True) + "\n")
+        return json.dumps(document, indent=1, sort_keys=True) + "\n"
+
+    def save(self, path) -> None:
+        _write_atomic(Path(path), self.text())
 
     def call(self, reader, to, data, name) -> str:
         """`eth_call` at the pinned `to` of the reader's chain. `name` labels the value in reports."""
@@ -584,7 +593,7 @@ class Snapshot:
     def _read_state(self, reader, kind, requests):
         block = self.chains[reader.name]["to"]
         keys = [(reader.name, block, kind, to.lower(), data.lower()) for to, data, _ in requests]
-        missing = {key: name for key, (_, _, name) in zip(keys, requests) if key not in self._read}
+        missing = {key: name for key, (_, _, name) in zip(keys, requests) if key not in self._state}
         if missing:
             try:
                 if kind == "call":
@@ -598,15 +607,14 @@ class Snapshot:
                     raise StateUnavailable(
                         f"{reader.name}: no state at block {block} and no saved value for {absent[0]}"
                     ) from None
-                results = [self._saved[key] for key in missing]
                 self.from_saved += missing.values()
-            else:
-                self.changed += [
-                    name for (key, name), result in zip(missing.items(), results)
-                    if self._saved.get(key, result) != result
-                ]
-            self._state.update(zip(missing, results))
-            self._read.update(missing)
+                results = [self._saved[key] for key in missing]
+            for (key, name), result in zip(missing.items(), results):
+                # A saved value stays: a run with a snapshot must reproduce the same data.
+                saved = self._saved.get(key, result)
+                if saved != result:
+                    self.differs.append(f"{name}: the node gives {result}, the snapshot has {saved}")
+                self._state[key] = saved
         return [self._state[key] for key in keys]
 
     @staticmethod

@@ -51,6 +51,7 @@ class Scan:
         self.reactive = next(name for name, chain in chains.items() if chain["role"] == "reactive")
         self.destinations = [name for name, chain in chains.items() if chain["role"] == "destination"]
         self.chains = [self.reactive] + self.destinations
+        self.destination_of = {chains[name]["chainId"]: name for name in self.destinations}  # by chain ID
         self._logs = {}
 
     def span(self, chain):
@@ -88,7 +89,7 @@ class Scan:
         return self._ledger_values(chain, "reserves", RESERVES, contracts)
 
     def timestamps(self, chain, blocks) -> dict:
-        return self.readers[chain].timestamps(sorted(set(blocks)))
+        return self.readers[chain].timestamps(blocks)
 
     def _ledger_values(self, chain, getter_name, getter, contracts) -> dict:
         ledger = self.ledger(chain)
@@ -225,7 +226,6 @@ def repeat_debtors(scan):
 def dropped_callbacks(scan):
     """A join of logs. It sends log queries and block-header reads only."""
     margin = scan.snapshot.params["latencyMarginSeconds"]
-    chain_of = {scan.config["chains"][chain]["chainId"]: chain for chain in scan.destinations}
     events = {chain: _events_by_contract(scan.ledger_events(chain)) for chain in scan.destinations}
     requests = scan.callback_requests()
 
@@ -234,7 +234,7 @@ def dropped_callbacks(scan):
     matched = []  # requests whose recipient has a ledger event on the destination chain
     for log in requests:
         chain_id = int(log["topics"][1], 16)
-        chain = chain_of.get(chain_id)
+        chain = scan.destination_of.get(chain_id)
         if chain is None:
             not_scanned[chain_id] += 1
             continue
@@ -287,7 +287,11 @@ def dropped_callbacks(scan):
             "Derived from debt intervals on the destination proxy and the proxy rule (InDebt). "
             "It is not a count of observed reverted transactions."
         ),
-        "limit": "An interval that opened before `from` and did not close in the range is not visible.",
+        "limit": (
+            "An interval that opened before `from` and did not close in the range is not visible. "
+            "An interval that is open at `to` of the destination chain counts as open for each later request "
+            "in the Lasna range; the heights of all chains are pinned at the same time."
+        ),
         "latencyMarginSeconds": margin,
         "requests": len(requests),
         "dropped": dropped,
@@ -416,9 +420,8 @@ def fastfill_reactive_reserves(scan):
 def guest_candidates(scan):
     params = scan.snapshot.params
     recipients = defaultdict(set)
-    chain_of = {scan.config["chains"][chain]["chainId"]: chain for chain in scan.destinations}
     for log in scan.callback_requests():
-        chain = chain_of.get(int(log["topics"][1], 16))
+        chain = scan.destination_of.get(int(log["topics"][1], 16))
         if chain:
             recipients[chain].add(address_of(log["topics"][3]))
     known = dict(recipients)

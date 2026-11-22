@@ -30,9 +30,12 @@ class MockChain:
         self.always_fail = False  # each request gives HTTP 503
         self.refuse_state = False  # eth_call and eth_getBalance give "missing trie node"
         self.earliest_block = 0  # headers below this block are not available
+        self.timestamp_of = None  # optional function of the block number, for a block time that changes
         self.max_range = None  # eth_getLogs over more blocks gives a range error that names this limit
 
     def timestamp(self, block) -> int:
+        if self.timestamp_of:
+            return self.timestamp_of(block)
         return self.genesis_time + block * self.block_time
 
     def block_at(self, timestamp) -> int:

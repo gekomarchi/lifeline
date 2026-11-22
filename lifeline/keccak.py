@@ -61,5 +61,4 @@ def keccak256(data: bytes) -> bytes:
             a[i % 5][i // 5] ^= int.from_bytes(block[8 * i:8 * i + 8], "little")
         _permute(a)
 
-    out = b"".join(a[i % 5][i // 5].to_bytes(8, "little") for i in range(4))
-    return out
+    return b"".join(a[i % 5][i // 5].to_bytes(8, "little") for i in range(4))

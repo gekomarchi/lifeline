@@ -12,16 +12,12 @@ from pathlib import Path
 from lifeline.config import load_config, open_readers
 from lifeline.queries import Scan, dropped_callbacks
 from lifeline.reader import Snapshot
+from lifeline.stats import main
 
-from .conftest import A1, A2, A3, A4, R1, R2, R3, R5, R6, SUBJECTS
+from .conftest import A1, A2, A3, A4, HEIGHTS, R1, R2, R3, R5, R6, SUBJECTS
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 FILES = ("data.json", "table.md", "heights.json")
-HEIGHTS = {
-    "lasna": {"chainId": 5318007, "from": 1000, "to": 21000},
-    "base-sepolia": {"chainId": 84532, "from": 1000, "to": 11000},
-    "unichain-sepolia": {"chainId": 1301, "from": 500, "to": 20500},
-}
 
 
 def block_numbers(logs) -> set:
@@ -182,7 +178,8 @@ def test_dropped_callback_join(network, capsys):
     matched = [requests[name] for name in ("inside", "before", "after", "margin", "open_to_to", "open_at_from",
                                            "other_chain")]
     assert header_reads(network.lasna) == block_numbers(matched)
-    assert block_numbers([requests["no_debt_event"], requests["not_configured"]]).isdisjoint(header_reads(network.lasna))
+    unmatched = block_numbers([requests["no_debt_event"], requests["not_configured"]])
+    assert unmatched.isdisjoint(header_reads(network.lasna))
     assert header_reads(network.base) == block_numbers(
         [network.r1_start, network.r1_end, network.r2_start, network.r3_end])
     assert header_reads(network.uni) == block_numbers([network.r5_start])
@@ -218,7 +215,7 @@ def test_same_heights_and_different_url_order_give_identical_data(network):
             text = (network.tmp_path / out / name).read_text()
             assert "127.0.0.1" not in text and "http" not in text
             assert time.strftime("%Y-%m-%d") not in text
-        assert (network.tmp_path / out / "table.md").read_bytes() == (network.tmp_path / "first" / "table.md").read_bytes()
+        assert (network.tmp_path / out / "table.md").read_bytes() == heights.with_name("table.md").read_bytes()
         assert (network.tmp_path / out / "heights.json").read_bytes() == heights.read_bytes()
 
 
@@ -257,18 +254,30 @@ def test_query_with_no_subject_is_not_configured(network, capsys):
     assert "| `fastfill_fill_times` | not configured:" in (network.tmp_path / "out" / "table.md").read_text()
 
 
-def test_state_that_changed_since_the_snapshot_is_reported(network, capsys):
+def test_state_that_differs_from_the_snapshot_is_reported_and_the_saved_value_is_used(network, capsys):
     assert network.run("first") == 0
+    first = (network.tmp_path / "first" / "data.json").read_bytes()
     capsys.readouterr()
     network.set_ledger("lasna", A2, debt=1)
     assert network.run("later", heights=network.tmp_path / "first" / "heights.json") == 0
-    assert f"changed (the node gives a value that differs from the snapshot): debt({A2}) on lasna" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert f"differs from snapshot (the saved value is used): debt({A2}) on lasna: the node gives" in out
+    assert (network.tmp_path / "later" / "data.json").read_bytes() == first
+    assert (network.tmp_path / "later" / "heights.json").read_bytes() == (
+        network.tmp_path / "first" / "heights.json").read_bytes()
+
+
+def test_output_that_cannot_be_written_leaves_no_file(network, capsys):
+    out = network.tmp_path / "out"
+    (out / "table.md.tmp").mkdir(parents=True)  # the table cannot be written
+    assert network.run("out") == 1
+    assert [path.name for path in out.iterdir()] == ["table.md.tmp"]
+    assert "cannot write the output files" in capsys.readouterr().err
 
 
 def test_wrong_chain_behind_a_url_is_refused(network, capsys):
     arguments = network.arguments("out")
     arguments[arguments.index(f"lasna={network.node.url('lasna')}")] = f"lasna={network.node.url('base-sepolia')}"
-    from lifeline.stats import main
     assert main(arguments) == 2
     assert "answers for chain 84532, expected 5318007" in capsys.readouterr().err
     assert not (network.tmp_path / "out").exists()
