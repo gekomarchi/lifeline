@@ -78,8 +78,6 @@ abstract contract LasnaForkHarness is Test {
         uint256[4] topics;
         bytes data;
         uint256 blockNumber;
-        uint256 txId;
-        uint256 logIndex;
     }
 
     /// @notice One subscription that was made on the fork. It is active for the logs between the
@@ -102,7 +100,6 @@ abstract contract LasnaForkHarness is Test {
         uint256 gasUsed; // the gas of the transaction, with the intrinsic gas
         uint256 blockNumber; // the block of the transaction
         uint256 firstLog; // the index in the log history of the first log of the transaction
-        uint256 logCount; // the number of logs of the transaction
     }
 
     ISystemContract internal system = ISystemContract(SYSTEM_ADDRESS);
@@ -112,10 +109,8 @@ abstract contract LasnaForkHarness is Test {
 
     ChainLog[] private _logs;
     uint256 private _nextLogToRelay;
-    uint256 private _txCount;
     Subscription[] private _subscriptions;
     TriggerResult[] private _triggers;
-    uint256 private _accountCount;
 
     // ------------------------------------------------------------------------------------------
     // Setup
@@ -139,7 +134,7 @@ abstract contract LasnaForkHarness is Test {
     /// @dev Returns an address that has no balance, no nonce, no code and no ledger entry on the fork.
     ///      Default test accounts can hold real testnet funds on a fork.
     function _freshAccount(string memory label) internal returns (address account) {
-        account = makeAddr(string.concat("lifeline.harness.", label, ".", vm.toString(_accountCount++)));
+        account = makeAddr(string.concat("lifeline.harness.", label));
         _assertFresh(account);
     }
 
@@ -164,9 +159,7 @@ abstract contract LasnaForkHarness is Test {
 
     /// @dev Moves `blocks` blocks forward. Logs that are not collected yet keep the old block.
     function _mine(uint256 blocks) internal {
-        _collect();
-        vm.roll(vm.getBlockNumber() + blocks);
-        vm.warp(vm.getBlockTimestamp() + blocks * BLOCK_TIME);
+        _skipTime(blocks * BLOCK_TIME);
     }
 
     /// @dev Moves `secs` seconds forward, with the matching number of blocks.
@@ -198,17 +191,9 @@ abstract contract LasnaForkHarness is Test {
         }
     }
 
-    /// @notice Sends a log record through the real `trigger`, from the injected address. The record can be
-    ///         forged: no subscription is needed. Logs of the transaction are relayed by the next `_relay`.
-    function _triggerForged(address reactive, IReactive.LogRecord memory record)
-        internal
-        returns (TriggerResult memory)
-    {
-        return _trigger(reactive, record);
-    }
-
     /// @dev The log record that the node builds from a log on Lasna. `opCode` is the topic count, as in
-    ///      the trigger transactions on the chain. The two hashes are synthetic.
+    ///      the trigger transactions on the chain. The two hashes and the log index are 0: Lifeline does not
+    ///      read them.
     function _logRecord(uint256 logIndex) internal view returns (IReactive.LogRecord memory record) {
         ChainLog storage log = _logs[logIndex];
         record = IReactive.LogRecord({
@@ -221,9 +206,9 @@ abstract contract LasnaForkHarness is Test {
             data: log.data,
             blockNumber: log.blockNumber,
             opCode: log.topicCount,
-            blockHash: uint256(keccak256(abi.encode("lifeline.harness.block", log.blockNumber))),
-            txHash: uint256(keccak256(abi.encode("lifeline.harness.tx", log.txId))),
-            logIndex: log.logIndex
+            blockHash: 0,
+            txHash: 0,
+            logIndex: 0
         });
     }
 
@@ -241,8 +226,10 @@ abstract contract LasnaForkHarness is Test {
         record.opCode = 2;
     }
 
+    /// @notice Sends a log record through the real `trigger`, from the injected address. The record can be
+    ///         forged: no subscription is needed. Logs of the transaction are relayed by the next `_relay`.
     function _trigger(address reactive, IReactive.LogRecord memory record)
-        private
+        internal
         returns (TriggerResult memory result)
     {
         _mine(1);
@@ -262,7 +249,6 @@ abstract contract LasnaForkHarness is Test {
         result.blockNumber = vm.getBlockNumber();
         result.firstLog = _logs.length;
         _collect();
-        result.logCount = _logs.length - result.firstLog;
         result.reactReverted =
             _countLogs(result.firstLog, SYSTEM_ADDRESS, ISystemContractNode.ReactiveContractReverted.selector) != 0;
         _triggers.push(result);
@@ -282,7 +268,6 @@ abstract contract LasnaForkHarness is Test {
         if (recorded.length == 0) return;
 
         uint256 blockNumber = vm.getBlockNumber();
-        uint256 txId = _txCount++;
         for (uint256 i = 0; i < recorded.length; ++i) {
             ChainLog storage log = _logs.push();
             log.emitter = recorded[i].emitter;
@@ -292,8 +277,6 @@ abstract contract LasnaForkHarness is Test {
             }
             log.data = recorded[i].data;
             log.blockNumber = blockNumber;
-            log.txId = txId;
-            log.logIndex = i;
             _updateSubscriptions(_logs.length - 1);
         }
     }
@@ -377,25 +360,6 @@ abstract contract LasnaForkHarness is Test {
         }
     }
 
-    /// @notice True if the contract has an active subscription with these six fields.
-    function _isSubscribed(address subscriber, uint256 chainId, address emitter, uint256[4] memory topics)
-        internal
-        returns (bool)
-    {
-        _collect();
-        Subscription memory wanted;
-        wanted.subscriber = subscriber;
-        wanted.chainId = chainId;
-        wanted.emitter = emitter;
-        wanted.topics = topics;
-        for (uint256 i = 0; i < _subscriptions.length; ++i) {
-            if (_subscriptions[i].toLog == type(uint256).max && _sameSubscription(_subscriptions[i], wanted)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     // ------------------------------------------------------------------------------------------
     // Log history
     // ------------------------------------------------------------------------------------------
@@ -404,10 +368,6 @@ abstract contract LasnaForkHarness is Test {
     function _logMark() internal returns (uint256) {
         _collect();
         return _logs.length;
-    }
-
-    function _logAt(uint256 index) internal view returns (ChainLog memory) {
-        return _logs[index];
     }
 
     /// @notice The number of logs of one emitter and one `topic0`, from a mark to the end of the history.
@@ -439,6 +399,12 @@ abstract contract LasnaForkHarness is Test {
         return _logs[_findLogIndex(from, emitter, topic0, n)];
     }
 
+    /// @notice The one log of one emitter and one `topic0` after a mark. Fails if there is none or more than one.
+    function _onlyLog(uint256 from, address emitter, bytes32 topic0) internal returns (ChainLog memory) {
+        assertEq(_countLogs(from, emitter, topic0), 1, "LasnaForkHarness: not exactly one log");
+        return _findLog(from, emitter, topic0, 0);
+    }
+
     /// @notice The number of logs of one emitter from a mark to the end of the history.
     function _countLogsOf(uint256 from, address emitter) internal returns (uint256 count) {
         _collect();
@@ -451,14 +417,6 @@ abstract contract LasnaForkHarness is Test {
     // Trigger history
     // ------------------------------------------------------------------------------------------
 
-    function _triggerCount() internal view returns (uint256) {
-        return _triggers.length;
-    }
-
-    function _triggerAt(uint256 index) internal view returns (TriggerResult memory) {
-        return _triggers[index];
-    }
-
     /// @notice The newest trigger of a contract. Fails if there is none.
     function _lastTrigger(address reactive) internal returns (TriggerResult memory result) {
         for (uint256 i = _triggers.length; i != 0; --i) {
@@ -466,12 +424,5 @@ abstract contract LasnaForkHarness is Test {
         }
         fail("LasnaForkHarness: the contract was not triggered");
         return result;
-    }
-
-    /// @notice The number of triggers of a contract from a trigger mark (`_triggerCount()`).
-    function _triggersOf(uint256 from, address reactive) internal view returns (uint256 count) {
-        for (uint256 i = from; i < _triggers.length; ++i) {
-            if (_triggers[i].reactive == reactive) ++count;
-        }
     }
 }

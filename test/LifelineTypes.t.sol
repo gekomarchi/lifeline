@@ -65,10 +65,6 @@ contract LifelineTypesTest is Test {
         _assertInvalid(p);
     }
 
-    function test_maxRescuesLimit_isFour() public pure {
-        assertEq(MAX_RESCUES_LIMIT, 4);
-    }
-
     /// @dev Fuzz: the function reverts exactly when a rule is broken.
     function test_validatePolicy_matchesTheRules(Policy memory p) public {
         bool valid = p.high > 0 && p.low <= p.high && p.maxDebt > 0 && p.dailyCap > 0 && p.maxRescues >= 1

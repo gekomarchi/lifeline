@@ -12,11 +12,6 @@ uint256 constant REACTIVE_IGNORE = 0xa65f96fc951c35ead38878e0f0b7a3c744a6f5ccc14
 ///         `src/interfaces/ISystemContract.sol`). Events are copied from `system-smart-contracts`
 ///         at `72710d2` (`src/omni/SystemContract.sol`).
 interface ISystemContract is IProxyLedger {
-    /// @notice List of supported callback configuration versions.
-    enum CallbackVersion {
-        V_1_0
-    }
-
     /// @notice Callback configuration struct for legacy-style callbacks.
     // forge-lint: disable-next-line(pascal-case-struct)
     struct CallbackConfiguration_V_1_0 {
@@ -46,15 +41,6 @@ interface ISystemContract is IProxyLedger {
         uint256 topic1,
         uint256 topic2,
         uint256 topic3
-    );
-
-    /// @notice Indicates a pending callback request received from a reactive contract.
-    event CallbackRequest(
-        uint256 indexed chainId_,
-        address indexed sender_,
-        address indexed recipient_,
-        CallbackVersion version_,
-        bytes configuration_
     );
 
     /// @notice Subscribes the calling contract to receive events matching the criteria specified.

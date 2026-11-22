@@ -358,7 +358,7 @@ contract LifelineHub {
         }
         keys.pop();
 
-        _dropTuple(key, tuple);
+        _dropTuple(key);
     }
 
     /// @dev Unsubscribes each tuple of one kind.
@@ -367,21 +367,15 @@ contract LifelineHub {
         for (uint256 i = keys.length; i != 0; --i) {
             bytes32 key = keys[i - 1];
             keys.pop();
-            _dropTuple(key, _tuples[key]);
+            _dropTuple(key);
         }
     }
 
     /// @dev Deletes the stored tuple and calls `unsubscribe` with the six stored fields.
-    function _dropTuple(bytes32 key, Tuple storage tuple) internal {
-        uint256 chainId = tuple.chainId;
-        address emitter = tuple.emitter;
-        uint256 topic0 = tuple.topic0;
-        uint256 topic1 = tuple.topic1;
-        uint256 topic2 = tuple.topic2;
-        uint256 topic3 = tuple.topic3;
+    function _dropTuple(bytes32 key) internal {
+        Tuple memory tuple = _tuples[key];
         delete _tuples[key];
-
-        SYSTEM.unsubscribe(chainId, emitter, topic0, topic1, topic2, topic3);
+        SYSTEM.unsubscribe(tuple.chainId, tuple.emitter, tuple.topic0, tuple.topic1, tuple.topic2, tuple.topic3);
     }
 
     /// @dev A cron log is a log that matches the chain, the emitter and `topic0` of a registered cron tuple.
@@ -422,10 +416,9 @@ contract LifelineHub {
         uint256 chainId = log.chainId;
         address emitter = log.contractAddress;
         bool isDebtLog = log.topic0 == BLACKLIST_TOPIC0;
-        bool isLasna = chainId == block.chainid;
         SkipReason reason;
 
-        if (isLasna) {
+        if (chainId == block.chainid) {
             if (emitter == address(SYSTEM) && isDebtLog) {
                 if (log.opCode == DEBT_LOG_TOPIC_COUNT) {
                     _onLasnaTargetDebt(log);
@@ -561,17 +554,11 @@ contract LifelineHub {
 
     /// @dev Reads the debt and the reserves of a contract at the system contract. It never reverts.
     function _readLedger(address target) internal view returns (bool ok, uint256 debt, uint256 reserves) {
-        try SYSTEM.debt(target) returns (uint256 value) {
-            debt = value;
-        } catch {
-            return (false, 0, 0);
-        }
-        try SYSTEM.reserves(target) returns (uint256 value) {
-            reserves = value;
-        } catch {
-            return (false, 0, 0);
-        }
-        ok = true;
+        try SYSTEM.debt(target) returns (uint256 debt_) {
+            try SYSTEM.reserves(target) returns (uint256 reserves_) {
+                return (true, debt_, reserves_);
+            } catch { }
+        } catch { }
     }
 
     /// @dev Pays `debt + refill` to a Lasna target if the whole amount is inside the remaining `dailyCap` of

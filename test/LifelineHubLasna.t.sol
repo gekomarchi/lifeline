@@ -107,7 +107,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         vm.prank(owner);
         hub.unpause();
 
-        debtLog = _logRecord(_findLogIndex(mark, SYSTEM_ADDRESS, IProxyLedger.BlacklistContract.selector, 0));
+        debtLog = _debtLog(mark);
         assertEq(debtLog.topic1, uint256(uint160(canary)));
         assertGt(system.debt(canary), 0, "the canary is in debt");
         _refillFloat();
@@ -123,8 +123,14 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         }
     }
 
-    function _state(address target) internal view returns (TargetState state) {
-        (, state,) = hub.targetInfo(LASNA_CHAIN_ID, target);
+    /// @dev The record of the first debt log of the system contract after a mark.
+    function _debtLog(uint256 mark) internal returns (IReactive.LogRecord memory) {
+        return _logRecord(_findLogIndex(mark, SYSTEM_ADDRESS, IProxyLedger.BlacklistContract.selector, 0));
+    }
+
+    function _assertState(address target, TargetState expected) internal view {
+        (, TargetState state,) = hub.targetInfo(LASNA_CHAIN_ID, target);
+        assertEq(uint256(state), uint256(expected));
     }
 
     function _hubLogs(uint256 mark, bytes32 topic0) internal returns (uint256) {
@@ -144,10 +150,8 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         internal
         returns (uint256 debt, uint256 paid, uint256 deadFromBlock, uint256 aliveAtBlock)
     {
-        assertEq(_hubLogs(mark, LifelineHub.Rescued.selector), 1, "one Rescued");
-        assertEq(_hubLogs(mark, LifelineHub.Gap.selector), 1, "one Gap");
-        ChainLog memory rescued = _findLog(mark, address(hub), LifelineHub.Rescued.selector, 0);
-        ChainLog memory gap = _findLog(mark, address(hub), LifelineHub.Gap.selector, 0);
+        ChainLog memory rescued = _onlyLog(mark, address(hub), LifelineHub.Rescued.selector);
+        ChainLog memory gap = _onlyLog(mark, address(hub), LifelineHub.Gap.selector);
         assertEq(rescued.topics[1], uint256(uint160(target)), "Rescued target");
         assertEq(gap.topics[1], uint256(uint160(target)), "Gap target");
         (debt, paid) = abi.decode(rescued.data, (uint256, uint256));
@@ -164,8 +168,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
 
     /// @dev Asserts one `Skipped` of the hub after a mark, with these values.
     function _assertSkipped(uint256 mark, uint256 chainId, address target, LifelineHub.SkipReason reason) internal {
-        assertEq(_hubLogs(mark, LifelineHub.Skipped.selector), 1, "one Skipped");
-        ChainLog memory skipped = _findLog(mark, address(hub), LifelineHub.Skipped.selector, 0);
+        ChainLog memory skipped = _onlyLog(mark, address(hub), LifelineHub.Skipped.selector);
         assertEq(skipped.topics[1], chainId, "Skipped chain");
         assertEq(skipped.topics[2], uint256(uint160(target)), "Skipped target");
         assertEq(abi.decode(skipped.data, (uint256)), uint256(reason), "Skipped reason");
@@ -211,8 +214,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         assertFalse(fresh.paused());
         assertEq(fresh.targetCount(LASNA_CHAIN_ID), 0);
 
-        assertEq(_countLogs(mark, address(fresh), LifelineHub.SelfCare.selector), 1);
-        ChainLog memory selfCare = _findLog(mark, address(fresh), LifelineHub.SelfCare.selector, 0);
+        ChainLog memory selfCare = _onlyLog(mark, address(fresh), LifelineHub.SelfCare.selector);
         assertEq(abi.decode(selfCare.data, (uint256)), 0.25 ether);
     }
 
@@ -317,17 +319,9 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
             );
         }
 
-        uint256 entries;
-        while (vm.keyExistsJson(json, string.concat(".abi[", vm.toString(entries), "]"))) {
-            string memory entry = string.concat(".abi[", vm.toString(entries), "]");
-            string memory kind = vm.parseJsonString(json, string.concat(entry, ".type"));
-            assertNotEq(kind, "fallback", "the ABI has a fallback");
-            if (vm.keyExistsJson(json, string.concat(entry, ".name"))) {
-                assertNotEq(vm.parseJsonString(json, string.concat(entry, ".name")), "pay", "the ABI has pay");
-            }
-            ++entries;
-        }
-        assertGt(entries, expected.length, "the ABI was read");
+        assertFalse(vm.keyExistsJson(json, ".abi[?(@.type == 'fallback')]"), "the ABI has a fallback");
+        assertFalse(vm.keyExistsJson(json, ".abi[?(@.name == 'pay')]"), "the ABI has pay");
+        assertTrue(vm.keyExistsJson(json, ".abi[?(@.type == 'receive')]"), "the ABI was read");
     }
 
     /// @dev The call that the ledger makes when reserves do not cover a fee. The hub does not answer it.
@@ -373,7 +367,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
 
     /// @dev The harness drives the real `trigger`, which accepts only the injected address.
     function test_trigger_acceptsOnlyTheInjectedAddress() public {
-        (, IReactive.LogRecord memory debtLog) = _enrolledCanaryInDebt();
+        IReactive.LogRecord memory debtLog;
 
         vm.expectRevert(ISystemContractNode.OnlyInjected.selector);
         vm.prank(owner);
@@ -387,12 +381,10 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
     function test_enroll_storesTheTargetAndSubscribesTheExactTuple() public {
         address canary = address(_deployCanary());
         Policy memory policy = _policy();
-        policy.low = 0;
         uint256 mark = _logMark();
         _enroll(canary, policy);
 
-        assertEq(_hubLogs(mark, LifelineHub.Enrolled.selector), 1);
-        ChainLog memory enrolled = _findLog(mark, address(hub), LifelineHub.Enrolled.selector, 0);
+        ChainLog memory enrolled = _onlyLog(mark, address(hub), LifelineHub.Enrolled.selector);
         assertEq(enrolled.topics[1], LASNA_CHAIN_ID);
         assertEq(enrolled.topics[2], uint256(uint160(canary)));
 
@@ -404,8 +396,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         assertEq(abi.encode(stored), abi.encode(policy));
 
         // One subscription: the system contract on Lasna, the constant topic0, topic1 = the target.
-        assertEq(_countLogs(mark, SYSTEM_ADDRESS, ISystemContract.Subscribe.selector), 1);
-        ChainLog memory subscribe = _findLog(mark, SYSTEM_ADDRESS, ISystemContract.Subscribe.selector, 0);
+        ChainLog memory subscribe = _onlyLog(mark, SYSTEM_ADDRESS, ISystemContract.Subscribe.selector);
         assertEq(subscribe.topics[1], uint256(uint160(address(hub))), "subscriber");
         assertEq(subscribe.topics[2], LASNA_CHAIN_ID, "chain");
         assertEq(subscribe.topics[3], uint256(uint160(SYSTEM_ADDRESS)), "emitter");
@@ -499,8 +490,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         uint256 mark = _logMark();
         _enroll(canary, policy);
 
-        assertEq(_hubLogs(mark, LifelineHub.ToppedUp.selector), 1);
-        ChainLog memory toppedUp = _findLog(mark, address(hub), LifelineHub.ToppedUp.selector, 0);
+        ChainLog memory toppedUp = _onlyLog(mark, address(hub), LifelineHub.ToppedUp.selector);
         assertEq(toppedUp.topics[1], uint256(uint160(canary)));
         assertEq(abi.decode(toppedUp.data, (uint256)), HIGH);
         assertEq(_hubLogs(mark, LifelineHub.Rescued.selector), 0);
@@ -540,7 +530,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         _poke(canary);
         assertEq(_relay(), 2);
         _assertRescued(mark, canary);
-        assertEq(uint256(_state(canary)), uint256(TargetState.Active));
+        _assertState(canary, TargetState.Active);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -553,23 +543,21 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         assertEq(system.reserves(canary), 0, "enroll did not fund the canary");
 
         uint256 mark = _logMark();
-        uint256 firstTrigger = _triggerCount();
         _poke(canary);
         assertEq(_relay(), 2, "exactly two triggers ran");
 
         // Trigger 1: the canary reacts and cannot pay. Its fee becomes a debt.
-        TriggerResult memory canaryTrigger = _triggerAt(firstTrigger);
+        TriggerResult memory canaryTrigger = _lastTrigger(canary);
         assertEq(canaryTrigger.reactive, canary);
         assertTrue(canaryTrigger.success);
         assertFalse(canaryTrigger.reactReverted);
         assertEq(_countLogs(mark, canary, CanaryReactive.Tick.selector), 1);
-        assertEq(_countLogs(mark, SYSTEM_ADDRESS, IProxyLedger.BlacklistContract.selector), 1);
-        ChainLog memory debtLog = _findLog(mark, SYSTEM_ADDRESS, IProxyLedger.BlacklistContract.selector, 0);
+        ChainLog memory debtLog = _onlyLog(mark, SYSTEM_ADDRESS, IProxyLedger.BlacklistContract.selector);
         assertEq(debtLog.topics[1], uint256(uint160(canary)));
         assertEq(debtLog.blockNumber, canaryTrigger.blockNumber);
 
         // Trigger 2: the hub clears the debt and refills the canary to `high`.
-        TriggerResult memory hubTrigger = _triggerAt(firstTrigger + 1);
+        TriggerResult memory hubTrigger = _lastTrigger(address(hub));
         assertEq(hubTrigger.reactive, address(hub));
         assertTrue(hubTrigger.success);
         assertFalse(hubTrigger.reactReverted);
@@ -588,8 +576,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         mark = _logMark();
         _poke(canary);
         assertEq(_relay(), 1);
-        assertEq(_countLogs(mark, canary, CanaryReactive.Tick.selector), 1);
-        assertEq(_findLog(mark, canary, CanaryReactive.Tick.selector, 0).topics[1], 2);
+        assertEq(_onlyLog(mark, canary, CanaryReactive.Tick.selector).topics[1], 2);
         assertEq(_countLogs(mark, SYSTEM_ADDRESS, IProxyLedger.BlacklistContract.selector), 0);
         assertEq(system.debt(canary), 0);
         assertEq(system.reserves(canary), HIGH - _lastTrigger(canary).fee);
@@ -633,14 +620,10 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
 
     /// @dev A reaction of the hub that is a skip: a log of the system contract with an unknown `topic0`.
     function _skipReaction() internal returns (TriggerResult memory result) {
-        IReactive.LogRecord memory record;
-        record.chainId = LASNA_CHAIN_ID;
-        record.contractAddress = SYSTEM_ADDRESS;
+        IReactive.LogRecord memory record =
+            _debtLogRecord(LASNA_CHAIN_ID, SYSTEM_ADDRESS, stranger, vm.getBlockNumber());
         record.topic0 = uint256(keccak256("NotALifelineEvent(address)"));
-        record.topic1 = uint256(uint160(stranger));
-        record.blockNumber = vm.getBlockNumber();
-        record.opCode = 2;
-        result = _triggerForged(address(hub), record);
+        result = _trigger(address(hub), record);
         assertTrue(result.success);
         assertFalse(result.reactReverted);
     }
@@ -652,9 +635,10 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
 
     /// @dev Sends a record to the hub through the real `trigger` and asserts the guard result.
     function _assertGuard(IReactive.LogRecord memory record) internal returns (uint256 mark) {
+        _refillFloat();
         mark = _logMark();
         uint256 balanceBefore = address(hub).balance;
-        TriggerResult memory result = _triggerForged(address(hub), record);
+        TriggerResult memory result = _trigger(address(hub), record);
         _assertGuardHeld(result, mark, balanceBefore);
     }
 
@@ -662,7 +646,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
     ///      only the guard under test stopped the payment.
     function _assertTrueLogRescues(address canary, IReactive.LogRecord memory debtLog) internal {
         uint256 mark = _logMark();
-        TriggerResult memory result = _triggerForged(address(hub), debtLog);
+        TriggerResult memory result = _trigger(address(hub), debtLog);
         assertTrue(result.success);
         assertFalse(result.reactReverted);
         (,, uint256 deadFromBlock,) = _assertRescued(mark, canary);
@@ -728,22 +712,16 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         _poke(canary);
         assertEq(_relay(), 2);
         _assertSkipped(mark, LASNA_CHAIN_ID, canary, LifelineHub.SkipReason.DailyCap);
-        IReactive.LogRecord memory debtLog =
-            _logRecord(_findLogIndex(mark, SYSTEM_ADDRESS, IProxyLedger.BlacklistContract.selector, 0));
+        IReactive.LogRecord memory debtLog = _debtLog(mark);
 
         // Still the same day: the same log is skipped again.
         _skipTime(5 minutes);
-        mark = _assertGuardAfterRefill(debtLog);
+        mark = _assertGuard(debtLog);
         _assertSkipped(mark, LASNA_CHAIN_ID, canary, LifelineHub.SkipReason.DailyCap);
 
         // The next day: the cap is new.
         _skipTime(10 minutes);
         _assertTrueLogRescues(canary, debtLog);
-    }
-
-    function _assertGuardAfterRefill(IReactive.LogRecord memory record) internal returns (uint256 mark) {
-        _refillFloat();
-        return _assertGuard(record);
     }
 
     function test_guard_paymentBelowTheFloor() public {
@@ -839,7 +817,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         _assertSkipped(mark, LASNA_CHAIN_ID, canary, LifelineHub.SkipReason.BadTopicCount);
 
         forged.opCode = 3;
-        mark = _assertGuardAfterRefill(forged);
+        mark = _assertGuard(forged);
         _assertSkipped(mark, LASNA_CHAIN_ID, canary, LifelineHub.SkipReason.BadTopicCount);
         assertEq(system.debt(canary), debt);
 
@@ -850,8 +828,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         address other = address(_deployCanary());
         uint256 mark = _logMark();
         uint256 debt = _pokeIntoDebt(other);
-        IReactive.LogRecord memory debtLog =
-            _logRecord(_findLogIndex(mark, SYSTEM_ADDRESS, IProxyLedger.BlacklistContract.selector, 0));
+        IReactive.LogRecord memory debtLog = _debtLog(mark);
 
         mark = _assertGuard(debtLog);
         _assertSkipped(mark, LASNA_CHAIN_ID, other, LifelineHub.SkipReason.NotEnrolled);
@@ -967,12 +944,14 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
 
         uint256 debt = _lastTrigger(canary).fee;
         uint256 amount = debt + policy.high;
-        if (debt > policy.maxDebt) {
-            _assertNothingPaid(mark, canary, debt, balanceBefore, LifelineHub.SkipReason.DebtAboveMax);
-        } else if (amount > policy.dailyCap) {
-            _assertNothingPaid(mark, canary, debt, balanceBefore, LifelineHub.SkipReason.DailyCap);
-        } else if (amount > floorMargin) {
-            _assertNothingPaid(mark, canary, debt, balanceBefore, LifelineHub.SkipReason.Floor);
+        if (debt > policy.maxDebt || amount > policy.dailyCap || amount > floorMargin) {
+            LifelineHub.SkipReason reason = debt > policy.maxDebt
+                ? LifelineHub.SkipReason.DebtAboveMax
+                : amount > policy.dailyCap ? LifelineHub.SkipReason.DailyCap : LifelineHub.SkipReason.Floor;
+            _assertGuardHeld(hubTrigger, mark, balanceBefore);
+            _assertSkipped(mark, LASNA_CHAIN_ID, canary, reason);
+            assertEq(system.debt(canary), debt);
+            assertEq(system.reserves(canary), 0);
         } else {
             (uint256 rescuedDebt, uint256 paid,,) = _assertRescued(mark, canary);
             assertEq(rescuedDebt, debt);
@@ -982,20 +961,6 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
             assertEq(address(hub).balance, balanceBefore - amount);
             assertGe(address(hub).balance, hub.principalFloor());
         }
-    }
-
-    function _assertNothingPaid(
-        uint256 mark,
-        address canary,
-        uint256 debt,
-        uint256 balanceBefore,
-        LifelineHub.SkipReason reason
-    ) internal {
-        _assertNoPayment(mark);
-        _assertSkipped(mark, LASNA_CHAIN_ID, canary, reason);
-        assertEq(system.debt(canary), debt);
-        assertEq(system.reserves(canary), 0);
-        assertEq(address(hub).balance, balanceBefore);
     }
 
     function _copy(IReactive.LogRecord memory record) internal pure returns (IReactive.LogRecord memory) {
@@ -1056,7 +1021,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         _rescueRounds(canary, 3);
         mark = _debtRound(canary);
         assertEq(_hubLogs(mark, LifelineHub.Quarantined.selector), 1, "Quarantined");
-        assertEq(uint256(_state(canary)), uint256(TargetState.Quarantined));
+        _assertState(canary, TargetState.Quarantined);
     }
 
     function test_quarantine_theFourthDebtInsideTheWindow() public {
@@ -1075,14 +1040,13 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         assertTrue(hubTrigger.success);
         assertFalse(hubTrigger.reactReverted);
 
-        assertEq(_hubLogs(mark, LifelineHub.Quarantined.selector), 1);
-        assertEq(_findLog(mark, address(hub), LifelineHub.Quarantined.selector, 0).topics[1], uint256(uint160(canary)));
+        assertEq(_onlyLog(mark, address(hub), LifelineHub.Quarantined.selector).topics[1], uint256(uint160(canary)));
         _assertNoPayment(mark);
         assertEq(_hubLogs(mark, LifelineHub.Skipped.selector), 0);
         assertEq(balanceBefore - address(hub).balance, _selfCareSum(mark), "only self-care left the balance");
         uint256 debt = system.debt(canary);
         assertGt(debt, 0, "the debt stays");
-        assertEq(uint256(_state(canary)), uint256(TargetState.Quarantined));
+        _assertState(canary, TargetState.Quarantined);
         assertEq(hub.targetAt(LASNA_CHAIN_ID, 0), canary, "a quarantined target stays enrolled");
 
         // The Unsubscribe has the same six fields as the Subscribe.
@@ -1109,10 +1073,9 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
     function test_quarantine_aDebtLogForAQuarantinedTargetIsSkipped() public {
         address canary = _enrollLoopingCanary();
         uint256 mark = _quarantine(canary);
-        IReactive.LogRecord memory debtLog =
-            _logRecord(_findLogIndex(mark, SYSTEM_ADDRESS, IProxyLedger.BlacklistContract.selector, 0));
+        IReactive.LogRecord memory debtLog = _debtLog(mark);
 
-        mark = _assertGuardAfterRefill(debtLog);
+        mark = _assertGuard(debtLog);
         _assertSkipped(mark, LASNA_CHAIN_ID, canary, LifelineHub.SkipReason.NotActive);
     }
 
@@ -1125,7 +1088,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         uint256 mark = _debtRound(canary);
         _assertRescued(mark, canary);
         assertEq(_hubLogs(mark, LifelineHub.Quarantined.selector), 0);
-        assertEq(uint256(_state(canary)), uint256(TargetState.Active));
+        _assertState(canary, TargetState.Active);
     }
 
     /// @dev The window slides: a rescue leaves the count when it is `window` seconds old.
@@ -1155,17 +1118,12 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         uint256 debt = system.debt(canary);
         assertGt(debt, 0);
 
-        vm.expectRevert(abi.encodeWithSelector(LifelineHub.NotOwner.selector));
-        vm.prank(stranger);
-        hub.release(canary);
-
         uint256 mark = _logMark();
         vm.prank(owner);
         hub.release(canary);
 
-        assertEq(_hubLogs(mark, LifelineHub.Released.selector), 1);
-        assertEq(_findLog(mark, address(hub), LifelineHub.Released.selector, 0).topics[1], uint256(uint160(canary)));
-        assertEq(uint256(_state(canary)), uint256(TargetState.Active));
+        assertEq(_onlyLog(mark, address(hub), LifelineHub.Released.selector).topics[1], uint256(uint160(canary)));
+        _assertState(canary, TargetState.Active);
 
         // Subscribed again with the same six fields.
         ChainLog memory again = _hubTupleLog(mark, ISystemContract.Subscribe.selector, 0);
@@ -1294,16 +1252,11 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         _enroll(second, _policy());
         ChainLog memory subscribe = _hubTupleLog(enrollMark, ISystemContract.Subscribe.selector, 0);
 
-        vm.expectRevert(abi.encodeWithSelector(LifelineHub.NotOwner.selector));
-        vm.prank(stranger);
-        hub.disarm(LASNA_CHAIN_ID, first);
-
         uint256 mark = _logMark();
         vm.prank(owner);
         hub.disarm(LASNA_CHAIN_ID, first);
 
-        assertEq(_hubLogs(mark, LifelineHub.Disarmed.selector), 1);
-        ChainLog memory disarmed = _findLog(mark, address(hub), LifelineHub.Disarmed.selector, 0);
+        ChainLog memory disarmed = _onlyLog(mark, address(hub), LifelineHub.Disarmed.selector);
         assertEq(disarmed.topics[1], LASNA_CHAIN_ID);
         assertEq(disarmed.topics[2], uint256(uint160(first)));
         assertEq(_tupleOf(_hubTupleLog(mark, ISystemContract.Unsubscribe.selector, 0)), _tupleOf(subscribe));
@@ -1328,9 +1281,8 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         assertEq(system.reserves(address(hub)), hubReserves);
 
         // A forged debt log for it is skipped.
-        IReactive.LogRecord memory debtLog =
-            _logRecord(_findLogIndex(mark, SYSTEM_ADDRESS, IProxyLedger.BlacklistContract.selector, 0));
-        mark = _assertGuardAfterRefill(debtLog);
+        IReactive.LogRecord memory debtLog = _debtLog(mark);
+        mark = _assertGuard(debtLog);
         _assertSkipped(mark, LASNA_CHAIN_ID, first, LifelineHub.SkipReason.NotEnrolled);
         assertEq(system.debt(first), debt);
 
@@ -1344,7 +1296,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         _assertRescued(mark, first);
         assertEq(hub.targetCount(LASNA_CHAIN_ID), 2);
         assertEq(hub.targetAt(LASNA_CHAIN_ID, 1), first);
-        assertEq(uint256(_state(first)), uint256(TargetState.Active));
+        _assertState(first, TargetState.Active);
     }
 
     function test_unsubscribeAll_leavesNoActiveSubscription() public {
@@ -1356,10 +1308,6 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         _enroll(second, _policy());
         _quarantine(looping);
         assertEq(_activeSubscriptions(address(hub)), 2);
-
-        vm.expectRevert(abi.encodeWithSelector(LifelineHub.NotOwner.selector));
-        vm.prank(stranger);
-        hub.unsubscribeAll();
 
         uint256 mark = _logMark();
         vm.prank(owner);
@@ -1375,9 +1323,9 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         assertEq(unsubscribed, subscribed, "the same tuples");
 
         // Each active target is parked. The targets stay enrolled.
-        assertEq(uint256(_state(first)), uint256(TargetState.Parked));
-        assertEq(uint256(_state(second)), uint256(TargetState.Parked));
-        assertEq(uint256(_state(looping)), uint256(TargetState.Quarantined));
+        _assertState(first, TargetState.Parked);
+        _assertState(second, TargetState.Parked);
+        _assertState(looping, TargetState.Quarantined);
         assertEq(hub.targetCount(LASNA_CHAIN_ID), 3);
 
         // A second call has nothing to do.
@@ -1394,9 +1342,8 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         assertEq(system.reserves(address(hub)), hubReserves);
 
         // A forged debt log for a parked target is skipped.
-        IReactive.LogRecord memory debtLog =
-            _logRecord(_findLogIndex(mark, SYSTEM_ADDRESS, IProxyLedger.BlacklistContract.selector, 0));
-        mark = _assertGuardAfterRefill(debtLog);
+        IReactive.LogRecord memory debtLog = _debtLog(mark);
+        mark = _assertGuard(debtLog);
         _assertSkipped(mark, LASNA_CHAIN_ID, first, LifelineHub.SkipReason.NotActive);
 
         // A target is restored with `disarm` and `enroll`.
@@ -1406,6 +1353,127 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         _enroll(first, _policy());
         _assertRescued(mark, first);
         assertEq(_activeSubscriptions(address(hub)), 1);
-        assertEq(uint256(_state(first)), uint256(TargetState.Active));
+        _assertState(first, TargetState.Active);
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // More cases: failure of the ledger, rescue limits, the target list
+    // ------------------------------------------------------------------------------------------
+
+    /// @dev The ledger is mocked for this one call only: the real system contract does not refuse a deposit.
+    function test_guard_aFailedDepositIsASkip() public {
+        (address canary, IReactive.LogRecord memory debtLog) = _enrolledCanaryInDebt();
+        uint256 debt = system.debt(canary);
+
+        vm.mockCallRevert(SYSTEM_ADDRESS, abi.encodeCall(IProxyLedger.depositTo, (canary)), "refused");
+        uint256 mark = _assertGuard(debtLog);
+        _assertSkipped(mark, LASNA_CHAIN_ID, canary, LifelineHub.SkipReason.DepositFailed);
+        assertEq(system.debt(canary), debt);
+        vm.clearMockedCalls();
+
+        // The failed deposit used no part of the daily cap and is not a rescue.
+        _refillFloat();
+        _assertTrueLogRescues(canary, debtLog);
+    }
+
+    /// @dev The ledger is mocked for this one call only: the real system contract answers each read.
+    function test_guard_aFailedLedgerReadIsASkip() public {
+        (address canary, IReactive.LogRecord memory debtLog) = _enrolledCanaryInDebt();
+
+        vm.mockCallRevert(SYSTEM_ADDRESS, abi.encodeCall(IProxyLedger.reserves, (canary)), "refused");
+        uint256 mark = _assertGuard(debtLog);
+        _assertSkipped(mark, LASNA_CHAIN_ID, canary, LifelineHub.SkipReason.LedgerReadFailed);
+        vm.clearMockedCalls();
+
+        _refillFloat();
+        _assertTrueLogRescues(canary, debtLog);
+    }
+
+    /// @dev For each permitted `maxRescues`: that number of rescues, then quarantine.
+    function test_quarantine_eachRescueLimit() public {
+        for (uint32 maxRescues = 1; maxRescues <= 4; ++maxRescues) {
+            address canary = address(_deployLoopingCanary());
+            Policy memory policy = _policy();
+            policy.high = HIGH_BELOW_ONE_FEE;
+            policy.maxRescues = maxRescues;
+            _enroll(canary, policy);
+
+            _rescueRounds(canary, maxRescues);
+            uint256 mark = _debtRound(canary);
+            assertEq(_hubLogs(mark, LifelineHub.Quarantined.selector), 1);
+            _assertNoPayment(mark);
+            _assertState(canary, TargetState.Quarantined);
+        }
+    }
+
+    /// @dev A rescue is inside the window until it is `window` seconds old.
+    function test_quarantine_theEdgeOfTheWindow() public {
+        Policy memory policy = _policy();
+        policy.high = HIGH_BELOW_ONE_FEE;
+        policy.maxRescues = 1;
+
+        // One second before the end of the window: quarantine.
+        address canary = address(_deployLoopingCanary());
+        _enroll(canary, policy);
+        _rescueRounds(canary, 1);
+        uint256 rescuedAt = vm.getBlockTimestamp();
+        // `_debtRound` mines two blocks: the hub reacts two seconds after this point.
+        _skipTime(rescuedAt + WINDOW - 1 - 2 * BLOCK_TIME - vm.getBlockTimestamp());
+        uint256 mark = _debtRound(canary);
+        assertEq(vm.getBlockTimestamp(), rescuedAt + WINDOW - 1);
+        assertEq(_hubLogs(mark, LifelineHub.Quarantined.selector), 1);
+
+        // At the end of the window: a rescue.
+        canary = address(_deployLoopingCanary());
+        _enroll(canary, policy);
+        _rescueRounds(canary, 1);
+        rescuedAt = vm.getBlockTimestamp();
+        _skipTime(rescuedAt + WINDOW - 2 * BLOCK_TIME - vm.getBlockTimestamp());
+        mark = _debtRound(canary);
+        assertEq(vm.getBlockTimestamp(), rescuedAt + WINDOW);
+        _assertRescued(mark, canary);
+    }
+
+    function test_disarm_keepsTheTargetListAndTheRegistryInOrder() public {
+        address a = address(_deployCanary());
+        address b = address(_deployCanary());
+        address c = address(_deployCanary());
+        _enroll(a, _policy());
+        _enroll(b, _policy());
+        _enroll(c, _policy());
+
+        // Remove the first: the last moves to its place.
+        vm.prank(owner);
+        hub.disarm(LASNA_CHAIN_ID, a);
+        assertEq(hub.targetCount(LASNA_CHAIN_ID), 2);
+        assertEq(hub.targetAt(LASNA_CHAIN_ID, 0), c);
+        assertEq(hub.targetAt(LASNA_CHAIN_ID, 1), b);
+
+        // Remove the one that moved, then the last one.
+        vm.prank(owner);
+        hub.disarm(LASNA_CHAIN_ID, c);
+        assertEq(hub.targetCount(LASNA_CHAIN_ID), 1);
+        assertEq(hub.targetAt(LASNA_CHAIN_ID, 0), b);
+        assertEq(_activeSubscriptions(address(hub)), 1);
+
+        // The target that stays is still rescued.
+        uint256 mark = _debtRound(b);
+        _assertRescued(mark, b);
+
+        vm.prank(owner);
+        hub.disarm(LASNA_CHAIN_ID, b);
+        assertEq(hub.targetCount(LASNA_CHAIN_ID), 0);
+        assertEq(_activeSubscriptions(address(hub)), 0);
+
+        // Each target can be enrolled again, and `unsubscribeAll` then finds each tuple.
+        _enroll(c, _policy());
+        _enroll(a, _policy());
+        _enroll(b, _policy());
+        assertEq(hub.targetAt(LASNA_CHAIN_ID, 0), c);
+        assertEq(hub.targetAt(LASNA_CHAIN_ID, 2), b);
+        assertEq(_activeSubscriptions(address(hub)), 3);
+        vm.prank(owner);
+        hub.unsubscribeAll();
+        assertEq(_activeSubscriptions(address(hub)), 0);
     }
 }

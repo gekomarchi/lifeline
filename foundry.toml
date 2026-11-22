@@ -8,6 +8,9 @@ solc_version = "0.8.30"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
+# Each top-level call of a test runs as its own transaction: cold storage access and exact gas for
+# each trigger of the fork harness.
+isolate = true
 remappings = [
     "forge-std/=lib/forge-std/src/",
     "@reactive/=lib/reactive-lib-omni/",

@@ -18,11 +18,6 @@ interface IProxyLedger {
     /// @param amount_ Requested payment amount.
     event PaymentFailure(address indexed contract_, uint256 indexed amount_);
 
-    /// @notice Indicates that the contract is currently in debt.
-    /// @param contract_ Contract's address.
-    /// @param debt_ Current debt.
-    error InDebt(address contract_, uint256 debt_);
-
     /// @notice Method for covering callback fee debts. The value pays the debt first; the rest becomes reserves.
     /// @param contract_ Address of the callback contract the balance of which should be updated.
     function depositTo(address contract_) external payable;
