@@ -10,9 +10,8 @@ import { CanaryCallback } from "../src/fixtures/CanaryCallback.sol";
 
 /// @notice Fork tests of the destination payer on Base Sepolia. The vault, the canaries and the callback
 ///         proxy are real; only the node's delivery is emulated by the harness.
-/// @dev Two tests replace one answer of the proxy with `vm.mockCallRevert`, because the real ledger never
-///      reverts a read or a deposit: `test_sweep_aTargetThatFailsDoesNotStopTheOthers` and
-///      `test_quarantine_isCheckedBeforeAnyLedgerRead`.
+/// @dev The tests that use `vm.mockCallRevert` replace one answer of the proxy, because the real ledger never
+///      reverts a read or a deposit.
 contract LifelineVaultTest is ProxyDeliveryHarness {
     uint256 internal constant PRINCIPAL = 0.01 ether;
     uint256 internal constant FEE_FLOAT = 1.5e13;
@@ -124,6 +123,15 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         debt = _pongIntoDebt(canary);
     }
 
+    /// @dev `count` canaries with the default policy and a debt, in the order of their deployment.
+    function _armedCanariesInDebt(uint256 count) internal returns (address[] memory canaries, uint256[] memory debts) {
+        canaries = new address[](count);
+        debts = new uint256[](count);
+        for (uint256 i = 0; i < count; ++i) {
+            (canaries[i], debts[i]) = _armedCanaryInDebt(_policy());
+        }
+    }
+
     /// @dev Delivers `reconcile` with the first argument equal to `callbackSender`.
     function _reconcile(address target, uint256 requestId) internal returns (Delivery memory) {
         return _deliver(address(vault), _reconcilePayload(target, requestId), DELIVERY_GAS, hub);
@@ -155,14 +163,20 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
     }
 
     function _assertPongRan(Delivery memory d, address canary, uint256 n) internal pure {
-        assertTrue(d.delivered, "the delivery did not revert");
-        assertFalse(d.callbackFailed, "no CallbackFailure");
+        _assertRan(d);
         Vm.Log memory pong = _onlyLog(d.logs, canary, CanaryCallback.Pong.selector);
         assertEq(uint256(pong.topics[1]), n, "Pong(n)");
     }
 
     function _vaultLogs(Vm.Log[] memory logs, bytes32 topic0) internal view returns (uint256) {
         return _countLogs(logs, address(vault), topic0);
+    }
+
+    /// @dev Checks that the vault emitted exactly one log with this `topic0`, and that its indexed target is
+    ///      `target`.
+    function _assertOnlyVaultLog(Vm.Log[] memory logs, bytes32 topic0, address target) internal view {
+        Vm.Log memory log = _onlyLog(logs, address(vault), topic0);
+        assertEq(address(uint160(uint256(log.topics[1]))), target);
     }
 
     /// @dev The `n`-th `Result` (from 0) of the vault.
@@ -207,7 +221,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         }
     }
 
-    /// @dev An authenticated callback ran: the delivery did not revert and the proxy emitted no `CallbackFailure`.
+    /// @dev The callback ran: the delivery did not revert and the proxy emitted no `CallbackFailure`.
     function _assertRan(Delivery memory d) internal pure {
         assertTrue(d.delivered, "the delivery did not revert");
         assertFalse(d.callbackFailed, "no CallbackFailure");
@@ -225,6 +239,14 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         _assertRan(d);
         assertEq(_onlyResult(d.logs, id, target, outcome), 0);
         assertEq(address(vault).balance, balanceBefore - _selfCareSum(d.logs), "only self-care moved principal");
+    }
+
+    /// @dev An authenticated callback that pays nothing to a target. Returns its self-care and its fee.
+    function _idleCallback() internal returns (uint256 selfCare, uint256 fee) {
+        Delivery memory d = _reconcile(address(0xdead), 1);
+        _assertRan(d);
+        _onlyResult(d.logs, 1, address(0xdead), LifelineVault.Outcome.NoPolicy);
+        return (_selfCareSum(d.logs), d.fee);
     }
 
     /// @dev Puts the vault's reserves back to `selfReserveTarget` from outside: the manual `depositTo(vault)`.
@@ -281,7 +303,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
     ///      the gas for the charge.
     function test_harness_theProxyRejectsADeliveryThatCannotRun() public {
         address noCode = _freshAccount("no-code");
-        Delivery memory d = _deliver(noCode, abi.encodeCall(CanaryCallback.pong, (address(0), 1)), DELIVERY_GAS, hub);
+        Delivery memory d = _pong(noCode, 1);
         assertFalse(d.delivered);
         assertEq(d.revertData, abi.encodeWithSelector(ICallbackProxy.NotAContract.selector, noCode));
         assertEq(d.fee, 0);
@@ -540,8 +562,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         policy.low = LOW;
         Vm.Log[] memory logs = _setPolicy(canary, policy);
 
-        Vm.Log memory policySet = _onlyLog(logs, address(vault), LifelineVault.PolicySet.selector);
-        assertEq(address(uint160(uint256(policySet.topics[1]))), canary);
+        _assertOnlyVaultLog(logs, LifelineVault.PolicySet.selector, canary);
         uint256 paid = _onlyResult(logs, 0, canary, LifelineVault.Outcome.Rescued);
         assertEq(paid, debt + HIGH, "debt + (high - reserves)");
         assertTrue(_debtCleared(logs, canary), "WhitelistContract(canary)");
@@ -734,8 +755,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         // The second debt inside the window: the vault quarantines the target and does not pay.
         Delivery memory d = _reconcile(canary, 31);
         _assertSkip(d, balanceBefore, 31, canary, LifelineVault.Outcome.Quarantined);
-        Vm.Log memory quarantined = _onlyLog(d.logs, address(vault), LifelineVault.Quarantined.selector);
-        assertEq(address(uint160(uint256(quarantined.topics[1]))), canary);
+        _assertOnlyVaultLog(d.logs, LifelineVault.Quarantined.selector, canary);
         assertTrue(vault.quarantined(canary));
 
         // From then on: the same `Result`, and no second `Quarantined` event.
@@ -829,11 +849,24 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         assertEq(_onlyResult(_reconcile(canary, 82).logs, 82, canary, LifelineVault.Outcome.Rescued), amount);
         assertEq(address(vault).balance, balanceBefore - amount);
 
-        // A balance equal to the floor is not low: no `VaultLow`, and no self-care, because none is free.
+        // A balance equal to the floor is not low: no `VaultLow`. No principal is above the floor: no self-care.
         d = _reconcile(canary, 83);
         _assertSkip(d, balanceBefore - amount, 83, canary, LifelineVault.Outcome.NoNeed);
         assertEq(_vaultLogs(d.logs, LifelineVault.VaultLow.selector), 0);
         assertEq(_selfCareSum(d.logs), 0);
+    }
+
+    /// @dev A payment above the whole balance is a `Floor` skip, with a floor of 0 also.
+    function test_skip_floor_paymentAboveTheBalance() public {
+        (address canary, uint256 debt) = _armedCanaryInDebt(_policy());
+        _refillFloat();
+        vm.startPrank(owner);
+        vault.setPrincipalFloor(0);
+        vault.withdraw(address(vault).balance - (debt + HIGH - 1));
+        vm.stopPrank();
+
+        _assertSkip(_reconcile(canary, 83), debt + HIGH - 1, 83, canary, LifelineVault.Outcome.Floor);
+        assertEq(proxy.debt(canary), debt);
     }
 
     /// @dev The largest policy values do not overflow: the cap of the day has no effect, and the payment
@@ -856,19 +889,6 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         uint256 balanceBefore = address(vault).balance;
         _onlyResult(_setPolicy(canary, policy), 0, canary, LifelineVault.Outcome.DailyCap);
         _assertSkip(_reconcile(canary, 2), balanceBefore, 2, canary, LifelineVault.Outcome.DailyCap);
-    }
-
-    /// @dev A payment above the whole balance is a `Floor` skip, with a floor of 0 also.
-    function test_skip_floor_paymentAboveTheBalance() public {
-        (address canary, uint256 debt) = _armedCanaryInDebt(_policy());
-        _refillFloat();
-        vm.startPrank(owner);
-        vault.setPrincipalFloor(0);
-        vault.withdraw(address(vault).balance - (debt + HIGH - 1));
-        vm.stopPrank();
-
-        _assertSkip(_reconcile(canary, 83), debt + HIGH - 1, 83, canary, LifelineVault.Outcome.Floor);
-        assertEq(proxy.debt(canary), debt);
     }
 
     /// @dev A balance below the floor: `VaultLow`, no payment and no self-care.
@@ -910,7 +930,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         assertLe(secondDebt + HIGH_BELOW_ONE_FEE, policy.dailyCap, "the second rescue alone is inside the cap");
         _onlyResult(_reconcile(canary, 1).logs, 1, canary, LifelineVault.Outcome.DailyCap);
 
-        // One second before the end of the day: still the same day.
+        // The reconcile runs one block before the end of the day: still the same day.
         _skipTime(_secondsToNextDay() - 4);
         _onlyResult(_reconcile(canary, 2).logs, 2, canary, LifelineVault.Outcome.DailyCap);
 
@@ -952,8 +972,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         assertEq(_vaultLogs(d.logs, LifelineVault.Result.selector), 2);
         _assertResult(d.logs, 0, 200, broken, LifelineVault.Outcome.Quarantined);
         uint256 paid = _assertResult(d.logs, 1, 200, healthy, LifelineVault.Outcome.Rescued);
-        Vm.Log memory quarantined = _onlyLog(d.logs, address(vault), LifelineVault.Quarantined.selector);
-        assertEq(address(uint160(uint256(quarantined.topics[1]))), broken);
+        _assertOnlyVaultLog(d.logs, LifelineVault.Quarantined.selector, broken);
         assertTrue(vault.quarantined(broken));
         assertFalse(vault.quarantined(healthy));
         assertEq(proxy.debt(broken), debt);
@@ -985,8 +1004,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         _takeLogs();
         vm.prank(owner);
         vault.release(broken);
-        Vm.Log memory released = _onlyLog(_takeLogs(), address(vault), LifelineVault.Released.selector);
-        assertEq(address(uint160(uint256(released.topics[1]))), broken);
+        _assertOnlyVaultLog(_takeLogs(), LifelineVault.Released.selector, broken);
         assertFalse(vault.quarantined(broken));
         assertEq(proxy.debt(broken), debt, "release pays nothing");
 
@@ -1183,11 +1201,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
     ///      others get their correct `Result`. The real ledger never reverts, so the test replaces one
     ///      answer of the proxy for each failing target.
     function test_sweep_aTargetThatFailsDoesNotStopTheOthers() public {
-        address[] memory targets = new address[](5);
-        uint256[] memory debts = new uint256[](5);
-        for (uint256 i = 0; i < targets.length; ++i) {
-            (targets[i], debts[i]) = _armedCanaryInDebt(_policy());
-        }
+        (address[] memory targets, uint256[] memory debts) = _armedCanariesInDebt(5);
 
         vm.mockCallRevert(PROXY_ADDRESS, abi.encodeCall(IProxyLedger.debt, (targets[1])), "mocked");
         vm.mockCallRevert(PROXY_ADDRESS, abi.encodeCall(IProxyLedger.reserves, (targets[2])), "mocked");
@@ -1263,10 +1277,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
     /// @dev A sweep with a gas limit too low for all targets emits `SweepPartial` with the number
     ///      processed, does not run out of gas, and emits no `CallbackFailure`.
     function test_sweepGuard_stopsEarlyWithSweepPartial() public {
-        address[] memory targets = new address[](8);
-        for (uint256 i = 0; i < targets.length; ++i) {
-            (targets[i],) = _armedCanaryInDebt(_policy());
-        }
+        (address[] memory targets,) = _armedCanariesInDebt(8);
 
         uint256 balanceBefore = address(vault).balance;
         Delivery memory d = _sweep(targets, 4, 500_000);
@@ -1300,10 +1311,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
     ///      This is the most expensive case that the real ledger has. Each target is a rescue that writes
     ///      new reserves, and the float is 0, so the self-care deposit at the end writes new reserves also.
     function test_sweepGuard_neverRunsOutOfGas() public {
-        address[] memory targets = new address[](6);
-        for (uint256 i = 0; i < targets.length; ++i) {
-            (targets[i],) = _armedCanaryInDebt(_policy());
-        }
+        (address[] memory targets,) = _armedCanariesInDebt(6);
         _emptyTheFloat(targets[0]);
 
         uint256 snapshot = vm.snapshotState();
@@ -1329,9 +1337,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
     /// @dev Junk callbacks take the float and leave a debt; another account pays exactly the debt. The
     ///      vault then has no debt and reserves of 0.
     function _emptyTheFloat(address target) internal {
-        for (uint256 i = 0; proxy.debt(address(vault)) == 0; ++i) {
-            _junk(i, target);
-        }
+        _junkIntoDebt(target);
         uint256 debt = proxy.debt(address(vault));
         vm.prank(stranger);
         proxy.depositTo{ value: debt }(address(vault));
@@ -1350,7 +1356,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         Delivery memory d = _sweep(_list(canary), 1, 195_000);
         assertTrue(d.delivered);
         assertTrue(d.callbackFailed, "CallbackFailure");
-        assertEq(_countLogs(d.logs, address(vault), LifelineVault.Result.selector), 0);
+        assertEq(_vaultLogs(d.logs, LifelineVault.Result.selector), 0);
         assertEq(address(vault).balance, balanceBefore);
         assertEq(proxy.debt(canary), debt);
 
@@ -1409,6 +1415,14 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         }
     }
 
+    /// @dev Delivers junk callbacks until the vault is in debt: the float does not cover the last fee.
+    function _junkIntoDebt(address target) internal returns (uint256 count) {
+        while (proxy.debt(address(vault)) == 0) {
+            _junk(count++, target);
+            assertLt(count, 200, "the flood ends");
+        }
+    }
+
     /// @dev Completion criterion: a delivery with a different first argument emits `CallbackFailure`,
     ///      changes the vault balance by 0 and takes only the float.
     function test_junk_takesOnlyTheFloat() public {
@@ -1432,11 +1446,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         uint256 balanceBefore = address(vault).balance;
 
         // Part 1. Junk until the vault is in debt. The loss of principal is 0.
-        uint256 count;
-        while (proxy.debt(address(vault)) == 0) {
-            _junk(count++, canary);
-            assertLt(count, 200, "the flood ends");
-        }
+        uint256 count = _junkIntoDebt(canary);
         uint256 vaultDebt = proxy.debt(address(vault));
         assertGt(count, 5, "the float paid for some junk");
         assertEq(proxy.reserves(address(vault)), 0);
@@ -1506,14 +1516,6 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
     // ------------------------------------------------------------------------------------------
     // Self-care
     // ------------------------------------------------------------------------------------------
-
-    /// @dev A callback that pays nothing and its self-care.
-    function _idleCallback() internal returns (uint256 selfCare, uint256 fee) {
-        Delivery memory d = _reconcile(address(0xdead), 1);
-        _assertRan(d);
-        _onlyResult(d.logs, 1, address(0xdead), LifelineVault.Outcome.NoPolicy);
-        return (_selfCareSum(d.logs), d.fee);
-    }
 
     function test_selfCare_returnsTheFloatToTheTarget() public {
         (uint256 selfCare, uint256 firstFee) = _idleCallback();
@@ -1616,8 +1618,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         _takeLogs();
         vm.prank(owner);
         vault.disarm(canary);
-        Vm.Log memory disarmed = _onlyLog(_takeLogs(), address(vault), LifelineVault.Disarmed.selector);
-        assertEq(address(uint160(uint256(disarmed.topics[1]))), canary);
+        _assertOnlyVaultLog(_takeLogs(), LifelineVault.Disarmed.selector, canary);
         assertFalse(vault.hasPolicy(canary));
         assertFalse(vault.quarantined(canary));
         assertEq(abi.encode(vault.policyOf(canary)), abi.encode(Policy(0, 0, 0, 0, 0, 0)));

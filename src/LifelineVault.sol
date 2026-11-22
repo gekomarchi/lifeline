@@ -57,7 +57,7 @@ contract LifelineVault {
     struct Record {
         bool hasPolicy;
         bool quarantined;
-        uint16 spentDay; // the calendar day (`block.timestamp / 1 days`) of `spentToday`
+        uint16 spentDay; // the low 16 bits of the calendar day (`block.timestamp / 1 days`) of `spentToday`
         uint96 spentToday; // principal paid to this target on `spentDay`
         uint128 rescueTimes; // sliding window: the timestamps of the last four rescues, 32 bits each, newest lowest
         Policy policy;
@@ -266,8 +266,9 @@ contract LifelineVault {
         emit Result(id, target, outcome, paid);
     }
 
-    /// @dev The checks in their order: paused, policy, quarantine, code, ledger, rescue window, `maxDebt`,
-    ///      then the payment. Each call to the proxy runs in a `try`: a revert gives `Failed`.
+    /// @dev The checks in their order: paused, policy, quarantine, code, ledger. Then `low` if there is no
+    ///      debt, or the rescue window and `maxDebt` if there is a debt. Then the payment. Each call to the
+    ///      proxy runs in a `try`: a revert gives `Failed`.
     function _settle(address target) internal returns (Outcome, uint256) {
         if (paused) return (Outcome.Paused, 0);
 
