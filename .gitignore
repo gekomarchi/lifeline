@@ -47,6 +47,10 @@ Thumbs.db
 # Node tooling
 node_modules/
 
+# Solidity build output (Foundry)
+out/
+cache/
+
 # Agent and upload directories
 .uploaded_artifacts/
 .generated_artifacts/

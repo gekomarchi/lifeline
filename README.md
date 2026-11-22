@@ -75,6 +75,27 @@ python -m pytest
 
 The tests run the real command and the real reader against a local JSON-RPC server.
 
+## Development
+
+The contracts are one Foundry project at the repository root: `src/`, `test/`, `lib/`.
+
+| Item | Value |
+|---|---|
+| Foundry | 1.10.0 (`forge` commit `083e229`) |
+| Solidity compiler | 0.8.30, EVM version `cancun`, optimizer with 200 runs |
+| `lib/reactive-lib-omni` | commit `3ade0dc` |
+| `lib/forge-std` | v1.17.0 (commit `f3dae6e`) |
+| `LASNA_RPC_URL` | RPC URL of Reactive Network testnet (Lasna, chain ID 5318007). The node must serve the state of the fork block. |
+| Fork block | 8,918,212 on Lasna |
+
+```
+git submodule update --init
+export LASNA_RPC_URL=<url>
+forge test
+```
+
+The fork tests in `test/LifelineHubLasna.t.sol` run against the system contract code of the fork block. They fail if `LASNA_RPC_URL` is not set. `forge test --match-contract LifelineTypesTest` runs the tests that need no fork.
+
 ## License
 
 Apache License 2.0. See `LICENSE`.
