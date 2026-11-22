@@ -25,9 +25,12 @@ class MockChain:
         self.reverts = set()  # (to, data) of calls that revert
         self.balances = {}
         self.requests = []  # (method, params, path) of each request, in order
+        self.posts = []  # number of requests in each HTTP POST, in order
+        self.no_batch = False  # a batch gets one error object
         # Faults, each used one time for the next request of its method: (method, "rate" | "range" | "server").
         self.faults = []
         self.always_fail = False  # each request gives HTTP 503
+        self.fail_methods = set()  # each request of these methods gives HTTP 503
         self.refuse_state = False  # eth_call and eth_getBalance give "missing trie node"
         self.earliest_block = 0  # headers below this block are not available
         self.timestamp_of = None  # optional function of the block number, for a block time that changes
@@ -130,13 +133,17 @@ class MockNode:
                 chain = node.chains[self.path.strip("/").split("/")[0]]
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 items = body if isinstance(body, list) else [body]
+                chain.posts.append(len(items))
                 for item in items:
                     chain.requests.append((item["method"], item["params"], self.path))
 
                 status, answer = 200, None
                 fault = next((f for f in chain.faults if f[0] == items[0]["method"]), None)
-                if chain.always_fail:
+                if chain.always_fail or items[0]["method"] in chain.fail_methods:
                     status, answer = 503, {"error": "service unavailable"}
+                elif chain.no_batch and isinstance(body, list):
+                    answer = {"jsonrpc": "2.0", "id": None, "error": {
+                        "code": -32600, "message": "batch requests are not supported"}}
                 elif fault:
                     chain.faults.remove(fault)
                     if fault[1] == "rate":

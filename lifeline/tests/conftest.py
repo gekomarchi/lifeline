@@ -188,6 +188,7 @@ class Network:
     def clear_requests(self):
         for chain in self.chains.values():
             chain.requests.clear()
+            chain.posts.clear()
 
 
 @pytest.fixture

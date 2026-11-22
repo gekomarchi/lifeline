@@ -206,3 +206,38 @@ def test_rate_limits_keep_the_chunk_and_repeated_server_errors_make_it_smaller(n
     network.lasna.faults = [("eth_getLogs", "server")] * 2
     assert len(reader_for(network, retries=4).logs(LASNA_LEDGER, [BLACKLIST], 1000, 21000)) == 4
     assert log_spans(network.lasna)[:3] == [(1000, 21000), (1000, 21000), (1000, 10999)]
+
+
+def test_batch_with_a_rate_limit_is_sent_again_as_a_batch(network):
+    reader = reader_for(network)
+    requests = [(LASNA_LEDGER, ledger_call(DEBT, contract)) for contract in (A1, LASNA_LEDGER, A1)]
+    reader.chain_id()
+    network.clear_requests()
+    network.lasna.faults = [("eth_call", "rate"), ("eth_call", "server")]
+    assert [int(result, 16) for result in reader.calls(requests, 21000)] == [5, 0, 5]
+    assert network.lasna.posts == [3, 3, 3]  # no single request while the node is busy
+
+
+def test_node_with_no_batch_support_gets_single_requests(network):
+    network.lasna.no_batch = True
+    reader = reader_for(network)
+    reader.chain_id()
+    network.clear_requests()
+    assert reader.timestamps([4000, 4001, 4002]) == {4000: START + 3000, 4001: START + 3001, 4002: START + 3002}
+    assert network.lasna.posts == [3, 1, 1, 1]
+    reader.timestamps([5000, 5001])
+    assert network.lasna.posts == [3, 1, 1, 1, 1, 1]  # no further batch
+
+
+def test_batch_with_no_state_is_not_sent_again(network):
+    network.lasna.refuse_state = True
+    reader = reader_for(network)
+    reader.chain_id()
+    network.clear_requests()
+    requests = [(LASNA_LEDGER, ledger_call(DEBT, contract)) for contract in (A1, LASNA_LEDGER)]
+    with pytest.raises(StateUnavailable):
+        reader.calls(requests, 21000)
+    assert network.lasna.posts == [2, 1, 1]  # one batch, then the first request two times
+    with pytest.raises(StateUnavailable):
+        reader.calls(requests, 21000)
+    assert network.lasna.posts == [2, 1, 1]  # the reader knows that the block has no state

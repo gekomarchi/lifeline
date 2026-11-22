@@ -129,7 +129,7 @@ def _classify(method, status, body, retry_after):
         error = {"message": str(error)}
     message = str(error.get("message", ""))
     text = (message + " " + json.dumps(error.get("data", ""))).lower()
-    summary = f"{error.get('code')} {message}"[:200]
+    summary = f"{error.get('code', 'error')} {message}"[:200]
 
     if method == "eth_call" and (error.get("code") == 3 or _REVERT.search(text)):
         raise _Failure("revert", summary)
@@ -285,55 +285,84 @@ class ChainReader:
     def _request_many(self, method, params_list) -> list:
         """Results for many requests of one method, in order.
 
-        JSON-RPC batches are the fast path: one batch attempt on each URL.
-        A request that got no result there goes through `_request`, which
-        owns the retry rules.
+        JSON-RPC batches are the fast path. A batch that fails with a
+        rate-limit, timeout or server error is sent again after the same
+        backoff as a single request. For any other failure, and when the
+        retries are used, each open request goes through `_request`, which
+        owns the error rules.
         """
         results = {}
-        if self.batch > 1 and len(params_list) > 1:
-            for start in range(0, len(params_list), self.batch):
-                group = range(start, min(start + self.batch, len(params_list)))
-                tried = set()
-                while len(tried) < len(self.urls) and any(i not in results for i in group):
-                    index = self._pick(tried)
-                    tried.add(index)
-                    pending = [i for i in group if i not in results]
-                    answers = self._attempt_batch(index, method, [params_list[i] for i in pending])
-                    if len(answers) < len(pending):
-                        self._bad_until[index] = time.monotonic() + self.cooldown
-                    for position, result in answers.items():
-                        results[pending[position]] = result
+        for start in range(0, len(params_list), self.batch):
+            group = range(start, min(start + self.batch, len(params_list)))
+            failures = 0
+            tried = set()
+            while self.batch > 1 and len(group) > 1:
+                pending = [i for i in group if i not in results]
+                if not pending:
+                    break
+                index = self._pick(tried)
+                answers, failure = self._attempt_batch(index, method, [params_list[i] for i in pending])
+                for position, result in answers.items():
+                    results[pending[position]] = result
+                if failure is None:
+                    continue
+                if failure.kind == "no batch":
+                    self.batch = 1
+                if failure.kind not in ("retry", "timeout"):
+                    break
+                self._bad_until[index] = time.monotonic() + self.cooldown
+                tried.add(index)
+                failures += 1
+                if failures > self.retries:
+                    break
+                time.sleep(self._delay(failures, failure))
         return [
             results[i] if i in results else self._request(method, params)
             for i, params in enumerate(params_list)
         ]
 
-    def _attempt_batch(self, index, method, params_list) -> dict:
-        """Send one batch to one URL. Return {position: result} for the requests that succeeded."""
-        try:
-            self._verify(index)
-        except _Failure:
-            return {}
-        self.sent[method] += len(params_list)
+    def _attempt_batch(self, index, method, params_list):
+        """Send one batch to one URL. Return ({position: result}, the first failure or None)."""
         first_id = self._request_id + 1
-        self._request_id += len(params_list)
         payload = [
             {"jsonrpc": "2.0", "id": first_id + position, "method": method, "params": params}
             for position, params in enumerate(params_list)
         ]
         try:
-            status, body, _ = http_transport(self.urls[index], payload, self.timeout)
-        except TransportError:
-            return {}
-        answers = {}
-        for item in body if isinstance(body, list) else []:
+            self._verify(index)
+            self._request_id += len(params_list)
+            self.sent[method] += len(params_list)
+            status, body, retry_after = http_transport(self.urls[index], payload, self.timeout)
+        except TransportError as error:
+            return {}, _Failure("timeout", f"no response ({error})")
+        except _Failure as failure:
+            return {}, failure
+        if not isinstance(body, list):
+            try:
+                _classify(method, status, body, retry_after)
+            except _Failure as failure:
+                if status == 200 or failure.kind == "range":
+                    failure.kind = "no batch"  # the node answers, but not to a batch
+                return {}, failure
+            return {}, _Failure("no batch", "one answer for a batch")
+        answers, first = {}, None
+        for item in body:
             position = item.get("id", 0) - first_id if isinstance(item, dict) else -1
             if 0 <= position < len(params_list):
                 try:
-                    answers[position] = _classify(method, status, item, None)
-                except _Failure:
-                    pass
-        return answers
+                    answers[position] = _classify(method, status, item, retry_after)
+                except _Failure as failure:
+                    first = first or failure
+        if first is None and len(answers) < len(params_list):
+            first = _Failure("retry", "the batch answer is not complete")
+        return answers, first
+
+    def _delay(self, failures, failure) -> float:
+        """Exponential backoff, and at least the Retry-After time of the node."""
+        delay = min(self.max_backoff, self.backoff * 2 ** (failures - 1))
+        if failure.retry_after:
+            delay = max(delay, min(failure.retry_after, self.max_backoff))
+        return delay
 
     def _fetch_logs(self, address, topics, start, limit):
         """Fetch one chunk that starts at `start` and ends at or below `limit`. Return (end, logs)."""
@@ -396,10 +425,7 @@ class ChainReader:
                     ) from None
                 if failures > 1 and failure.kind == "timeout" and smaller:
                     smaller(index, failure)  # a heavy range can cause timeouts
-                delay = min(self.max_backoff, self.backoff * 2 ** (failures - 1))
-                if failure.retry_after:
-                    delay = max(delay, min(failure.retry_after, self.max_backoff))
-                time.sleep(delay)
+                time.sleep(self._delay(failures, failure))
 
     def _pick(self, tried):
         """The first URL that this request did not use and that is not in its cooldown."""

@@ -140,6 +140,22 @@ def test_retries_used_gives_nonzero_exit_and_no_output(network, capsys):
     assert "127.0.0.1" not in captured.err
 
 
+def test_new_run_continues_from_the_cache_after_a_failed_run(network):
+    network.uni.fail_methods = {"eth_getLogs"}
+    assert network.run("out") == 1  # the ledger scans of lasna and base-sepolia finished before the failure
+    assert len(network.lasna.methods("eth_getLogs")) == 1
+    assert len(network.base.methods("eth_getLogs")) == 1
+    assert not (network.tmp_path / "out").exists()
+
+    network.uni.fail_methods = set()
+    network.clear_requests()
+    assert network.run("out") == 0
+    # Only the scans that the failed run did not reach: Subscribe and CallbackRequest on lasna, none on base-sepolia.
+    assert len(network.lasna.methods("eth_getLogs")) == 2
+    assert network.base.methods("eth_getLogs") == []
+    assert network.data("out")["queries"]["lasna_debt_events"]["result"] == {"count": 4}
+
+
 def test_failure_in_a_late_query_writes_no_file(network, capsys):
     """State reads come after the scans. A failure there must still leave no partial output."""
     network.uni.refuse_state = True
