@@ -1,0 +1,65 @@
+# Reader cache and local scratch
+.cache/
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+venv/
+env/
+
+# Secrets and tokens
+.env
+.env.*
+*.env
+.git-token
+*.git-token
+*.key
+*.pem
+keys.env
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Node tooling
+node_modules/
+
+# Agent and upload directories
+.uploaded_artifacts/
+.generated_artifacts/
+.plans/
+.skills/
+
+# Source documents and implementation prompts (kept out of the repository)
+/6103.md
+/6104.md
+/6105.md
+/[0-9][0-9].md
+REHEARSAL.md
+prompt-count-spec.md
+lifeline-v2-verification-and-spec.md
+*specification*.md
+*.zip

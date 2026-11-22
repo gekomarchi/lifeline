@@ -1,0 +1,43 @@
+{
+  "chains": {
+    "lasna": {
+      "chainId": 5318007,
+      "role": "reactive",
+      "ledger": "0x8888888888888888888888888888888888888888",
+      "rpc": ["https://lasna-rpc.rnk.dev/"]
+    },
+    "base-sepolia": {
+      "chainId": 84532,
+      "role": "destination",
+      "ledger": "0x476F44b11F5C942c58f4c8E3d0300E5710743585",
+      "rpc": ["https://base-sepolia-rpc.publicnode.com", "https://base-sepolia.gateway.tenderly.co"]
+    },
+    "unichain-sepolia": {
+      "chainId": 1301,
+      "role": "destination",
+      "ledger": "0x775c9B990ADe401060B78D0e98684eEf8d2466C1",
+      "rpc": ["https://sepolia.unichain.org"]
+    }
+  },
+  "subjects": {
+    "fastfillReactive": {
+      "chain": "lasna",
+      "address": "0x05a566959544A55c16012aeeF0a09067da1f204f"
+    },
+    "fastfill": {
+      "deposit": {
+        "chain": "base-sepolia",
+        "address": "0x82B564983aE7274c86695917BBf8C99ECb6F0F8F",
+        "event": "FundsDeposited(bytes32 inputToken, bytes32 outputToken, uint256 inputAmount, uint256 outputAmount, uint256 indexed destinationChainId, uint256 indexed depositId, uint32 quoteTimestamp, uint32 fillDeadline, uint32 exclusivityDeadline, bytes32 indexed depositor, bytes32 recipient, bytes32 exclusiveRelayer, bytes message)",
+        "where": { "destinationChainId": 1301 }
+      },
+      "fill": {
+        "chain": "unichain-sepolia",
+        "address": "0x6999526e507Cc3b03b180BbE05E1Ff938259A874",
+        "event": "FilledRelay(bytes32 inputToken, bytes32 outputToken, uint256 inputAmount, uint256 outputAmount, uint256 repaymentChainId, uint256 indexed originChainId, uint256 indexed depositId, uint32 fillDeadline, uint32 exclusivityDeadline, bytes32 exclusiveRelayer, bytes32 indexed relayer, bytes32 depositor, bytes32 recipient, bytes32 messageHash, (bytes32,bytes32,uint256,uint8) relayExecutionInfo)",
+        "where": { "originChainId": 84532, "relayer": "0xe52ee8943c6e7a982268ce93a78de570c3b68d45" }
+      },
+      "joinField": "depositId"
+    }
+  }
+}
