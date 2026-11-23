@@ -18,7 +18,8 @@ contract CronPoller {
     /// @notice The poller paid `amount` to the ledger account of the ward.
     event Paid(address indexed ward, uint256 amount);
     /// @notice The ward needed `amount`, and the poller did not pay: its balance is too low, or the ledger
-    ///         refused the read or the deposit.
+    ///         refused the read or the deposit. `amount` is 0 after a refused read, and the largest value if
+    ///         the sum of the debt and the refill has more than 256 bits.
     event PaymentFailed(address indexed ward, uint256 amount);
 
     error NotOwner();
@@ -113,13 +114,17 @@ contract CronPoller {
         // The healthy ward: no event and no payment.
         if (debt == 0 && reserves >= low) return;
 
-        uint256 amount = debt + (reserves < high ? high - reserves : 0);
-        if (amount == 0) return;
-        // `depositTo` spends the balance; reserves cannot fund it. Check before the call.
-        if (address(this).balance < amount) {
-            emit PaymentFailed(ward, amount);
+        uint256 refill = reserves < high ? high - reserves : 0;
+        // `depositTo` spends the balance; reserves cannot fund it. Check before the call, with no sum that can
+        // overflow: the marks and the debt can have any value.
+        uint256 balance = address(this).balance;
+        if (balance < debt || balance - debt < refill) {
+            emit PaymentFailed(ward, refill > type(uint256).max - debt ? type(uint256).max : debt + refill);
             return;
         }
+        // No overflow: `debt + refill <= balance`.
+        uint256 amount = debt + refill;
+        if (amount == 0) return;
         try SYSTEM.depositTo{ value: amount }(ward) {
             emit Paid(ward, amount);
         } catch {

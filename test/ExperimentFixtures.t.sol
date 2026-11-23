@@ -130,6 +130,23 @@ contract ExperimentFixturesTest is LasnaForkHarness {
         assertEq(system.debt(address(ward)), debt, "the ward stays in debt");
     }
 
+    function test_poller_doesNotRevertWithTheLargestHighMark() public {
+        _nextFreshContract(owner);
+        vm.prank(owner);
+        CronPoller extreme = new CronPoller{ value: FEE_FLOAT + PRINCIPAL }(
+            SYSTEM_ADDRESS, CRON_10000_TOPIC0, address(ward), 0, type(uint256).max, FEE_FLOAT
+        );
+        _wardIntoDebt();
+        uint256 mark = _logMark();
+
+        // `debt + high` has more than 256 bits: the reaction reports the payment that it cannot make.
+        TriggerResult memory tick = _trigger(address(extreme), _cron(CRON_10000_TOPIC0));
+        assertTrue(tick.success && !tick.reactReverted, "no revert for marks that the constructor accepts");
+        ChainLog memory failed = _onlyLog(mark, address(extreme), CronPoller.PaymentFailed.selector);
+        assertEq(abi.decode(failed.data, (uint256)), type(uint256).max);
+        assertEq(address(extreme).balance, PRINCIPAL);
+    }
+
     function test_poller_skipsAnotherCronTopicAndAnotherEmitter() public {
         _wardIntoDebt();
         uint256 mark = _logMark();

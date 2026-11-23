@@ -21,10 +21,12 @@ Reusable parts, for the later units: `poke`, `wait_for_event`, `FixtureStore`, `
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 
 from . import ops
@@ -65,6 +67,8 @@ DEFAULT_SCENARIOS = DEFAULT_OUT / "scenarios.json"
 ZERO_ADDRESS = "0x" + "00" * 20
 
 ARMS = ("A", "B", "C")
+# The fixtures that `fixtures` enrolls with the enroll command: arm C and the looping canary.
+ENROLLED = ("armC.reactive", "armC.callback", "looping")
 # The entries of the `fixtures` section of the manifest: name, contract, and `True` for a Lasna contract.
 FIXTURES = (
     ("armA.reactive", "CanaryReactive", True),
@@ -78,7 +82,6 @@ FIXTURES = (
     ("waiting.callback", "CanaryCallback", False),
     ("junkRequester", "JunkRequester", True),
 )
-FIXTURE_FIELDS = ("contract", "chain", "chainId", "address", "deployBlock", "deployTx")
 
 # Start values of the default amounts of `fixtures`. Each one is a sample, not a protocol constant: the
 # command prints the amounts that it used, and each amount has a flag.
@@ -148,14 +151,14 @@ class Scenarios:
         temporary.write_text(json.dumps(self.data, indent=2) + "\n")
         os.replace(temporary, self.path)
 
-    def section(self, name: str, chain: str, addresses: dict, new=False) -> dict:
+    def section(self, name: str, chain: str, addresses: dict) -> dict:
         record = self.data.get(name)
-        if new or not isinstance(record, dict):
+        if not isinstance(record, dict):
             record = {"chain": chain, "addresses": addresses, "startBlock": None, "endBlock": None, "steps": []}
             self.data[name] = record
         elif record.get("chain") != chain or record.get("addresses") != addresses:
             raise OpsError(f"{self.path}: {name} is the record of other fixtures or of another chain. Use "
-                           f"another --scenarios file, or --new where the command has it")
+                           f"another --scenarios file")
         return record
 
 
@@ -202,7 +205,7 @@ def wait_for_event(rpc: ops.Rpc, address: str, topics: list, from_block: int, ti
 
 
 def _log_place(log: dict) -> tuple:
-    return hex_int(log["blockNumber"]), hex_int(log["logIndex"])
+    return block_of(log), hex_int(log["logIndex"])
 
 
 # ----------------------------------------------------------------------------------------------
@@ -220,7 +223,7 @@ def self_care_today(session: ops.Session) -> int:
                           max(session.manifest.hub["deployBlock"], head - 100_000), head)
     spent, stamps = 0, {}
     for log in reversed(logs):
-        number = hex_int(log["blockNumber"])
+        number = block_of(log)
         if number not in stamps:
             stamps[number] = hex_int(lasna.rpc.block(number)["timestamp"])
         if stamps[number] < day_start:
@@ -296,7 +299,7 @@ def run_ops(args, command: str, *arguments) -> None:
         raise OpsError(f"the operator command `{command}` did not end with status 0: see its error above")
 
 
-def ensure_enrolled(args, session: ops.Session, chain_name: str, target: str, label: str, policy: Policy) -> None:
+def ensure_enrolled(args, chain_name: str, target: str, label: str, policy: Policy) -> None:
     """Enrolls a fixture with the `enroll` command, or does nothing if the manifest has that enrollment."""
     manifest = Manifest.load(args.manifest)
     record = manifest.active_enrollment(chain_name, target)
@@ -381,8 +384,7 @@ def cmd_fixtures(args) -> int:
     session.require_owner(args.dest_chain)
     store = FixtureStore(args.manifest)
     ledger_abi = session.ledger_abi
-    artifacts = {name: ops.load_artifact(name)
-                 for name in ("CanaryReactive", "CanaryCallback", "CronPoller", "LoopingCanary", "JunkRequester")}
+    artifacts = {contract: ops.load_artifact(contract) for contract in {contract for _, contract, _ in FIXTURES}}
 
     recorded = {entry.get("chain") for name, entry in store.entries.items()
                 if isinstance(entry, dict) and name.endswith(".callback")}
@@ -430,7 +432,7 @@ def cmd_fixtures(args) -> int:
 
     def deploy(name: str, arguments=(), value=0) -> str:
         entry = entries[name]
-        chain = lasna if entry["chain"] == LASNA else dest
+        chain = session.chain(entry["chain"])
         if entry.get("address"):
             if not chain.rpc.code(entry["address"]):
                 raise OpsError(f"the manifest has {name} at {entry['address']}, and {chain.name} has no code "
@@ -446,7 +448,7 @@ def cmd_fixtures(args) -> int:
 
     def fund(name: str) -> None:
         entry = entries[name]
-        chain = lasna if entry["chain"] == LASNA else dest
+        chain = session.chain(entry["chain"])
         reserve = int(entry["reserve"])
         if reserve and not entry.get("fundTx"):
             ops.transact_recorded(chain.rpc, fixture, chain.ledger, ledger_abi.encode("depositTo", entry["address"]),
@@ -473,8 +475,8 @@ def cmd_fixtures(args) -> int:
     store.save()
 
     say("arm C and the looping canary, with the enroll command:")
-    for name, chain_name in (("armC.reactive", LASNA), ("armC.callback", args.dest_chain), ("looping", LASNA)):
-        ensure_enrolled(args, session, chain_name, entries[name]["address"], f"experiment {name}",
+    for name in ENROLLED:
+        ensure_enrolled(args, entries[name]["chain"], entries[name]["address"], f"experiment {name}",
                         Policy.from_json(entries[name]["policy"], f"fixtures.{name}.policy"))
 
     # The state that the experiment needs: arm C has a guardian; arm A and arm B have none at the hub.
@@ -490,7 +492,7 @@ def cmd_fixtures(args) -> int:
             + ("" if on_lasna else f", vault policy {str(has_policy).lower()}"))
         if name == "waiting.callback":
             continue  # the junk scenario enrolls it
-        wanted = name in ("armC.reactive", "armC.callback", "looping")
+        wanted = name in ENROLLED
         if enrolled != wanted or (not on_lasna and has_policy != wanted):
             raise OpsError(f"{name} is {'not ' if wanted else ''}enrolled: the three arms are not the experiment")
     say(f"fixtures: {len(FIXTURES)} entries in fixtures of {store.path}")
@@ -502,8 +504,8 @@ def cmd_fixtures(args) -> int:
 # ----------------------------------------------------------------------------------------------
 
 
-def _owned_canary(store: FixtureStore, rpc: ops.Rpc, name: str, account) -> str:
-    """The address of a recorded reactive canary, after the check that the fixture key is its owner."""
+def _owned_fixture(store: FixtureStore, rpc: ops.Rpc, name: str, account) -> str:
+    """The address of a recorded fixture on Lasna, after the check that the fixture key is its owner."""
     address = store.address(name)
     abi = ops.load_artifact("CanaryReactive").abi
     owner = abi.decode("owner", rpc.call(address, abi.encode("owner")))
@@ -523,7 +525,7 @@ def cmd_load(args) -> int:
     account = load_fixture_account()
     session = ops.Session(args, owner=False)
     lasna = session.lasna
-    reactives = {arm: _owned_canary(store, lasna.rpc, f"arm{arm}.reactive", account) for arm in ARMS}
+    reactives = {arm: _owned_fixture(store, lasna.rpc, f"arm{arm}.reactive", account) for arm in ARMS}
     dest = store.entry("armC.callback")["chain"]
 
     guard_scenarios(args.scenarios, [lasna])
@@ -568,7 +570,7 @@ def cmd_quarantine(args) -> int:
     account = load_fixture_account()
     session = ops.Session(args, owner=False)
     lasna, hub, hub_abi = session.lasna, session.hub, session.hub_abi
-    looping = _owned_canary(store, lasna.rpc, "looping", account)
+    looping = _owned_fixture(store, lasna.rpc, "looping", account)
     enrollment = session.manifest.active_enrollment(LASNA, looping)
     if not session.manifest.enrollment_complete(enrollment):
         raise OpsError("the manifest has no enrollment of the looping canary: run fixtures first")
@@ -605,13 +607,13 @@ def cmd_quarantine(args) -> int:
                                      for e in record["steps"]):
                 count = sum(1 for e in record["steps"] if e["step"].startswith("Rescued")) + 1
                 event = hub_abi.decode_event("Rescued", log)
-                add_step(record, f"Rescued {count}", LASNA, hex_int(log["blockNumber"]), log["transactionHash"])
+                add_step(record, f"Rescued {count}", LASNA, block_of(log), log["transactionHash"])
                 say(f"  Rescued {count}: tx {log['transactionHash']} block {hex_int(log['blockNumber'])}, debt "
                     f"{amount(event['debt'])}, paid {amount(event['paid'])}")
             elif not is_rescue:
                 quarantined = log
                 if not find_step(record, "Quarantined"):
-                    add_step(record, "Quarantined", LASNA, hex_int(log["blockNumber"]), log["transactionHash"])
+                    add_step(record, "Quarantined", LASNA, block_of(log), log["transactionHash"])
                     say(f"  Quarantined: tx {log['transactionHash']} block {hex_int(log['blockNumber'])}")
         scenarios.save()
         return quarantined
@@ -646,7 +648,7 @@ def cmd_quarantine(args) -> int:
 
     # Budget intact: `maxRescues` rescues, no payment after `Quarantined`, principal inside `dailyCap`.
     end = lasna.rpc.head()
-    rescues = [log for log in hub_logs("Rescued")]
+    rescues = hub_logs("Rescued")
     paid = sum(hub_abi.decode_event("Rescued", log)["paid"] for log in rescues)
     top_ups = hub_logs("ToppedUp")
     paid += sum(hub_abi.decode_event("ToppedUp", log)["paid"] for log in top_ups)
@@ -733,6 +735,27 @@ def request_callbacks(session: ops.Session, account, owner_address: str, request
     return [ops.wait_receipt(lasna.rpc, tx_hash) for tx_hash in hashes]
 
 
+def next_burst(largest: int, limit_left: int, delivered: int, float_at_start: int, float_now: int) -> int:
+    """The number of junk requests of the next burst. Each request of a burst that arrives after the debt of
+    the vault is rejected with `InDebt`: it must not arrive after the recovery. So a burst is at most half of
+    the requests that the float still covers, from the fee of the deliveries so far, and one request when
+    that fee is not known or the float is near its end. The last requests then go out one at a time, and the
+    request that makes the debt is the last one that the driver sent."""
+    spent = float_at_start - float_now
+    if delivered <= 0 or spent <= 0:
+        return max(min(1, limit_left), 0)
+    covered = float_now // max(spent // delivered, 1)
+    return max(min(largest, limit_left, covered // 2), min(1, limit_left), 0)
+
+
+def rescue_of(results: list, request_ids: set):
+    """The `Result` of the canary that waits, from the sweeps of this recovery. `results` is the list of its
+    decoded `Result` events with their logs, oldest first; `request_ids` are the request IDs of the `VaultUp`
+    events. A catch-up of more than one sweep can rescue the canary in a sweep that is not the last one.
+    Returns (log, event) of the first result of one of these sweeps, or None."""
+    return next(((log, event) for log, event in results if event["id"] in request_ids), None)
+
+
 def cmd_junk(args) -> int:
     # The guard comes first: no request with a key and no transaction before it.
     owner = ops.load_owner()
@@ -740,17 +763,15 @@ def cmd_junk(args) -> int:
     vault = junk_recipient(session, args.chain, owner.address)
     account = load_fixture_account()
     store = FixtureStore(args.manifest)
-    requester, waiting = store.address("junkRequester"), store.address("waiting.callback")
-    if store.entry("waiting.callback")["chain"] != args.chain:
-        raise OpsError(f"the fixture waiting.callback is on {store.entry('waiting.callback')['chain']}, not on "
-                       f"{args.chain}: run junk on the destination chain of the fixtures")
+    waiting, waiting_chain = store.address("waiting.callback"), store.entry("waiting.callback")["chain"]
+    if waiting_chain != args.chain:
+        raise OpsError(f"the fixture waiting.callback is on {waiting_chain}, not on {args.chain}: run junk on the "
+                       f"destination chain of the fixtures")
     lasna, chain = session.lasna, session.chain(args.chain)
     hub, hub_abi, vault_abi, ledger_abi = session.hub, session.hub_abi, session.vault_abi, session.ledger_abi
     callback_abi = ops.load_artifact("CanaryCallback").abi
-    requester_abi = ops.load_artifact("JunkRequester").abi
-    if not same_address(requester_abi.decode("owner", lasna.rpc.call(requester, requester_abi.encode("owner"))),
-                        account.address):
-        raise OpsError(f"{FIXTURE_KEY_VARIABLE} is not the key of the owner of junkRequester")
+    request_topic = ops.load_artifact("ISystemContractCallbacks").abi.topic("CallbackRequest")
+    requester = _owned_fixture(store, lasna.rpc, "junkRequester", account)
 
     # The flood takes the vault offline: each other target of that chain has no guardian in that time.
     recorded = {entry["address"].lower() for entry in store.entries.values()
@@ -765,140 +786,204 @@ def cmd_junk(args) -> int:
     guard_scenarios(args.scenarios, [lasna, chain])
     scenarios = Scenarios(args.scenarios)
     addresses = {"vault": vault, "hub": hub, "junkRequester": requester, "waiting.callback": waiting}
-    record = scenarios.section("junk", args.chain, addresses, new=args.new)
+    record = scenarios.section("junk", args.chain, addresses)
     if record.get("endBlock") is not None:
         say(f"junk: {scenarios.path} has a complete junk scenario of {args.chain} (blocks "
-            f"{record['startBlock']}..{record['endBlock']}); --new starts another one")
+            f"{record['startBlock']}..{record['endBlock']}); no transaction. A second scenario needs a new "
+            f"waiting canary and another --scenarios file")
         return 0
     say(f"junk on {args.chain} (chain ID {chain.chain_id}): vault {vault}, owner {owner.address}")
 
     def step(name: str, chain_name: str, log_or_block, tx=None) -> None:
         if isinstance(log_or_block, dict):
-            log_or_block, tx = hex_int(log_or_block["blockNumber"]), log_or_block["transactionHash"]
+            log_or_block, tx = block_of(log_or_block), log_or_block["transactionHash"]
         add_step(record, name, chain_name, log_or_block, tx)
         scenarios.save()
         say(f"  {name}: {chain_name} block {log_or_block}" + (f", tx {tx}" if tx else ""))
 
-    def ledger(account_address: str) -> tuple:
-        return (session.read_ledger(chain, "debt", account_address)[1],
-                session.read_ledger(chain, "reserves", account_address)[1])
+    def expect(what: str, rpc: ops.Rpc, emitter: str, topics: list, from_block: int) -> dict:
+        log = wait_for_event(rpc, emitter, topics, from_block, args.timeout)
+        if log is None:
+            raise OpsError(f"no {what} in {args.timeout} s: run the command again to continue")
+        return log
+
+    def ledger(contract: str) -> tuple:
+        """(debt, reserves) of a contract at the proxy of the chain."""
+        return (session.read_ledger(chain, "debt", contract)[1], session.read_ledger(chain, "reserves", contract)[1])
 
     vault_topic, waiting_topic = topic_of_address(vault), topic_of_address(waiting)
     chain_topic = topic_of_int(chain.chain_id)
+    vault_debt_log = [ledger_abi.topic("BlacklistContract"), vault_topic]
 
     # 1. The canary that waits: `low` 0, so `setPolicy` does not fund it and its first callback is a debt.
     if record["startBlock"] is None:
         require_guardian(session, args.chain, what="the junk scenario")
         target = session.read_vault(args.chain, "selfReserveTarget")
-        policy = Policy(0, max(target // 4, 1), max(target, 1), max(target, 1) + max(target // 4, 1), 2, 3600)
-        ensure_enrolled(args, session, args.chain, waiting, "experiment waiting.callback", policy)
+        high, max_debt = max(target // 4, 1), max(target, 1)
+        ensure_enrolled(args, args.chain, waiting, "experiment waiting.callback",
+                        Policy(0, high, max_debt, max_debt + high, 2, 3600))
         if ledger(waiting) != (0, 0):
             raise OpsError("waiting.callback has a debt or reserves: its first callback must be its first debt")
-        # 2. The start block of the flood, on both chains.
+        # 2. The start block of the flood, on both chains, and the float that the flood must use up.
         record["lasnaStartBlock"] = lasna.rpc.head()
-        record["startBlock"] = chain.rpc.head()
+        record["floatAtStart"] = str(ledger(vault)[1])
         record["junkRequests"] = 0
+        record["startBlock"] = chain.rpc.head()
         step("flood start", args.chain, record["startBlock"])
     flood_start, lasna_start = record["startBlock"], record["lasnaStartBlock"]
 
+    def requests_to(recipient: str) -> list:
+        """The callback requests of the requester for one recipient since the start of the flood. The chain is
+        the journal: a request of a run that stopped is in this list."""
+        if not lasna.rpc.wait_idle(account.address):
+            raise lasna.rpc.not_idle(account.address)
+        return lasna.rpc.logs(lasna.ledger, [request_topic, chain_topic, topic_of_address(requester),
+                                             topic_of_address(recipient)], lasna_start)
+
+    def delivered() -> int:
+        """The junk callbacks that the proxy delivered: each one is a `CallbackFailure(vault)`."""
+        return len(chain.rpc.logs(chain.ledger, [ledger_abi.topic("CallbackFailure"), vault_topic], flood_start))
+
+    def count_requests() -> int:
+        sent = requests_to(vault)
+        if sent and not find_step(record, "first junk request"):
+            step("first junk request", LASNA, sent[0])
+        if sent:
+            record["lastJunkRequest"] = {"block": block_of(sent[-1]), "tx": sent[-1]["transactionHash"]}
+        record["junkRequests"] = len(sent)
+        scenarios.save()
+        return len(sent)
+
     # 2. Junk requests until the proxy reports the debt of the vault. Each one has the selector of
-    #    `reconcile` and a wrong first argument: the vault refuses it, and the proxy charges the float.
-    payload = vault_abi.encode("reconcile", ZERO_ADDRESS, ZERO_ADDRESS, 0)
-    blacklist = [ledger_abi.topic("BlacklistContract"), vault_topic]
-    deadline = time.monotonic() + args.timeout
+    #    `reconcile` and a wrong first argument: the vault refuses it, and the proxy charges the float. The
+    #    next burst goes out only when the proxy delivered each request before it.
     if not find_step(record, "BlacklistContract(vault)"):
-        log = wait_for_event(chain.rpc, chain.ledger, blacklist, flood_start, 0)
+        payload = vault_abi.encode("reconcile", ZERO_ADDRESS, ZERO_ADDRESS, 0)
+        deadline = time.monotonic() + args.timeout
+        log = wait_for_event(chain.rpc, chain.ledger, vault_debt_log, flood_start, 0)
         while log is None:
-            debt, reserves = ledger(vault)
             if time.monotonic() >= deadline:
                 raise OpsError(f"no BlacklistContract(vault) in {args.timeout} s, after {record['junkRequests']} "
                                f"junk requests: run the command again to continue")
-            if debt:
-                # The vault is in debt: the next log query has the debt log.
-                log = wait_for_event(chain.rpc, chain.ledger, blacklist, flood_start, args.pause)
-                continue
-            if record["junkRequests"] >= args.max_junk:
-                raise OpsError(f"the vault is not in debt after {record['junkRequests']} junk requests "
-                               f"(--max-junk); its float is {amount(reserves)}")
-            burst = min(args.burst, args.max_junk - record["junkRequests"])
-            receipts = request_callbacks(session, account, owner.address, requester, args.chain, vault,
-                                         [payload] * burst, JUNK_CALLBACK_GAS)
-            if not record["junkRequests"]:
-                step("first junk request", LASNA, block_of(receipts[0]), receipts[0]["transactionHash"])
-            record["junkRequests"] += burst
-            record["lastJunkRequest"] = {"block": block_of(receipts[-1]), "tx": receipts[-1]["transactionHash"]}
-            scenarios.save()
-            say(f"  junk requests sent: {record['junkRequests']}; float of the vault {amount(reserves)} before "
-                f"this burst")
-            # The deliveries of this burst arrive on the destination chain before the next burst goes out.
-            log = wait_for_event(chain.rpc, chain.ledger, blacklist, flood_start, args.pause)
+            sent, arrived = count_requests(), delivered()
+            debt, reserves = ledger(vault)
+            if not debt and arrived >= sent:
+                if sent >= args.max_junk:
+                    raise OpsError(f"the vault is not in debt after {sent} junk requests (--max-junk); its float "
+                                   f"is {amount(reserves)}")
+                # The flood needs a hub that can hear the debt event of the vault.
+                require_guardian(session, what="the junk scenario")
+                burst = next_burst(args.burst, args.max_junk - sent, arrived, int(record["floatAtStart"]), reserves)
+                request_callbacks(session, account, owner.address, requester, args.chain, vault,
+                                  [payload] * burst, JUNK_CALLBACK_GAS)
+                say(f"  junk requests: {sent} sent and delivered, float of the vault {amount(reserves)}; "
+                    f"{burst} more sent")
+            log = wait_for_event(chain.rpc, chain.ledger, vault_debt_log, flood_start, args.pause)
+        sent = count_requests()
+        # A request that the proxy did not deliver before the debt is rejected with `InDebt` when it arrives.
+        record["undeliveredAtDebt"] = max(sent - delivered(), 0)
         step("BlacklistContract(vault)", args.chain, log)
+        if record["undeliveredAtDebt"]:
+            say(f"  {record['undeliveredAtDebt']} junk request(s) were not delivered before the debt: wait "
+                f"{args.drain} s for the node to reject them")
+            time.sleep(args.drain)
 
     # 3. The hub reports the vault as down. Then the flood has ended.
     if not find_step(record, "VaultDown"):
-        log = wait_for_event(lasna.rpc, hub, [hub_abi.topic("VaultDown"), chain_topic], lasna_start, args.timeout)
-        if log is None:
-            raise OpsError(f"no VaultDown of the hub in {args.timeout} s: run the command again to continue")
+        log = expect("VaultDown of the hub", lasna.rpc, hub, [hub_abi.topic("VaultDown"), chain_topic], lasna_start)
+        record["floodEndBlock"] = chain.rpc.head()  # saved with the step
         step("VaultDown", LASNA, log)
-        record["floodEndBlock"] = chain.rpc.head()
+    if record.get("floodEndBlock") is None:
+        # A record of an earlier version of this step: the debt event of the vault is the end of its float.
+        record["floodEndBlock"] = find_step(record, "BlacklistContract(vault)")["block"]
+    if not find_step(record, "flood end"):
         step("flood end", args.chain, record["floodEndBlock"])
 
     # 4. A callback to the canary that waits: its debt event comes while the vault is down.
     if not find_step(record, "Pending"):
-        debt_topics = [ledger_abi.topic("BlacklistContract"), waiting_topic]
-        log = wait_for_event(chain.rpc, chain.ledger, debt_topics, flood_start, 0)
-        for attempt in range(1, args.max_pongs + 1):
-            if log is not None:
-                break
-            receipts = request_callbacks(session, account, owner.address, requester, args.chain, waiting,
-                                         [callback_abi.encode("pong", ZERO_ADDRESS, attempt)], ops.CANARY_CALLBACK_GAS)
-            step(f"pong request {attempt}", LASNA, block_of(receipts[0]), receipts[0]["transactionHash"])
-            log = wait_for_event(chain.rpc, chain.ledger, debt_topics, flood_start, args.timeout / args.max_pongs)
-        if log is None:
-            raise OpsError(f"waiting.callback is not in debt after {args.max_pongs} pong requests")
+        waiting_debt_log = [ledger_abi.topic("BlacklistContract"), waiting_topic]
+        log = wait_for_event(chain.rpc, chain.ledger, waiting_debt_log, flood_start, 0)
+        waited = False
+        while log is None:
+            pongs = len(requests_to(waiting))
+            if pongs and not waited:
+                # A request of this run or of a run that stopped: wait for its delivery before the next one.
+                log = wait_for_event(chain.rpc, chain.ledger, waiting_debt_log, flood_start,
+                                     args.timeout / args.max_pongs)
+                waited = True
+                continue
+            if pongs >= args.max_pongs:
+                raise OpsError(f"waiting.callback is not in debt after {pongs} pong requests")
+            require_guardian(session, what="the junk scenario")
+            request_callbacks(session, account, owner.address, requester, args.chain, waiting,
+                              [callback_abi.encode("pong", ZERO_ADDRESS, pongs + 1)], ops.CANARY_CALLBACK_GAS)
+            waited = False
+        # Each request is a step, also the ones of a run that stopped: the chain has them.
+        for index, request in enumerate(requests_to(waiting), 1):
+            if not find_step(record, f"pong request {index}"):
+                step(f"pong request {index}", LASNA, request)
+        # The node delivered a request that the driver sent after each junk request.
         step("BlacklistContract(waiting.callback)", args.chain, log)
-        log = wait_for_event(lasna.rpc, hub, [hub_abi.topic("Pending"), chain_topic, waiting_topic], lasna_start,
-                             args.timeout)
-        if log is None:
-            raise OpsError(f"no Pending of the hub for waiting.callback in {args.timeout} s: run the command "
-                           f"again to continue")
-        step("Pending", LASNA, log)
+        step("Pending", LASNA, expect("Pending of the hub for waiting.callback", lasna.rpc, hub,
+                                      [hub_abi.topic("Pending"), chain_topic, waiting_topic], lasna_start))
 
-    # 5. The recovery command of unit 6, then the catch-up: `VaultUp` with 0 remaining and the rescue.
+    # 5. The recovery command of unit 6, then the catch-up: `VaultUp` with 0 remaining, and the rescue of the
+    #    canary that waits in one of the sweeps of this recovery.
     if not find_step(record, "VaultUp"):
-        recover_from = lasna.rpc.head()
         run_ops(args, "recover", "--chain", args.chain)
         recoveries = Manifest.load(args.manifest).vaults[args.chain].get("recoveries") or []
-        deposit = next((r for r in reversed(recoveries) if r.get("deposit") and (r.get("depositBlock") or 0)
-                        >= flood_start), None)
+        deposit = next((r for r in reversed(recoveries)
+                        if r.get("deposit") and (r.get("depositBlock") or 0) >= flood_start), None)
         if deposit is None:
             raise OpsError("the manifest has no recovery deposit after the start of the flood")
         step("recovery deposit", args.chain, deposit["depositBlock"], deposit["deposit"])
-        ups = [(log, hub_abi.decode_event("VaultUp", log))
-               for log in lasna.rpc.logs(hub, [hub_abi.topic("VaultUp"), chain_topic], min(recover_from, lasna_start))]
-        done = next(((log, event) for log, event in ups if event["remaining"] == 0
-                     and hex_int(log["blockNumber"]) >= lasna_start), None)
-        if done is None:
-            raise OpsError("the hub emitted no VaultUp with 0 remaining after the recovery")
-        record["requestId"] = str(done[1]["requestId"])
-        step("VaultUp", LASNA, done[0])
-    if not find_step(record, "Result(waiting.callback)"):
-        log = wait_for_event(chain.rpc, vault, [vault_abi.topic("Result"), topic_of_int(int(record["requestId"])),
-                                                waiting_topic], flood_start, args.timeout)
-        if log is None:
-            raise OpsError(f"no Result of the vault for waiting.callback with requestId {record['requestId']} in "
-                           f"{args.timeout} s: run the command again to continue")
-        event = vault_abi.decode_event("Result", log)
-        record["result"] = {"outcome": OUTCOMES[event["outcome"]], "paid": str(event["paid"])}
-        step("Result(waiting.callback)", args.chain, log)
-        if record["result"]["outcome"] != "Rescued":
-            raise OpsError(f"the Result of waiting.callback has outcome {record['result']['outcome']}, not Rescued")
+    # The logs from the start of the flood: a run that continues finds the `VaultUp` of the run before it.
+    ups = [(log, hub_abi.decode_event("VaultUp", log))
+           for log in lasna.rpc.logs(hub, [hub_abi.topic("VaultUp"), chain_topic], lasna_start)]
+    last = next((log for log, event in ups if event["remaining"] == 0), None)
+    if last is None:
+        raise OpsError("the hub emitted no VaultUp with 0 remaining after the recovery")
+    if not find_step(record, "VaultUp"):
+        step("VaultUp", LASNA, last)
 
-    chain.rpc.floor = max(chain.rpc.floor, find_step(record, "Result(waiting.callback)")["block"])
+    # The result is checked in each run: a result that is not a rescue never becomes a complete record.
+    request_ids = {event["requestId"] for _, event in ups}
+    results_filter = [vault_abi.topic("Result"), None, waiting_topic]
+    deadline = time.monotonic() + args.timeout
+    while True:
+        results = [(log, vault_abi.decode_event("Result", log))
+                   for log in chain.rpc.logs(vault, results_filter, flood_start)]
+        found = rescue_of(results, request_ids)
+        if found is not None or time.monotonic() >= deadline:
+            break
+        time.sleep(ops.POLL_SECONDS)
+    if found is None:
+        raise OpsError(f"no Result of the vault for waiting.callback from a sweep of this recovery in "
+                       f"{args.timeout} s: run the command again to continue")
+    log, event = found
+    outcome = OUTCOMES[event["outcome"]]
+    if outcome != "Rescued":
+        raise OpsError(f"the Result of waiting.callback (tx {log['transactionHash']}) has outcome {outcome}, not "
+                       f"Rescued: the scenario does not show the waiting rescue")
+    record["requestId"] = str(event["id"])
+    record["result"] = {"outcome": outcome, "paid": str(event["paid"])}
+    if not find_step(record, "Result(waiting.callback)"):
+        step("Result(waiting.callback)", args.chain, log)
+
+    chain.rpc.floor = max(chain.rpc.floor, block_of(log))
     debt, _ = ledger(waiting)
     vault_debt, _ = ledger(vault)
     if debt or vault_debt:
         raise OpsError(f"after the recovery: debt of waiting.callback {debt}, debt of the vault {vault_debt}")
+    # A junk callback that arrives after the recovery takes its fee from the new float. The record has the
+    # number, so that the owner knows it.
+    late = chain.rpc.logs(chain.ledger, [ledger_abi.topic("CallbackFailure"), vault_topic],
+                          find_step(record, "recovery deposit")["block"])
+    record["junkAfterRecovery"] = len(late)
+    if late:
+        say(f"  WARN {len(late)} junk callback(s) reached the vault after the recovery deposit (first tx "
+            f"{late[0]['transactionHash']}): the new float paid them. Check the vault with "
+            f"`python -m lifeline.ops status`")
     record["lasnaEndBlock"] = lasna.rpc.head()
     record["endBlock"] = chain.rpc.head()
     scenarios.save()
@@ -931,7 +1016,8 @@ DEFINITIONS = {
         "ledger took from the guardian: its reserves minus its debt at block `from - 1`, minus the same value at "
         "`to`, plus its `SelfCare` deposits, plus each deposit that cleared a debt of it (the ledger state at "
         "the block of its `WhitelistContract` log against the block before), and for the poller plus its fee "
-        "float of the deployment."
+        "float of the deployment; a fee that the ledger took in the block of such a deposit is not in the "
+        "figure, and `feeDetail.exact` is false if a log shows work of the guardian in such a block."
     ),
     "capitalLocked": (
         "At `to`: the reserves of the two contracts of the arm, and the funds of the guardian (arm B: the "
@@ -956,10 +1042,6 @@ FEE_SCOPES = {
     "C": ("the hub and the vault serve each enrolled target of the deployment and each scenario; the figures "
           "are their whole fee consumption in `from..to`, and no share is estimated"),
 }
-
-
-class MeasureError(Exception):
-    """The measurement cannot run with this manifest, these heights or this scenario file."""
 
 
 class Measurement:
@@ -1031,9 +1113,19 @@ class Measurement:
     def numbers(self, chain: str, address: str, abi: ops.Abi, event: str) -> set:
         return {int(log["topics"][1], 16) for log in self.logs(chain, address, [abi.topic(event)])}
 
+    def total(self, chain: str, address: str, abi: ops.Abi, event: str, field: str, *indexed) -> int:
+        """The sum of one parameter over each log of one event."""
+        return sum(values[field] for _, values in self.decoded(chain, address, abi, event, *indexed))
+
     def consumption(self, chain: str, account: str, label: str, abi: ops.Abi = None, first_deposit=0) -> dict:
         """What the ledger of a chain took from a guardian in `from..to`. No log has the amount of a fee, so
-        the figure comes from the ledger state and from the deposits that the chain data shows."""
+        the figure comes from the ledger state and from the deposits that the chain data shows.
+
+        A deposit of another account emits no log with its amount. The one that clears a debt emits
+        `WhitelistContract`: the ledger state at that block against the block before gives the amount, if
+        the ledger took no fee from the guardian in that block. A fee of that block makes the deposit and
+        the figure too low by that fee. `exact` is false if a log shows work of the guardian in such a
+        block: a log of the guardian itself, or a `CallbackFailure` for it."""
         start, _ = self.span(chain)
 
         def net(block=None) -> int:
@@ -1042,17 +1134,19 @@ class Measurement:
 
         opening, closing = net(start - 1), net()
         self_care = self.decoded(chain, account, abi, "SelfCare") if abi is not None else []
+        cleared = {int(log["blockNumber"], 16)
+                   for log in self.logs(chain, self.ledger(chain), [WHITELIST, word(account)])}
         deposits = first_deposit
-        # A deposit of another account emits no log with its amount. The one that clears a debt emits
-        # `WhitelistContract`: the ledger state at that block against the block before gives the amount.
-        cleared = self.logs(chain, self.ledger(chain), [WHITELIST, word(account)])
-        for block in sorted({int(log["blockNumber"], 16) for log in cleared}):
+        for block in sorted(cleared):
             same_block = sum(event["added"] for number, event in self_care if number == block)
             deposits += max(net(block) - net(block - 1) - same_block, 0)
+        work = self.logs(chain, account, []) + self.logs(
+            chain, self.ledger(chain), [self.proxy_abi.topic("CallbackFailure"), word(account)])
         added = sum(event["added"] for _, event in self_care)
         return {
             "opening": str(opening), "closing": str(closing), "selfCare": str(added), "deposits": str(deposits),
             "fees": str(opening - closing + added + deposits),
+            "exact": not any(int(log["blockNumber"], 16) in cleared for log in work),
         }
 
     def arm(self, arm: str) -> dict:
@@ -1068,36 +1162,32 @@ class Measurement:
             "reactive.reserves": str(self.ledger_state(LASNA, reactive, f"arm{arm}.reactive")[0]),
             "callback.reserves": str(self.ledger_state(dest, callback, f"arm{arm}.callback")[0]),
         }
-        principal, fees, detail, guardian_blocks, shared = {LASNA: 0, dest: 0}, {LASNA: "0", dest: "0"}, {}, {}, []
+        principal, detail, guardian_blocks, shared = {LASNA: 0, dest: 0}, {}, {}, []
+
+        def holder(key: str, chain: str, address: str, label: str) -> None:
+            capital[f"{key}.balance"] = str(self.balance(chain, address, label))
+            capital[f"{key}.reserves"] = str(self.ledger_state(chain, address, label)[0])
 
         if arm == "B":
             poller = self.fixtures["armB.poller"]["address"]
-            paid = self.decoded(LASNA, poller, self.poller_abi, "Paid", word(reactive))
-            principal[LASNA] = sum(event["amount"] for _, event in paid)
+            principal[LASNA] = self.total(LASNA, poller, self.poller_abi, "Paid", "amount", word(reactive))
             first = int(self.snapshot.call(self.readers[LASNA], poller, "0x" + self.poller_abi.encode("feeFloat").hex(),
                                            "feeFloat of the poller"), 16)
             detail[LASNA] = self.consumption(LASNA, poller, "armB.poller", first_deposit=first)
             guardian_blocks[LASNA] = self.debt_blocks(LASNA, poller)[0]
-            capital["poller.balance"] = str(self.balance(LASNA, poller, "armB.poller"))
-            capital["poller.reserves"] = str(self.ledger_state(LASNA, poller, "armB.poller")[0])
+            holder("poller", LASNA, poller, "armB.poller")
         elif arm == "C":
             hub, vault = self.hub, self.vault(dest)
-            target = word(reactive)
-            principal[LASNA] = sum(event["paid"] for _, event in self.decoded(LASNA, hub, self.hub_abi, "Rescued", target))
-            principal[LASNA] += sum(event["paid"]
-                                    for _, event in self.decoded(LASNA, hub, self.hub_abi, "ToppedUp", target))
-            principal[dest] = sum(event["paid"]
-                                  for _, event in self.decoded(dest, vault, self.vault_abi, "Result", None, word(callback)))
+            principal[LASNA] = (self.total(LASNA, hub, self.hub_abi, "Rescued", "paid", word(reactive))
+                                + self.total(LASNA, hub, self.hub_abi, "ToppedUp", "paid", word(reactive)))
+            principal[dest] = self.total(dest, vault, self.vault_abi, "Result", "paid", None, word(callback))
             detail[LASNA] = self.consumption(LASNA, hub, "hub", self.hub_abi)
             detail[dest] = self.consumption(dest, vault, "vault", self.vault_abi)
             guardian_blocks = {LASNA: self.debt_blocks(LASNA, hub)[0], dest: self.debt_blocks(dest, vault)[0]}
-            capital["hub.balance"] = str(self.balance(LASNA, hub, "hub"))
-            capital["hub.reserves"] = str(self.ledger_state(LASNA, hub, "hub")[0])
-            capital["vault.balance"] = str(self.balance(dest, vault, "vault"))
-            capital["vault.reserves"] = str(self.ledger_state(dest, vault, "vault")[0])
+            holder("hub", LASNA, hub, "hub")
+            holder("vault", dest, vault, "vault")
             shared = ["hub.balance", "hub.reserves", "vault.balance", "vault.reserves"]
-        for chain, parts in detail.items():
-            fees[chain] = parts["fees"]
+        fees = {LASNA: "0", dest: "0", **{chain: parts["fees"] for chain, parts in detail.items()}}
 
         return {
             "guardian": GUARDIANS[arm],
@@ -1221,22 +1311,15 @@ def render_table(data: dict) -> str:
 
 def _flood_of(path: Path):
     """The block range of the junk flood from the scenario file, or None if no flood is recorded."""
-    if not path.exists():
-        return None
-    try:
-        junk = json.loads(path.read_text()).get("junk") or {}
-    except (OSError, ValueError) as error:
-        raise MeasureError(f"{path}: {error}") from None
+    junk = Scenarios(path).data.get("junk") or {}
     if junk.get("startBlock") is None or junk.get("floodEndBlock") is None:
         return None
     return {"chain": junk["chain"], "startBlock": junk["startBlock"], "endBlock": junk["floodEndBlock"]}
 
 
-def _guard_local_outputs(args, rpc: dict) -> None:
+def _guard_local_outputs(args, urls: list) -> None:
     """A fork has the chain IDs of the live chains and other logs. A run against a local node must not write
-    the cache or the evidence of the live run."""
-    import ipaddress
-    import urllib.parse
+    the cache or the evidence of the live run. `urls`: each RPC URL that the run uses."""
 
     def is_local(url: str) -> bool:
         host = urllib.parse.urlsplit(url).hostname or ""
@@ -1245,13 +1328,13 @@ def _guard_local_outputs(args, rpc: dict) -> None:
         except ValueError:
             return False
 
-    if not any(is_local(url) for urls in rpc.values() for url in urls):
+    if not any(is_local(url) for url in urls):
         return
     defaults = [flag for flag, value, default in (("--cache", args.cache, ".cache/chain"),
                                                   ("--out", args.out, str(DEFAULT_OUT)))
                 if Path(value).resolve() == Path(default).resolve()]
     if defaults:
-        raise MeasureError(f"an RPC is a local node: a dry run needs its own {' and '.join(defaults)}")
+        raise OpsError(f"an RPC is a local node: a dry run needs its own {' and '.join(defaults)}")
 
 
 def cmd_measure(args) -> int:
@@ -1261,21 +1344,23 @@ def cmd_measure(args) -> int:
         absent = [name for name, _, _ in FIXTURES if name.startswith("arm")
                   and not (isinstance(fixtures.get(name), dict) and fixtures[name].get("address"))]
         if absent:
-            raise MeasureError(f"the manifest {args.manifest} has no fixtures entry {', '.join(absent)}")
+            raise OpsError(f"the manifest {args.manifest} has no fixtures entry {', '.join(absent)}")
         if not manifest["contracts"].get("hub"):
-            raise MeasureError(f"the manifest {args.manifest} has no hub")
+            raise OpsError(f"the manifest {args.manifest} has no hub")
         arm_chains = {fixtures[f"arm{arm}.callback"]["chain"] for arm in ARMS}
         if len(arm_chains) != 1:
-            raise MeasureError("the callback canaries of the three arms are not on one chain")
+            raise OpsError("the callback canaries of the three arms are not on one chain")
         names = [LASNA, *arm_chains]
         config = {"chains": {name: manifest["chains"][name] for name in names}}
         rpc = parse_reader_rpc(args.rpc)
         unknown = sorted(set(rpc) - set(manifest["chains"]))
         if unknown:
-            raise MeasureError(f"--rpc names a chain that the manifest does not have: {', '.join(unknown)}")
+            raise OpsError(f"--rpc names a chain that the manifest does not have: {', '.join(unknown)}")
         # A chain of the manifest with no fixture is not read.
         rpc = {name: urls for name, urls in rpc.items() if name in names}
-        _guard_local_outputs(args, rpc)
+        # The URLs of the run: of `--rpc`, or of the manifest for a chain with no `--rpc`.
+        _guard_local_outputs(args, [url for name in names
+                                    for url in rpc.get(name) or manifest["chains"][name].get("rpc") or []])
         readers = open_readers(config, rpc, args.cache, retries=args.retries, backoff=args.backoff)
         lowest = {name: min(entry["deployBlock"] for entry in fixtures.values()
                             if isinstance(entry, dict) and entry.get("chain") == name and entry.get("deployBlock"))
@@ -1292,7 +1377,7 @@ def cmd_measure(args) -> int:
                 raise SnapshotError(f"{name}: the head block {snapshot.chains[name]['to']} is before the first "
                                     f"fixture block {snapshot.chains[name]['from']}")
         data = Measurement(manifest, readers, snapshot).run()
-    except (ConfigError, ChainMismatch, SnapshotError, MeasureError, OpsError, KeyError) as error:
+    except (ConfigError, ChainMismatch, SnapshotError, OpsError, KeyError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     except (ReaderError, StateUnavailable, CallReverted) as error:
@@ -1392,12 +1477,13 @@ def build_parser() -> argparse.ArgumentParser:
     junk.add_argument("--chain", required=True, metavar="<name>")
     junk.add_argument("--max-junk", type=int, default=1000, metavar="<n>", help="count limit of the junk requests")
     junk.add_argument("--burst", type=int, default=10, metavar="<n>", help="junk requests between two checks")
-    junk.add_argument("--pause", type=float, default=8.0, metavar="<seconds>",
-                      help="wait for the debt log of the vault after each burst")
+    junk.add_argument("--pause", type=float, default=5.0, metavar="<seconds>",
+                      help="time between two reads of the destination chain while a burst is on its way")
+    junk.add_argument("--drain", type=float, default=60.0, metavar="<seconds>",
+                      help="wait after the debt of the vault if a junk request was not delivered before it")
     junk.add_argument("--max-pongs", type=int, default=3, metavar="<n>",
                       help="count limit of the callbacks to waiting.callback")
     junk.add_argument("--timeout", type=float, default=900.0, metavar="<seconds>", help="longest wait of one step")
-    junk.add_argument("--new", action="store_true", help="start a new scenario record")
     junk.add_argument("--allow-other-targets", action="store_true",
                       help="run although the vault serves targets that are not fixtures")
     junk.set_defaults(run=cmd_junk)

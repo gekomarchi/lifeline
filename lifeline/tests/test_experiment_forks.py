@@ -489,6 +489,50 @@ def test_quarantine_cuts_the_looping_canary_off_after_max_rescues(net):
 # ----------------------------------------------------------------------------------------------
 
 
+def junk_requests(net) -> int:
+    """The callback requests of the requester to the vault of Base Sepolia: an independent count."""
+    topic = ops.load_artifact("ISystemContractCallbacks").abi.topic("CallbackRequest")
+    return len(net.rpcs[LASNA].logs(net.ledger[LASNA], [topic, ops.topic_of_int(84532),
+                                                       ops.topic_of_address(net.address("junkRequester")),
+                                                       ops.topic_of_address(net.vault(BASE))], net.origin[LASNA]))
+
+
+def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net):
+    """The limit of the junk requests holds over runs that stop: the chain is the journal of the requests."""
+    short = ["--burst", "8", "--pause", "1", "--timeout", "60"]
+    with net.watch():
+        result = net.experiment("junk", "--chain", BASE, "--max-junk", "3", *short)
+        assert result.returncode == 1 and "not in debt after 3 junk requests" in result.stderr, result.stdout
+        record = net.scenario("junk")
+        assert record["junkRequests"] == 3 == junk_requests(net)
+        assert step_names(record) == ["flood start", "first junk request"] and record["endBlock"] is None
+        # The first request goes out alone: the fee of one delivery is not known before it.
+        assert "; 1 more sent" in result.stdout
+
+        # A run that continues checks the hub again: a paused hub cannot report the vault as down.
+        ops.transact(net.rpcs[LASNA], net.account, net.hub, net.hub_abi.encode("pause"), abi=net.hub_abi)
+        try:
+            blocks = net.blocks()
+            result = net.experiment("junk", "--chain", BASE, "--max-junk", "50", *short)
+            assert result.returncode == 1 and "the hub is paused" in result.stderr, result.stdout
+            assert net.blocks() == blocks and junk_requests(net) == 3
+        finally:
+            ops.transact(net.rpcs[LASNA], net.account, net.hub, net.hub_abi.encode("unpause"), abi=net.hub_abi)
+
+        # Requests of a run that stopped before it wrote its record: 2 more are on the chain.
+        arguments = type("Arguments", (), {"manifest": str(net.manifest), "rpc": [
+            f"{name}={net.proxy.url(name)}" for name in net.anvils]})()
+        payload = net.vault_abi.encode("reconcile", experiment.ZERO_ADDRESS, experiment.ZERO_ADDRESS, 0)
+        experiment.request_callbacks(ops.Session(arguments, owner=False), net.fixture, net.account.address,
+                                     net.address("junkRequester"), BASE, net.vault(BASE), [payload] * 2,
+                                     experiment.JUNK_CALLBACK_GAS)
+        assert junk_requests(net) == 5 and net.scenario("junk")["junkRequests"] == 3
+        result = net.experiment("junk", "--chain", BASE, "--max-junk", "5", *short)
+        assert result.returncode == 1 and "not in debt after 5 junk requests" in result.stderr, result.stdout
+        assert junk_requests(net) == 5 == net.scenario("junk")["junkRequests"], "a request above the limit"
+    assert net.debt(BASE, net.vault(BASE)) == 0
+
+
 def test_junk_takes_the_vault_offline_and_recover_does_the_waiting_rescue(net):
     vault, waiting = net.vault(BASE), net.address("waiting.callback")
     balance = net.rpcs[BASE].balance(vault)
@@ -515,7 +559,12 @@ def test_junk_takes_the_vault_offline_and_recover_does_the_waiting_rescue(net):
     assert record["chain"] == BASE and record["addresses"] == {
         "vault": vault, "hub": net.hub, "junkRequester": net.address("junkRequester"), "waiting.callback": waiting}
     assert record["startBlock"] < steps["BlacklistContract(vault)"]["block"] <= record["floodEndBlock"] < record["endBlock"]
-    assert 0 < record["junkRequests"] <= 1000
+    # Each request is in the count, and the request that made the debt was the last one that went out.
+    assert 5 < record["junkRequests"] == junk_requests(net) <= 1000
+    assert record["undeliveredAtDebt"] == 0 and record["junkAfterRecovery"] == 0
+    assert len(net.rpcs[BASE].logs(net.ledger[BASE], [net.ledger_abi.topic("CallbackFailure"),
+                                                       ops.topic_of_address(vault)], net.origin[BASE])) \
+        == record["junkRequests"]
 
     # Each recorded hash is the transaction of its event.
     def has(name, chain, emitter, abi, event, *indexed):
@@ -559,7 +608,7 @@ def test_junk_takes_the_vault_offline_and_recover_does_the_waiting_rescue(net):
     assert junk["balanceStart"] == junk["balanceEnd"] == str(balance)
     assert junk["resultPaid"] == "0" and junk["selfCareAdded"] == "0"
     assert int(junk["reservesStart"]) > 0 and junk["reservesEnd"] == "0" and int(junk["debtEnd"]) > 0
-    assert 0 < junk["callbackFailures"] <= record["junkRequests"]
+    assert junk["callbackFailures"] == record["junkRequests"]
     assert "unexplainedBalanceChange" in (out / "data.json").read_text()
     assert f"| Balance change that the payments do not explain | 0 |" in (out / "table.md").read_text()
     heights = json.loads((out / "heights.json").read_text())
@@ -578,6 +627,32 @@ def test_junk_takes_the_vault_offline_and_recover_does_the_waiting_rescue(net):
     blocks = net.blocks()
     result = net.experiment("junk", "--chain", BASE)
     assert result.returncode == 0 and "complete junk scenario" in result.stdout and net.blocks() == blocks
+
+    # As if the run had stopped after it saw `VaultDown`, with a record that has no end of the flood: the
+    # next run builds the same record from the chain, sends nothing, and the flood evidence stays.
+    saved = net.scenarios.read_text()
+    stopped = json.loads(saved)
+    cut = step_names(record).index("VaultDown") + 1
+    stopped["junk"]["steps"] = stopped["junk"]["steps"][:cut]
+    for key in ("floodEndBlock", "endBlock", "lasnaEndBlock", "requestId", "result", "junkAfterRecovery"):
+        stopped["junk"].pop(key)
+    stopped["junk"]["endBlock"] = None
+    net.scenarios.write_text(json.dumps(stopped))
+    result = net.experiment("junk", "--chain", BASE, "--timeout", "30")
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert net.blocks() == blocks, "the run that continues sent a transaction"
+    rebuilt = net.scenario("junk")
+    assert rebuilt["floodEndBlock"] == steps["BlacklistContract(vault)"]["block"]
+    assert step_names(rebuilt) == order and rebuilt["result"] == record["result"]
+    assert [(entry["step"], entry["tx"]) for entry in rebuilt["steps"]] == \
+        [(entry["step"], entry["tx"]) for entry in record["steps"]]
+    result = net.measure(net.dir / "out-rebuilt")
+    assert result.returncode == 0, result.stderr + result.stdout
+    again = json.loads((net.dir / "out-rebuilt" / "data.json").read_text())["junk"]
+    assert again["status"] == "ok" and again["unexplainedBalanceChange"] == "0"
+    assert (again["startBlock"], again["endBlock"]) == (record["startBlock"], rebuilt["floodEndBlock"])
+    assert again["reservesEnd"] == "0" and int(again["debtEnd"]) > 0
+    net.scenarios.write_text(saved)
 
 
 # ----------------------------------------------------------------------------------------------

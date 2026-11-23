@@ -247,10 +247,10 @@ def test_measure_gives_each_metric_of_each_arm_from_the_chain_data(network, caps
     assert c["guardianCost"]["principal"] == {LASNA: "150", BASE: "55"}, "Rescued 110 + ToppedUp 40; Result 55"
     # Hub: reserves 200 at block 999 and 150 at `to`, self-care 30 + 20 in the range.
     assert c["guardianCost"]["feeDetail"][LASNA] == {
-        "opening": "200", "closing": "150", "selfCare": "50", "deposits": "0", "fees": "100"}
+        "opening": "200", "closing": "150", "selfCare": "50", "deposits": "0", "fees": "100", "exact": True}
     # Vault: reserves 100 at both ends, self-care 5 + 3, and the deposit of 108 that cleared the debt of 8.
     assert c["guardianCost"]["feeDetail"][BASE] == {
-        "opening": "100", "closing": "100", "selfCare": "8", "deposits": "108", "fees": "116"}
+        "opening": "100", "closing": "100", "selfCare": "8", "deposits": "108", "fees": "116", "exact": True}
     assert c["guardianCost"]["fees"] == {LASNA: "100", BASE: "116"}
     assert "no share is estimated" in c["guardianCost"]["feeScope"]
     assert (a["guardianDowntimeBlocks"], b["guardianDowntimeBlocks"], c["guardianDowntimeBlocks"]) == \
@@ -360,6 +360,49 @@ def test_measure_without_a_flood_and_with_a_flood_outside_the_heights(network):
 
 
 @needs_build
+def test_a_fee_in_the_block_of_a_recovery_deposit_makes_the_fee_figure_not_exact(network):
+    """The ledger state gives the deposit that cleared a debt only if the ledger took no fee in that block.
+    A sweep in the block of the deposit: the deposit of 108 and a fee of 7 look like a deposit of 101."""
+    network.event(BASE, VAULT, "LifelineVault", "Result", 2000, [10, KC], [2, 0])
+    network.ledger(BASE, VAULT, reserves=[(400, 100), (1400, 40), (1500, 0), (2000, 93)], debt=[(1500, 8), (2000, 0)])
+    assert network.measure("out") == 0
+    cost = network.data("out")["arms"]["C"]["guardianCost"]
+    # 100 - 93 + self-care 8 + deposit 101: the fee of 7 in block 2000 is not in the figure.
+    assert cost["feeDetail"][BASE] == {"opening": "100", "closing": "93", "selfCare": "8", "deposits": "101",
+                                       "fees": "116", "exact": False}
+    assert cost["feeDetail"][LASNA]["exact"] is True
+    assert "`feeDetail.exact` is false" in network.data("out")["definitions"]["guardianCost"]
+
+
+def test_the_bursts_of_the_flood_get_smaller_when_the_float_is_near_its_end():
+    burst = experiment.next_burst
+    # The fee of a delivery is not known, or self-care refilled the float: one request.
+    assert burst(10, 1000, 0, 2000, 2000) == 1
+    assert burst(10, 1000, 4, 2000, 2100) == 1
+    # 4 deliveries took 400: the float of 1600 covers 16 more. A burst is at most half of them.
+    assert burst(10, 1000, 4, 2000, 1600) == 8
+    assert burst(5, 1000, 4, 2000, 1600) == 5
+    assert burst(10, 3, 4, 2000, 1600) == 3
+    # Near the end of the float the requests go out one at a time.
+    assert [burst(10, 1000, 17, 2000, 2000 - 100 * 17), burst(10, 1000, 18, 2000, 200),
+            burst(10, 1000, 19, 2000, 100), burst(10, 1000, 20, 2000, 0)] == [1, 1, 1, 1]
+    # The limit is used: nothing more goes out.
+    assert burst(10, 0, 4, 2000, 1600) == 0 and burst(10, 0, 0, 2000, 2000) == 0
+
+
+def test_the_waiting_rescue_can_be_in_a_sweep_that_is_not_the_last_one():
+    def result(request_id, outcome):
+        return {"transactionHash": hex(request_id)}, {"id": request_id, "outcome": outcome, "paid": 5}
+
+    earlier, first_sweep, last_sweep = result(7, 0), result(21, 0), result(22, 2)
+    # Two catch-up sweeps (21 and 22): the canary that waits was in the first one.
+    assert experiment.rescue_of([earlier, first_sweep, last_sweep], {21, 22}) == first_sweep
+    # A result of another request (the gauge, a relay before the flood) is not the rescue of this recovery.
+    assert experiment.rescue_of([earlier], {21, 22}) is None
+    assert experiment.rescue_of([], {21}) is None
+
+
+@needs_build
 def test_measure_refuses_a_manifest_with_no_arm_and_writes_no_file(network, capsys):
     manifest = network.manifest(lambda data: data["fixtures"].pop("armB.poller"))
     assert network.measure("out", manifest=manifest) == 2
@@ -380,6 +423,23 @@ def test_measure_refuses_a_manifest_with_no_arm_and_writes_no_file(network, caps
             "--rpc", f"base-sepolia={network.node.url(BASE)}"]
     assert experiment.main(argv) == 2
     assert "a dry run needs its own --cache and --out" in capsys.readouterr().err
+
+    # The same holds for a local URL that comes from the manifest, with no `--rpc`.
+    def local_urls(data):
+        for name in data["chains"]:
+            data["chains"][name]["rpc"] = [network.node.url(name)]
+
+    for chain in network.chains.values():
+        chain.requests.clear()
+    assert experiment.main(["measure", "--manifest", str(network.manifest(local_urls))]) == 2
+    assert "a dry run needs its own --cache and --out" in capsys.readouterr().err
+    assert all(chain.requests == [] for chain in network.chains.values()), "a request before the refusal"
+
+    # A scenario file that is not an object.
+    scenarios = network.tmp_path / "list.json"
+    scenarios.write_text("[]")
+    assert network.measure("out", scenarios=scenarios) == 2
+    assert "is not a JSON object" in capsys.readouterr().err
 
 
 # ----------------------------------------------------------------------------------------------
@@ -419,7 +479,6 @@ def test_the_fixture_names_and_fields_are_the_ones_of_the_manifest_contract():
     assert [name for name, _, _ in experiment.FIXTURES] == [
         "armA.reactive", "armA.callback", "armB.reactive", "armB.callback", "armB.poller", "armC.reactive",
         "armC.callback", "looping", "waiting.callback", "junkRequester"]
-    assert experiment.FIXTURE_FIELDS == ("contract", "chain", "chainId", "address", "deployBlock", "deployTx")
     assert experiment.FIXTURE_KEY_VARIABLE == "LIFELINE_FIXTURE_KEY"
     assert experiment.DEFAULT_OUT == ops.ROOT / "evidence" / "experiment"
 
@@ -445,7 +504,6 @@ def test_the_scenario_file_keeps_each_record_and_refuses_other_fixtures(tmp_path
 
     with pytest.raises(ops.OpsError, match="other fixtures"):
         again.section("load", LASNA, {"armA.reactive": RB})
-    assert again.section("load", LASNA, {"armA.reactive": RB}, new=True)["steps"] == []
 
 
 def test_each_driver_stops_before_a_request_without_its_key_or_its_fixtures(tmp_path, monkeypatch, capsys):
