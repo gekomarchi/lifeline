@@ -373,9 +373,15 @@ def test_load_uses_up_the_start_reserves_and_measure_builds_the_table(net):
 
 
 def test_measure_refuses_the_cache_and_the_evidence_of_the_live_run_for_a_local_node(net):
+    evidence = ops.ROOT / "evidence" / "experiment"
+
+    def files() -> dict:
+        return {path.name: path.read_bytes() for path in evidence.glob("*")} if evidence.exists() else {}
+
+    before = files()
     result = net.experiment("measure", keys=False)
     assert result.returncode == 2 and "a dry run needs its own --cache and --out" in result.stderr
-    assert not (ops.ROOT / "evidence" / "experiment" / "data.json").exists()
+    assert files() == before, "the dry run changed the evidence of the live run"
 
 
 # ----------------------------------------------------------------------------------------------
@@ -499,12 +505,22 @@ def test_quarantine_cuts_the_looping_canary_off_after_max_rescues(net):
 # ----------------------------------------------------------------------------------------------
 
 
+def junk_request_logs(net) -> list:
+    topic = ops.load_artifact("ISystemContractCallbacks").abi.topic("CallbackRequest")
+    return net.rpcs[LASNA].logs(net.ledger[LASNA], [topic, ops.topic_of_int(84532),
+                                                    ops.topic_of_address(net.address("junkRequester")),
+                                                    ops.topic_of_address(net.vault(BASE))], net.origin[LASNA])
+
+
 def junk_requests(net) -> int:
     """The callback requests of the requester to the vault of Base Sepolia: an independent count."""
-    topic = ops.load_artifact("ISystemContractCallbacks").abi.topic("CallbackRequest")
-    return len(net.rpcs[LASNA].logs(net.ledger[LASNA], [topic, ops.topic_of_int(84532),
-                                                       ops.topic_of_address(net.address("junkRequester")),
-                                                       ops.topic_of_address(net.vault(BASE))], net.origin[LASNA]))
+    return len(junk_request_logs(net))
+
+
+def junk_numbers(net, tag: int) -> list:
+    """The number of each junk request on the chain, in the order of the requests."""
+    return [experiment.junk_number(net.vault_abi, tag, experiment.requested_payload(log))
+            for log in junk_request_logs(net)]
 
 
 def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net):
@@ -529,10 +545,11 @@ def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net):
         finally:
             ops.transact(net.rpcs[LASNA], net.account, net.hub, net.hub_abi.encode("unpause"), abi=net.hub_abi)
 
-        # Requests of a run that stopped before it wrote its record: 2 more are on the chain.
+        # Requests of a run that stopped before it wrote its record: 2 more are on the chain. The burst of
+        # that run had a transaction that failed, so the numbers have a gap: 4 and 6.
         arguments = type("Arguments", (), {"manifest": str(net.manifest), "rpc": [
             f"{name}={net.proxy.url(name)}" for name in net.anvils]})()
-        payloads = [experiment.junk_payload(net.vault_abi, record["lasnaStartBlock"], number) for number in (4, 5)]
+        payloads = [experiment.junk_payload(net.vault_abi, record["lasnaStartBlock"], number) for number in (4, 6)]
         experiment.request_callbacks(ops.Session(arguments, owner=False), net.fixture, net.account.address,
                                      net.address("junkRequester"), BASE, net.vault(BASE), payloads,
                                      experiment.JUNK_CALLBACK_GAS)
@@ -540,6 +557,7 @@ def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net):
         result = net.experiment("junk", "--chain", BASE, "--max-junk", "5", *short)
         assert result.returncode == 1 and "not in debt after 5 junk requests" in result.stderr, result.stdout
         assert junk_requests(net) == 5 == net.scenario("junk")["junkRequests"], "a request above the limit"
+        assert junk_numbers(net, record["lasnaStartBlock"]) == [1, 2, 3, 4, 6]
     assert net.debt(BASE, net.vault(BASE)) == 0
 
 
@@ -571,6 +589,9 @@ def test_junk_takes_the_vault_offline_and_recover_does_the_waiting_rescue(net):
     assert record["startBlock"] < steps["BlacklistContract(vault)"]["block"] <= record["floodEndBlock"] < record["endBlock"]
     # Each request is in the count, and the request that made the debt was the last one that went out.
     assert 5 < record["junkRequests"] == junk_requests(net) <= 1000
+    # After the gap of the run that stopped, each new request got a number above each number on the chain.
+    numbers = junk_numbers(net, record["lasnaStartBlock"])
+    assert numbers == [1, 2, 3, 4, *range(6, len(numbers) + 2)], "a number was used two times"
     assert record["undeliveredAtDebt"] == 0 and record["junkAfterRecovery"] == 0
     assert len(net.rpcs[BASE].logs(net.ledger[BASE], [net.ledger_abi.topic("CallbackFailure"),
                                                        ops.topic_of_address(vault)], net.origin[BASE])) \
@@ -742,8 +763,13 @@ def test_junk_continues_after_each_stop_and_counts_only_its_own_deliveries(lone)
     try:
         wait_until(lambda: record().get("junkRequests") == 1, 120, "the first junk request")
         # A failed callback of another caller is not a delivery of the driver: no second request goes out.
+        # The other caller copies the payload of the request that is on its way; the node writes the address
+        # of that caller into it.
+        copied = experiment.junk_payload(net.vault_abi, record()["lasnaStartBlock"], 1)
+        assert experiment.requested_payload(junk_request_logs(net)[0]) == copied
+        net.node.deliver(BASE, vault, copied, 200_000, net.account.address)
         net.node.deliver(BASE, vault, net.vault_abi.encode("reconcile", experiment.ZERO_ADDRESS, vault, 1), 200_000,
-                         net.account.address)
+                         net.address("junkRequester"))
         time.sleep(4)
         assert process.poll() is None and junk_requests(net) == 1, "a request went out before the first delivery"
 
@@ -769,7 +795,7 @@ def test_junk_continues_after_each_stop_and_counts_only_its_own_deliveries(lone)
     assert relayed(net.relay()) == (1, 1)
     result = junk(*fast)
     assert result.returncode == 1 and "not in debt after 1 pong requests" in result.stderr, result.stdout
-    assert "wait 3.0 s" not in result.stdout, "the drain wait ran a second time"
+    assert "were not delivered before the debt: wait" not in result.stdout, "the drain wait ran a second time"
     assert step_names(record())[-2:] == ["VaultDown", "flood end"]
     assert record()["floodEndBlock"] >= find(record(), "BlacklistContract(vault)")["block"]
 

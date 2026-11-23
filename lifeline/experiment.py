@@ -758,13 +758,25 @@ def junk_payload(abi: ops.Abi, tag: int, number: int) -> bytes:
     return abi.encode("reconcile", ZERO_ADDRESS, ZERO_ADDRESS, (tag << 32) | number)
 
 
-def junk_number(abi: ops.Abi, tag: int, payload: bytes):
-    """The number of the junk request of a delivered payload, or None for a payload of another flood or of
-    another caller. The node writes the first argument, so it is not compared."""
+def junk_number(abi: ops.Abi, tag: int, payload: bytes, sender: str = ZERO_ADDRESS):
+    """The number of the junk request of a payload, or None for a payload of another flood or of another
+    caller. `sender` is the first argument: the zero address in a request, and in a delivery the address that
+    the node writes there, the contract that made the request. So a callback that another caller requests
+    with a copy of the payload is not a delivery of the driver."""
     if len(payload) != 100 or payload[:4] != abi.selector("reconcile"):
+        return None
+    if payload[4:36] != bytes(12) + bytes.fromhex(sender[2:]):
         return None
     request_id = int.from_bytes(payload[68:], "big")
     return request_id & 0xFFFFFFFF if request_id >> 32 == tag else None
+
+
+def requested_payload(log: dict) -> bytes:
+    """The payload of a `CallbackRequest` log of the system contract."""
+    codec = ops._abi_codec()
+    _, configuration = codec.decode(["uint8", "bytes"], bytes.fromhex(log["data"][2:]))
+    ((_, _, _, payload),) = codec.decode(["(uint256,address,uint64,bytes)"], configuration)
+    return payload
 
 
 def rescue_of(results: list, request_ids: set):
@@ -865,11 +877,13 @@ def cmd_junk(args) -> int:
         is not a delivery of this driver, and a request that the node delivers two times counts one time."""
         logs = chain.rpc.logs(chain.ledger, [ledger_abi.topic("CallbackFailure"), vault_topic],
                               flood_start if from_block is None else from_block)
-        numbers = (junk_number(vault_abi, lasna_start, ledger_abi.decode_event("CallbackFailure", log)["payload_"])
-                   for log in logs)
+        numbers = (junk_number(vault_abi, lasna_start, ledger_abi.decode_event("CallbackFailure", log)["payload_"],
+                               requester) for log in logs)
         return {number for number in numbers if number is not None}
 
-    def count_requests() -> int:
+    def issued() -> set:
+        """The numbers of the junk requests of this flood that are on the chain. It also writes their count
+        to the record. A burst with a transaction that failed leaves a gap in the numbers."""
         sent = requests_to(vault)
         if sent and not find_step(record, "first junk request"):
             step("first junk request", LASNA, sent[0])
@@ -877,7 +891,8 @@ def cmd_junk(args) -> int:
             record["lastJunkRequest"] = {"block": block_of(sent[-1]), "tx": sent[-1]["transactionHash"]}
         record["junkRequests"] = len(sent)
         scenarios.save()
-        return len(sent)
+        numbers = (junk_number(vault_abi, lasna_start, requested_payload(log)) for log in sent)
+        return {number for number in numbers if number is not None}
 
     # 2. Junk requests until the proxy reports the debt of the vault. Each one has the selector of
     #    `reconcile` and a wrong first argument: the vault refuses it, and the proxy charges the float. The
@@ -889,24 +904,27 @@ def cmd_junk(args) -> int:
             if time.monotonic() >= deadline:
                 raise OpsError(f"no BlacklistContract(vault) in {args.timeout} s, after {record['junkRequests']} "
                                f"junk requests: run the command again to continue")
-            sent, arrived = count_requests(), len(delivered())
+            numbers, arrived = issued(), delivered()
+            sent = record["junkRequests"]
             debt, reserves = ledger(vault)
-            if not debt and arrived >= sent:
+            if not debt and numbers <= arrived:
                 if sent >= args.max_junk:
                     raise OpsError(f"the vault is not in debt after {sent} junk requests (--max-junk); its float "
                                    f"is {amount(reserves)}")
                 # The flood needs a hub that can hear the debt event of the vault.
                 require_guardian(session, what="the junk scenario")
-                burst = next_burst(args.burst, args.max_junk - sent, arrived, int(record["floatAtStart"]), reserves)
-                payloads = [junk_payload(vault_abi, lasna_start, sent + index + 1) for index in range(burst)]
+                burst = next_burst(args.burst, args.max_junk - sent, len(arrived), int(record["floatAtStart"]),
+                                   reserves)
+                # A new number for each request: above each number that is on the chain.
+                first = max(numbers, default=0) + 1
+                payloads = [junk_payload(vault_abi, lasna_start, first + index) for index in range(burst)]
                 request_callbacks(session, account, owner.address, requester, args.chain, vault, payloads,
                                   JUNK_CALLBACK_GAS)
                 say(f"  junk requests: {sent} sent and delivered, float of the vault {amount(reserves)}; "
                     f"{burst} more sent")
             log = wait_for_event(chain.rpc, chain.ledger, vault_debt_log, flood_start, args.pause)
-        sent = count_requests()
         # A request that the proxy did not deliver before the debt is rejected with `InDebt` when it arrives.
-        record["undeliveredAtDebt"] = max(sent - len(delivered()), 0)
+        record["undeliveredAtDebt"] = len(issued() - delivered())
         record["drained"] = not record["undeliveredAtDebt"]
         step("BlacklistContract(vault)", args.chain, log)
     if not record.get("drained", True):

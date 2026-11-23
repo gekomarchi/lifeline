@@ -385,20 +385,30 @@ def test_a_fee_figure_with_a_deposit_from_the_ledger_state_is_not_exact(network)
     assert "`feeDetail.exact` is false" in network.data("out")["definitions"]["guardianCost"]
 
 
-def test_a_junk_payload_names_its_request_and_its_flood():
+def test_a_junk_payload_names_its_request_its_flood_and_its_requester():
     abi = ops.load_artifact("LifelineVault").abi
+    number = experiment.junk_number
     payload = experiment.junk_payload(abi, 9_050_000, 17)
     assert len(payload) == 100 and payload[:4] == abi.selector("reconcile")
-    assert experiment.junk_number(abi, 9_050_000, payload) == 17
-    # The node writes the first argument: the number does not depend on it.
-    injected = payload[:4] + bytes(12) + bytes.fromhex("ab" * 20) + payload[36:]
-    assert experiment.junk_number(abi, 9_050_000, injected) == 17
+    # The request has the zero address as its first argument.
+    assert number(abi, 9_050_000, payload) == 17
+    # The node writes the requester there. A delivery counts only with the address of the requester.
+    delivered = payload[:4] + bytes(12) + bytes.fromhex(REQUESTER[2:]) + payload[36:]
+    assert number(abi, 9_050_000, delivered, REQUESTER) == 17
+    assert number(abi, 9_050_000, delivered) is None
+    # A copy of the payload that another caller requested: the node writes the address of that caller.
+    copied = payload[:4] + bytes(12) + bytes.fromhex(OTHER[2:]) + payload[36:]
+    assert number(abi, 9_050_000, copied, REQUESTER) is None and number(abi, 9_050_000, payload, REQUESTER) is None
     # A payload of another flood, of another function, or of another length is not a request of this flood.
-    assert experiment.junk_number(abi, 9_050_001, payload) is None
-    assert experiment.junk_number(abi, 9_050_000, abi.encode("reconcile", experiment.ZERO_ADDRESS, VAULT, 1)) is None
-    assert experiment.junk_number(abi, 9_050_000, b"\x12\x34\x56\x78" + payload[4:]) is None
-    assert experiment.junk_number(abi, 9_050_000, payload + b"\x00") is None
-    assert experiment.junk_number(abi, 9_050_000, b"") is None
+    assert number(abi, 9_050_001, payload) is None
+    assert number(abi, 9_050_000, abi.encode("reconcile", experiment.ZERO_ADDRESS, VAULT, 1)) is None
+    assert number(abi, 9_050_000, b"\x12\x34\x56\x78" + payload[4:]) is None
+    assert number(abi, 9_050_000, payload + b"\x00") is None and number(abi, 9_050_000, b"") is None
+
+    # The payload of a request comes back from the `CallbackRequest` log of the system contract.
+    configuration = eth_abi.encode(["(uint256,address,uint64,bytes)"], [(84532, VAULT, 250_000, payload)])
+    log = {"data": "0x" + eth_abi.encode(["uint8", "bytes"], [0, configuration]).hex()}
+    assert experiment.requested_payload(log) == payload
 
 
 def test_the_bursts_of_the_flood_get_smaller_when_the_float_is_near_its_end():
