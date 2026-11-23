@@ -263,6 +263,25 @@ def test_load_completes_the_step_of_a_run_that_stopped_and_gives_each_arm_the_sa
     def pokes() -> dict:
         return {arm: net.numbers(LASNA, reactives[arm], net.canary_abi, "Poke") for arm in experiment.ARMS}
 
+    # The guardian check. The principal of the hub is at its floor, and a node that is behind gives the old
+    # balance for the tag `latest`: the command reads the balance at the block of its other reads and stops.
+    principal = net.rpcs[LASNA].balance(net.hub)
+    net.anvils[LASNA].request("anvil_setBalance", [net.hub, hex(net.read(LASNA, net.hub, net.hub_abi, "principalFloor"))])
+
+    def old_balance(chain, method, params, result):
+        old = method == "eth_getBalance" and params[1] == "latest" and ops.same_address(params[0], net.hub)
+        return hex(principal) if old else result
+
+    blocks, mark = net.blocks(), net.proxy.mark()
+    net.proxy.tamper = old_balance
+    try:
+        result = net.experiment(*load)
+    finally:
+        net.proxy.tamper = None
+        net.anvils[LASNA].request("anvil_setBalance", [net.hub, hex(principal)])
+    assert result.returncode == 1 and "does not cover one full trigger" in result.stderr, result.stderr + result.stdout
+    assert net.proxy.sent(mark) == [] and net.blocks() == blocks and pokes() == {arm: set() for arm in experiment.ARMS}
+
     # The node takes the first transaction of the command and gives no answer after it: the poke of arm A is
     # in a block, the command did not see its receipt, and it sent no poke for arm B and arm C.
     def stop_after_the_first_transaction(chain, method, params, result):
@@ -585,9 +604,30 @@ def test_junk_refuses_a_recipient_that_is_not_a_manifest_vault_of_the_key(net):
 def test_quarantine_cuts_the_looping_canary_off_after_max_rescues(net):
     looping = net.address("looping")
     policy = next(r["policy"] for r in net.data()["enrollments"] if r["label"] == "experiment looping")
+    # A node that takes an event back: after each read that gives a new event of the hub for the canary, it
+    # gives the block before that event as its newest block one time. The command decides from the read that
+    # had the event: it sends no poke that the event does not permit.
+    node = {"events": 0, "back": None, "old": 0}
+
+    def takes_an_event_back(chain, method, params, result):
+        if chain != LASNA:
+            return result
+        if method == "eth_getLogs" and isinstance(params[0]["topics"][0], list) and len(result) > node["events"]:
+            node["events"], node["back"] = len(result), int(result[-1]["blockNumber"], 16) - 1
+        elif method == "eth_blockNumber" and node["back"] is not None:
+            old, node["back"] = node["back"], None
+            node["old"] += 1
+            return hex(old)
+        return result
+
     with net.watch():
-        result = net.experiment("quarantine", "--timeout", "90", "--settle", "4")
+        net.proxy.tamper = takes_an_event_back
+        try:
+            result = net.experiment("quarantine", "--timeout", "90", "--settle", "4")
+        finally:
+            net.proxy.tamper = None
     assert result.returncode == 0, result.stderr + result.stdout
+    assert node["old"] == MAX_RESCUES + 1, "the node went back after each Rescued and after Quarantined"
 
     record = net.scenario("quarantine")
     names = step_names(record)
@@ -685,13 +725,46 @@ def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net):
         finally:
             net.proxy.tamper = None
         assert result.returncode == 1 and "not in debt after 3 junk requests" in result.stderr, result.stdout
-        assert node["old"] >= 2, "the node went back before a count of the requests"
+        assert node["old"] >= 1, "the node went back after a read that showed the account as idle"
         record = net.scenario("junk")
         assert record["junkRequests"] == 3 == junk_requests(net), "a request above the limit"
         assert junk_numbers(net, record["lasnaStartBlock"]) == [1, 2, 3], "a number for each request"
         assert step_names(record) == ["flood start", "first junk request"] and record["endBlock"] is None
         # The first request goes out alone: the fee of one delivery is not known before it.
         assert "; 1 more sent" in result.stdout
+
+        # A run that continues, at a node that goes back behind the newest request of the record one time,
+        # after the read that shows the account as idle: the count is 3, and no request goes out.
+        newest = record["lastJunkRequest"]["block"]
+        node = {"idle": False, "old": 0}
+
+        def behind_the_record(chain, method, params, result):
+            if chain == LASNA and method == "eth_getTransactionCount" and params[1] == "pending":
+                node["idle"] = True
+            elif chain == LASNA and method == "eth_blockNumber" and node["idle"] and not node["old"]:
+                node["old"] = 1
+                return hex(newest - 1)
+            return result
+
+        net.proxy.tamper = behind_the_record
+        try:
+            result = net.experiment("junk", "--chain", BASE, "--max-junk", "3", *short)
+        finally:
+            net.proxy.tamper = None
+        assert result.returncode == 1 and "not in debt after 3 junk requests" in result.stderr, result.stdout
+        assert junk_requests(net) == 3 == net.scenario("junk")["junkRequests"]
+
+        # A node that stays behind the newest request of the record gives no state that the run accepts.
+        blocks = net.blocks()
+        net.proxy.tamper = lambda chain, method, params, result: (
+            hex(newest - 1) if chain == LASNA and method == "eth_blockNumber" else result)
+        try:
+            result = net.experiment("junk", "--chain", BASE, "--max-junk", "9", *short,
+                                    env={"LIFELINE_RECEIPT_TIMEOUT": "5"})
+        finally:
+            net.proxy.tamper = None
+        assert result.returncode == 1 and f"behind block {newest}" in result.stderr, result.stderr + result.stdout
+        assert net.blocks() == blocks and junk_requests(net) == 3
 
         # A run that continues checks the hub again: a paused hub cannot report the vault as down.
         ops.transact(net.rpcs[LASNA], net.account, net.hub, net.hub_abi.encode("pause"), abi=net.hub_abi)
@@ -712,6 +785,33 @@ def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net):
                                      net.address("junkRequester"), BASE, net.vault(BASE), payloads,
                                      experiment.JUNK_CALLBACK_GAS)
         assert junk_requests(net) == 5 and net.scenario("junk")["junkRequests"] == 3
+
+        # A node that is behind in each answer, at the block before these 2 requests: 3 requests, as in the
+        # record, and the nonce of that block. It catches up after the command read the requests. The command
+        # binds its burst to the nonce of that read: it sends no request with a number that a request has.
+        before = int(junk_request_logs(net)[3]["blockNumber"], 16) - 1
+        node = {"behind": True}
+
+        def behind_then_not(chain, method, params, result):
+            if chain != LASNA or not node["behind"]:
+                return result
+            if method == "eth_blockNumber":
+                return hex(before)
+            if method == "eth_getTransactionCount" and params[1] == "pending":
+                return hex(int(result, 16) - 2)
+            if method == "eth_getLogs" and params[0]["topics"][0] == request_topic:
+                node["behind"] = False
+            return result
+
+        blocks = net.blocks()[LASNA]
+        net.proxy.tamper = behind_then_not
+        try:
+            result = net.experiment("junk", "--chain", BASE, "--max-junk", "5", *short)
+        finally:
+            net.proxy.tamper = None
+        assert result.returncode == 1 and "did not send or did not see" in result.stderr, result.stderr + result.stdout
+        assert not node["behind"] and junk_requests(net) == 5 and net.blocks()[LASNA] == blocks
+
         result = net.experiment("junk", "--chain", BASE, "--max-junk", "5", *short)
         assert result.returncode == 1 and "not in debt after 5 junk requests" in result.stderr, result.stdout
         assert junk_requests(net) == 5 == net.scenario("junk")["junkRequests"], "a request above the limit"
@@ -722,9 +822,32 @@ def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net):
 def test_junk_takes_the_vault_offline_and_recover_does_the_waiting_rescue(net):
     vault, waiting = net.vault(BASE), net.address("waiting.callback")
     balance = net.rpcs[BASE].balance(vault)
+    # A node of the destination chain that takes a delivery back: after each read that gives a new failed
+    # callback of the vault, it gives the block before that callback as its newest block one time. The
+    # callback that makes the debt is such a delivery: the command must not read the ledger before it and
+    # send a burst to a vault that is in debt.
+    failure = net.ledger_abi.topic("CallbackFailure")
+    node = {"deliveries": 0, "back": None, "old": 0}
+
+    def takes_a_delivery_back(chain, method, params, result):
+        if chain != BASE:
+            return result
+        if method == "eth_getLogs" and params[0]["topics"][0] == failure and len(result) > node["deliveries"]:
+            node["deliveries"], node["back"] = len(result), int(result[-1]["blockNumber"], 16) - 1
+        elif method == "eth_blockNumber" and node["back"] is not None:
+            old, node["back"] = node["back"], None
+            node["old"] += 1
+            return hex(old)
+        return result
+
     with net.watch():
-        result = net.experiment("junk", "--chain", BASE, "--burst", "8", "--pause", "1", "--timeout", "180")
+        net.proxy.tamper = takes_a_delivery_back
+        try:
+            result = net.experiment("junk", "--chain", BASE, "--burst", "8", "--pause", "1", "--timeout", "180")
+        finally:
+            net.proxy.tamper = None
     assert result.returncode == 0, result.stderr + result.stdout
+    assert node["old"] > 3, "the node went back after the deliveries"
 
     record = net.scenario("junk")
     names = step_names(record)

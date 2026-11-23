@@ -184,14 +184,67 @@ def add_step(record: dict, step: str, chain: str, block, tx=None) -> None:
 # ----------------------------------------------------------------------------------------------
 
 
+def observe(rpc: ops.Rpc, logs: list) -> list:
+    """Makes the block of each log that the run saw a lowest block of each later read of the run. A node that
+    is behind such a block then gives no answer in place of a state before the event."""
+    for log in logs:
+        rpc.floor = max(rpc.floor, block_of(log))
+    return logs
+
+
+def logs_now(rpc: ops.Rpc, address: str, topics: list, from_block: int, to_block: int = None) -> list:
+    """The logs of one emitter up to `head()`, or up to `to_block`: a read that decides a transaction. It is
+    not below a block that the run saw before, and `observe` keeps what it saw."""
+    return observe(rpc, rpc.logs(address, topics, from_block, rpc.head() if to_block is None else to_block))
+
+
+def restore_floor(session: ops.Session, record: dict, more=()) -> None:
+    """A run that continues: no read is below a block of the record. `more`: (chain name, block) of each
+    block of the record that is not the block of a step."""
+    for name, block in [*((entry["chain"], entry["block"]) for entry in record["steps"]), *more]:
+        if block is not None:
+            rpc = session.chain(name).rpc
+            rpc.floor = max(rpc.floor, block)
+
+
+def idle_block(rpc: ops.Rpc, sender: str) -> tuple:
+    """Waits until each transaction of a sender has a receipt. Returns (block, nonce): the block of the read
+    that showed it, and the nonce of the next transaction of the sender at that block. That block becomes the
+    lowest block of each later read of this run: a node that is behind that block then gives no answer in
+    place of an older state. At the timeout it is an error."""
+    deadline = time.monotonic() + ops.RECEIPT_TIMEOUT
+    while True:
+        block, count = rpc._read_at("eth_getTransactionCount", [sender])
+        if hex_int(rpc.request("eth_getTransactionCount", [sender, "pending"])) <= hex_int(count):
+            rpc.floor = max(rpc.floor, block)
+            return block, hex_int(count)
+        if time.monotonic() >= deadline:
+            raise rpc.not_idle(sender)
+        time.sleep(min(ops.POLL_SECONDS, 1.0))
+
+
+def require_nonce(rpc: ops.Rpc, sender: str, nonce: int, what: str) -> None:
+    """The check before a transaction that a driver signs with the nonce of the state that decided it (see
+    `idle_block`). A transaction of the account that the run did not see uses that nonce: for example one of
+    an earlier run that the node did not have at the block of the read. The node then refuses the new
+    transaction; this read gives the reason before the signature if the node shows it."""
+    used = hex_int(rpc.request("eth_getTransactionCount", [sender, "pending"]))
+    if used > nonce:
+        raise OpsError(f"{sender} has {used} transaction(s) on {rpc.name}, and this run decided {what} at "
+                       f"{nonce}: the account sent a transaction that this run did not send or did not see. "
+                       f"Nothing was sent. Run the command again: it reads the state of the chain again")
+
+
 def poke(rpc: ops.Rpc, account, canary: str, nonce: int = None) -> dict:
     """Calls `poke()` of a canary with the fixture key and waits for the receipt. Returns
     `{"tx", "block", "n"}`: `n` is the number of the `Poke(n)` log.
 
     `nonce`: the nonce of the transaction, for a caller that decided the poke from a state of the chain with
-    that nonce. If the account sent another transaction after that state, the node refuses the poke.
-    Without it the nonce is the newest one of the account."""
+    that nonce (see `idle_block`). If the account sent another transaction after that state, the poke is
+    not sent, or the node refuses it. Without it the nonce is the newest one of the account."""
     abi = ops.load_artifact("CanaryReactive").abi  # `poke()` and `Poke` are the same in `LoopingCanary`
+    if nonce is not None:
+        require_nonce(rpc, account.address, nonce, "its poke")
     receipt = ops.wait_receipt(rpc, ops.send_transaction(rpc, account, canary, abi.encode("poke"), abi=abi,
                                                          what="poke", nonce=nonce))
     logs = ops.receipt_logs(receipt, canary, abi.topic("Poke"))
@@ -203,7 +256,10 @@ def poke(rpc: ops.Rpc, account, canary: str, nonce: int = None) -> dict:
 def wait_for_event(rpc: ops.Rpc, address: str, topics: list, from_block: int, timeout: float):
     """Waits at most `timeout` seconds for the first log of one emitter that matches the topics, at or after
     `from_block`. Returns the log, or None at the timeout."""
-    return ops.wait_for_log(rpc, address, topics, from_block, time.monotonic() + timeout)
+    log = ops.wait_for_log(rpc, address, topics, from_block, time.monotonic() + timeout)
+    if log is not None:
+        observe(rpc, [log])
+    return log
 
 
 # ----------------------------------------------------------------------------------------------
@@ -251,14 +307,26 @@ def guardian_problems(session: ops.Session, dest: str = None) -> list:
       covers one more refill."""
     lasna, hub = session.lasna, session.hub
     problems = []
-    _, debt = session.read_ledger(lasna, "debt", hub)
-    _, reserves = session.read_ledger(lasna, "reserves", hub)
-    balance, floor = lasna.rpc.balance(hub), session.read_hub("principalFloor")
+
+    def ledger(chain: ops.Chain, function: str, account: str, block: int) -> int:
+        data = chain.rpc.call(chain.ledger, session.ledger_abi.encode(function, account), block)
+        return session.ledger_abi.decode(function, data)
+
+    def hub_view(function: str, *arguments):
+        data = lasna.rpc.call(hub, session.hub_abi.encode(function, *arguments), block)
+        return session.hub_abi.decode(function, data)
+
+    # One block for each value of the hub, and not below a block that the run saw: `head()`. A read with the
+    # tag `latest` can come from a node that is behind and show funds that the hub has no more.
+    block = lasna.rpc.head()
+    debt, reserves = ledger(lasna, "debt", hub, block), ledger(lasna, "reserves", hub, block)
+    balance = hex_int(lasna.rpc._read_at("eth_getBalance", [hub], block)[1])
+    floor = hub_view("principalFloor")
     fee = ops.trigger_fee(lasna.rpc.gas_price(), _fee_coeff(session, lasna))
     if debt:
         problems.append(f"the hub is in debt ({amount(debt)}) and gets no reaction")
     elif reserves < fee:
-        cap = session.read_hub("selfCareDailyCap")
+        cap = hub_view("selfCareDailyCap")
         problems.append(
             f"the fee float of the hub is {amount(reserves)}, below one full trigger ({amount(fee)}). Self-care "
             f"moved {amount(self_care_today(session))} of its daily cap {amount(cap)} today; the hub emits no "
@@ -268,16 +336,18 @@ def guardian_problems(session: ops.Session, dest: str = None) -> list:
         problems.append(f"the principal of the hub above its floor ({amount(max(balance - floor, 0))}) does not "
                         f"cover one full trigger: self-care cannot refill the float, and the hub emits no HubLow "
                         f"at the floor")
-    if session.read_hub("paused"):
+    if hub_view("paused"):
         problems.append("the hub is paused")
     if dest is not None:
         chain, vault = session.chain(dest), session.vault(dest)
-        _, _, _, up, pending = session.read_hub("vaultInfo", chain.chain_id)
-        _, vault_debt = session.read_ledger(chain, "debt", vault)
+        _, _, _, up, pending = hub_view("vaultInfo", chain.chain_id)
+        at = chain.rpc.head()
+        vault_debt = ledger(chain, "debt", vault, at)
         if vault_debt or not up or pending:
             problems.append(f"the vault of {dest} needs a recovery (debt {vault_debt}, up {str(up).lower()}, "
                             f"pending {pending})")
-        if session.read_vault(dest, "paused"):
+        paused = session.vault_abi.decode("paused", chain.rpc.call(vault, session.vault_abi.encode("paused"), at))
+        if paused:
             problems.append(f"the vault of {dest} is paused")
     return problems
 
@@ -515,22 +585,6 @@ def _owned_fixture(store: FixtureStore, rpc: ops.Rpc, name: str, account) -> str
     return address
 
 
-def idle_block(rpc: ops.Rpc, sender: str) -> tuple:
-    """Waits until each transaction of a sender has a receipt. Returns (block, nonce): the block of the read
-    that showed it, and the nonce of the next transaction of the sender at that block. That block becomes the
-    lowest block of each later read of this run: a node that is behind that block then gives no answer in
-    place of an older state. At the timeout it is an error."""
-    deadline = time.monotonic() + ops.RECEIPT_TIMEOUT
-    while True:
-        block, count = rpc._read_at("eth_getTransactionCount", [sender])
-        if hex_int(rpc.request("eth_getTransactionCount", [sender, "pending"])) <= hex_int(count):
-            rpc.floor = max(rpc.floor, block)
-            return block, hex_int(count)
-        if time.monotonic() >= deadline:
-            raise rpc.not_idle(sender)
-        time.sleep(min(ops.POLL_SECONDS, 1.0))
-
-
 def poke_count(rpc: ops.Rpc, canary: str, block: int) -> int:
     """The number of `poke()` calls of a canary at one block: its counter, the one storage variable of
     `CanaryReactive` (slot 0). The read names the block, so a node that does not have the block gives an
@@ -555,19 +609,14 @@ def cmd_load(args) -> int:
     guard_scenarios(args.scenarios, [lasna])
     scenarios = Scenarios(args.scenarios)
     record = scenarios.section("load", LASNA, {f"arm{arm}.reactive": reactives[arm] for arm in ARMS})
+    restore_floor(session, record)
     require_guardian(session, dest)
 
     def send(arm: str, text: str) -> None:
         # The nonce binds each poke to the state that decided it: the counters at the block `start` and the
         # pokes of this run after it. A transaction of the account that this run did not see, for example a
-        # poke of an earlier run that the node did not have at `start`, uses the nonce: the node then
-        # refuses the poke. The read here gives the reason before the signature if the node shows it.
-        used = hex_int(lasna.rpc.request("eth_getTransactionCount", [account.address, "pending"]))
-        if used > nonce["next"]:
-            raise OpsError(f"{account.address} has {used} transaction(s) on {LASNA}, and this run decided its "
-                           f"pokes at {nonce['next']}: the account sent a transaction that this run did not "
-                           f"send or did not see. The poke of arm {arm} was not sent. Run the command again: it "
-                           f"reads the pokes of each arm again and completes the step that stopped")
+        # poke of an earlier run that the node did not have at `start`, uses the nonce: the poke is then not
+        # sent, or the node refuses it.
         result = poke(lasna.rpc, account, reactives[arm], nonce["next"])
         nonce["next"] += 1
         add_step(record, f"poke {result['n']} arm{arm}", LASNA, result["block"], result["tx"])
@@ -584,8 +633,8 @@ def cmd_load(args) -> int:
         record["startBlock"] = start
     topic = ops.load_artifact("CanaryReactive").abi.topic("Poke")
     counted = {arm: poke_count(lasna.rpc, reactives[arm], start) for arm in ARMS}
-    sent = {arm: lasna.rpc.logs(reactives[arm], [topic], store.entry(f"arm{arm}.reactive")["deployBlock"], start)
-            for arm in ARMS}
+    sent = {arm: logs_now(lasna.rpc, reactives[arm], [topic], store.entry(f"arm{arm}.reactive")["deployBlock"],
+                          start) for arm in ARMS}
     recorded = {entry["tx"] for entry in record["steps"]}
     for arm in ARMS:
         # A node that is behind would make an arm look behind, and the command would poke it again.
@@ -662,6 +711,7 @@ def cmd_quarantine(args) -> int:
     guard_scenarios(args.scenarios, [lasna])
     scenarios = Scenarios(args.scenarios)
     record = scenarios.section("quarantine", LASNA, {"looping": looping, "hub": hub})
+    restore_floor(session, record)
     if record.get("endBlock") is not None and record.get("budget"):
         if not record["budget"]["intact"]:
             raise OpsError(f"{scenarios.path} has a quarantine scenario with a budget that is not intact: "
@@ -676,15 +726,15 @@ def cmd_quarantine(args) -> int:
         f"high {amount(policy.high)}, dailyCap {amount(policy.dailyCap)}")
 
     def hub_logs(*names) -> list:
-        # Up to `head()`: not below the block of the newest receipt of this run, also at a node that is behind.
-        return lasna.rpc.logs(hub, [[hub_abi.topic(name) for name in names], target], enroll_block,
-                              lasna.rpc.head())
+        # Not below a block that the run saw: the newest receipt, and each event of the hub that a read
+        # before this one gave. A node that is behind must not take an event back.
+        return logs_now(lasna.rpc, hub, [[hub_abi.topic(name) for name in names], target], enroll_block)
 
-    def record_new() -> dict:
-        """Writes each `Rescued` and the `Quarantined` log of the canary to the record. Returns the
-        `Quarantined` log, or None."""
+    def record_new(logs: list) -> dict:
+        """Writes each `Rescued` and the `Quarantined` log of the canary to the record: `logs` is the read
+        that the caller decides from. Returns the `Quarantined` log, or None."""
         quarantined = None
-        for log in hub_logs("Rescued", "Quarantined"):
+        for log in logs:
             is_rescue = log["topics"][0] == hub_abi.topic("Rescued")
             if is_rescue and not any(e["tx"] == log["transactionHash"] and e["step"].startswith("Rescued")
                                      for e in record["steps"]):
@@ -701,31 +751,42 @@ def cmd_quarantine(args) -> int:
         scenarios.save()
         return quarantined
 
-    quarantined = record_new()
+    quarantined = record_new(hub_logs("Rescued", "Quarantined"))
     pokes = 0
     while quarantined is None:
         if pokes == args.max_pokes:
             raise OpsError(f"the hub did not emit Quarantined after {pokes} pokes of this run")
         require_guardian(session, what="the quarantine scenario")
-        seen = len(hub_logs("Rescued", "Quarantined"))
-        result = poke(lasna.rpc, account, looping)
+        # The nonce binds the poke to the state that decides it: the events of the hub up to this read.
+        _, nonce = idle_block(lasna.rpc, account.address)
+        logs = hub_logs("Rescued", "Quarantined")
+        quarantined = record_new(logs)
+        if quarantined is not None:
+            break
+        seen = len(logs)
+        result = poke(lasna.rpc, account, looping, nonce)
         pokes += 1
         add_step(record, f"poke {result['n']}", LASNA, result["block"], result["tx"])
         scenarios.save()
         say(f"  poke {result['n']}: tx {result['tx']} block {result['block']}")
         deadline = time.monotonic() + args.timeout
-        # `<=`: a node that is behind can give fewer logs than the read before the poke.
-        while len(hub_logs("Rescued", "Quarantined")) <= seen:
+        while True:
+            # More logs than before the poke; a node that is behind can give fewer.
+            logs = hub_logs("Rescued", "Quarantined")
+            if len(logs) > seen:
+                break
             if time.monotonic() >= deadline:
                 raise OpsError(f"no Rescued and no Quarantined of the hub in {args.timeout} s after poke "
                                f"{result['n']}: run the command again to continue")
             time.sleep(ops.POLL_SECONDS)
-        quarantined = record_new()
+        # The read that ended the wait decides the next step: no second read can lose its event.
+        quarantined = record_new(logs)
 
     # One more poke after the quarantine: the canary must get no payment. The record is not complete before
     # the wait has ended, so a run that stopped in the wait starts the wait again.
     if not find_step(record, "poke after Quarantined"):
-        result = poke(lasna.rpc, account, looping)
+        _, nonce = idle_block(lasna.rpc, account.address)
+        result = poke(lasna.rpc, account, looping, nonce)
         add_step(record, "poke after Quarantined", LASNA, result["block"], result["tx"])
         scenarios.save()
         say(f"  poke after Quarantined: tx {result['tx']} block {result['block']}")
@@ -793,12 +854,16 @@ def junk_recipient(session: ops.Session, chain_name: str, owner_address: str) ->
 
 
 def request_callbacks(session: ops.Session, account, owner_address: str, requester: str, chain_name: str,
-                      recipient: str, payloads: list, gas_limit: int) -> list:
+                      recipient: str, payloads: list, gas_limit: int, nonce: int = None) -> list:
     """Requests one callback for each payload through `JunkRequester`, in one burst of transactions. Returns
     the receipts.
 
     The recipient is the vault of the chain (after `junk_recipient`) or a recorded fixture of this unit; any
-    other address is refused before a transaction."""
+    other address is refused before a transaction.
+
+    `nonce`: the nonce of the first transaction, for a caller that decided the burst from a state of the
+    chain with that nonce (see `idle_block`). If the account sent another transaction after that state, the
+    burst is not sent, or the node refuses it. Without it the nonce is the newest one of the account."""
     fixtures = session.manifest.data["fixtures"]
     is_fixture = any(isinstance(entry, dict) and entry.get("chain") == chain_name
                      and same_address(entry.get("address") or "", recipient) for entry in fixtures.values())
@@ -808,7 +873,10 @@ def request_callbacks(session: ops.Session, account, owner_address: str, request
     lasna, chain = session.lasna, session.chain(chain_name)
     abi = ops.load_artifact("JunkRequester").abi
     calls = [abi.encode("request", chain.chain_id, recipient, gas_limit, payload) for payload in payloads]
-    nonce = lasna.rpc.fresh_nonce(account.address)
+    if nonce is None:
+        nonce = lasna.rpc.fresh_nonce(account.address)
+    else:
+        require_nonce(lasna.rpc, account.address, nonce, "its callback requests")
     try:
         estimate = hex_int(lasna.rpc.request("eth_estimateGas", [{
             "from": account.address, "to": requester, "data": "0x" + calls[0].hex()}]))
@@ -946,24 +1014,29 @@ def cmd_junk(args) -> int:
         record["startBlock"] = chain.rpc.head()
         step("flood start", args.chain, record["startBlock"])
     flood_start, lasna_start = record["startBlock"], record["lasnaStartBlock"]
+    restore_floor(session, record, [
+        (LASNA, lasna_start), (LASNA, (record.get("lastJunkRequest") or {}).get("block")),
+        (args.chain, flood_start), (args.chain, record.get("floodEndBlock")),
+    ])
+    state = {"nonce": None}  # the nonce of the account at the read that decides the next requests
 
     def requests_to(recipient: str) -> list:
         """The callback requests of the requester for one recipient since the start of the flood. The chain is
         the journal: a request of a run that stopped is in this list."""
-        if not lasna.rpc.wait_idle(account.address):
-            raise lasna.rpc.not_idle(account.address)
-        # Up to `head()`: not below the block of the newest request of this run, also at a node that is
-        # behind. A list with a request too few would permit a request above the limit, a burst before the
-        # delivery of the burst before it, and a number that a request has already.
-        return lasna.rpc.logs(lasna.ledger, [CALLBACK_REQUEST, chain_topic, topic_of_address(requester),
-                                             topic_of_address(recipient)], lasna_start, lasna.rpc.head())
+        # One block for the nonce of the account and for the list, not below a block that the run saw or
+        # that the record has. A list with a request too few would permit a request above the limit, a burst
+        # before the delivery of the burst before it, and a number that a request has already. The nonce
+        # binds the next requests to this read: see `request_callbacks`.
+        block, state["nonce"] = idle_block(lasna.rpc, account.address)
+        return logs_now(lasna.rpc, lasna.ledger, [CALLBACK_REQUEST, chain_topic, topic_of_address(requester),
+                                                  topic_of_address(recipient)], lasna_start, block)
 
     def delivered(from_block: int = None) -> set:
         """The numbers of the junk requests of this flood that the proxy delivered. Each delivery is a
         `CallbackFailure(vault)` log with the payload of the request: a failed callback of another caller
         is not a delivery of this driver, and a request that the node delivers two times counts one time."""
-        logs = chain.rpc.logs(chain.ledger, [ledger_abi.topic("CallbackFailure"), vault_topic],
-                              flood_start if from_block is None else from_block)
+        logs = logs_now(chain.rpc, chain.ledger, [ledger_abi.topic("CallbackFailure"), vault_topic],
+                        flood_start if from_block is None else from_block)
         numbers = (junk_number(vault_abi, lasna_start, ledger_abi.decode_event("CallbackFailure", log)["payload_"],
                                requester) for log in logs)
         return {number for number in numbers if number is not None}
@@ -972,6 +1045,11 @@ def cmd_junk(args) -> int:
         """The numbers of the junk requests of this flood that are on the chain. It also writes their count
         to the record. A burst with a transaction that failed leaves a gap in the numbers."""
         sent = requests_to(vault)
+        if len(sent) < record["junkRequests"]:
+            # The record has the count of a read before this one, or of the receipts of a burst.
+            raise OpsError(f"the node of {LASNA} gave {len(sent)} junk request(s) of this flood, and the record "
+                           f"has {record['junkRequests']}: the node is behind. Nothing was sent. Run the "
+                           f"command again")
         if sent and not find_step(record, "first junk request"):
             step("first junk request", LASNA, sent[0])
         if sent:
@@ -1005,8 +1083,11 @@ def cmd_junk(args) -> int:
                 # A new number for each request: above each number that is on the chain.
                 first = max(numbers, default=0) + 1
                 payloads = [junk_payload(vault_abi, lasna_start, first + index) for index in range(burst)]
-                request_callbacks(session, account, owner.address, requester, args.chain, vault, payloads,
-                                  JUNK_CALLBACK_GAS)
+                receipts = request_callbacks(session, account, owner.address, requester, args.chain, vault,
+                                             payloads, JUNK_CALLBACK_GAS, state["nonce"])
+                # The count with the receipts of this burst: the next read must not show fewer requests.
+                record["junkRequests"] = sent + len(receipts)
+                scenarios.save()
                 say(f"  junk requests: {sent} sent and delivered, float of the vault {amount(reserves)}; "
                     f"{burst} more sent")
             log = wait_for_event(chain.rpc, chain.ledger, vault_debt_log, flood_start, args.pause)
@@ -1051,7 +1132,8 @@ def cmd_junk(args) -> int:
                 raise OpsError(f"waiting.callback is not in debt after {pongs} pong requests")
             require_guardian(session, what="the junk scenario")
             request_callbacks(session, account, owner.address, requester, args.chain, waiting,
-                              [callback_abi.encode("pong", ZERO_ADDRESS, pongs + 1)], ops.CANARY_CALLBACK_GAS)
+                              [callback_abi.encode("pong", ZERO_ADDRESS, pongs + 1)], ops.CANARY_CALLBACK_GAS,
+                              state["nonce"])
             waited = False
         # Each request is a step, also the ones of a run that stopped: the chain has them.
         for index, request in enumerate(requests_to(waiting), 1):
@@ -1074,7 +1156,7 @@ def cmd_junk(args) -> int:
         step("recovery deposit", args.chain, deposit["depositBlock"], deposit["deposit"])
     # The logs from the start of the flood: a run that continues finds the `VaultUp` of the run before it.
     ups = [(log, hub_abi.decode_event("VaultUp", log))
-           for log in lasna.rpc.logs(hub, [hub_abi.topic("VaultUp"), chain_topic], lasna_start)]
+           for log in logs_now(lasna.rpc, hub, [hub_abi.topic("VaultUp"), chain_topic], lasna_start)]
     last = next((log for log, event in ups if event["remaining"] == 0), None)
     if last is None:
         raise OpsError("the hub emitted no VaultUp with 0 remaining after the recovery")
@@ -1087,7 +1169,7 @@ def cmd_junk(args) -> int:
     deadline = time.monotonic() + args.timeout
     while True:
         results = [(log, vault_abi.decode_event("Result", log))
-                   for log in chain.rpc.logs(vault, results_filter, flood_start)]
+                   for log in logs_now(chain.rpc, vault, results_filter, flood_start)]
         found = rescue_of(results, request_ids)
         if found is not None or time.monotonic() >= deadline:
             break
