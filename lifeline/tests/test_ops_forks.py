@@ -55,7 +55,16 @@ LOOP_RESERVE = ["--canary-reserve", "0.05"]
 class DryRun:
     def __init__(self, directory: Path):
         self.dir = directory
-        self.anvils = {name: forknet.Anvil(name, url, directory) for name, url in UPSTREAMS.items()}
+        self.anvils, self.proxy = {}, None
+        try:
+            for name, url in UPSTREAMS.items():
+                self.anvils[name] = forknet.Anvil(name, url, directory)
+            self._start(directory)
+        except BaseException:
+            self.close()
+            raise
+
+    def _start(self, directory: Path):
         self.proxy = forknet.RecordingProxy({name: anvil.url for name, anvil in self.anvils.items()})
         key = "0x" + secrets.token_hex(32)
         self.account = Account.from_key(key)
@@ -81,7 +90,8 @@ class DryRun:
         self.canaries = {}
 
     def close(self):
-        self.proxy.close()
+        if self.proxy is not None:
+            self.proxy.close()
         for anvil in self.anvils.values():
             anvil.close()
 
@@ -388,7 +398,11 @@ def test_read_back_mismatch_stops_before_lasna(net):
     assert after[LASNA] == before[LASNA], "Lasna has an enroll transaction"
     assert after[BASE] == before[BASE] + 1
     assert net.target_state(BASE, canary) == "None"
-    assert len(net.data()["enrollments"]) == enrollments
+    # The record of the enrollment that did not finish: the vault has the policy, the hub has no target.
+    records = net.data()["enrollments"]
+    assert len(records) == enrollments + 1 and records[-1]["target"] == canary
+    assert re.fullmatch(HASH, records[-1]["txs"]["setPolicy"])
+    assert records[-1]["txs"]["enroll"] is None and records[-1]["txs"]["enrollBlock"] is None
 
 
 def test_guest_needs_a_consent_reference(net):
@@ -399,11 +413,17 @@ def test_guest_needs_a_consent_reference(net):
     assert net.proxy.mark() == mark, "a refused guest sent a request"
     assert net.blocks() == before
 
-    # With a consent reference the guest goes through the same path.
+    # With a consent reference the guest goes through the same path. The test before this one stopped the
+    # enrollment of this canary after `setPolicy`: the command continues it and sends `hub.enroll` only.
+    set_policy = net.data()["enrollments"][-1]["txs"]["setPolicy"]
+    enrollments, mark = len(net.data()["enrollments"]), net.proxy.mark()
     result = net.ops("enroll", "--chain", BASE, "--target", canary, "--label", "guest", "--guest", "--consent",
                      "message 2026-11-23", *CANARY_POLICY)
     assert result.returncode == 0, result.stderr
-    assert [line.split()[1] for line in step_lines(result.stdout)] == ["setPolicy", "read-back", "enroll"]
+    steps = step_lines(result.stdout)
+    assert [line.split()[1] for line in steps] == ["setPolicy", "read-back", "enroll"]
+    assert [chain for chain, _ in net.proxy.sent(mark)] == [LASNA] and set_policy in steps[0]
+    assert len(net.data()["enrollments"]) == enrollments
     record = net.data()["enrollments"][-1]
     assert record["guest"] is True and record["consent"] == "message 2026-11-23" and record["target"] == canary
 
@@ -475,6 +495,8 @@ def test_loop_check_names_the_missing_step_without_a_relay_and_passes_with_it(ne
     finally:
         watcher.send_signal(signal.SIGTERM)
         output, _ = watcher.communicate(timeout=30)
+        print(output)  # shown by pytest when the test fails
+    assert watcher.returncode == 0, output
     # Two loops: the canary reaction and the hub reaction on Lasna, the canary callback and the reconcile.
     assert "triggers: 4" in output and "deliveries: 4" in output, output
 
@@ -517,6 +539,48 @@ def test_remove_leaves_no_subscription(net):
     before = net.blocks()
     result = net.ops("remove", "--chain", BASE, "--target", canary)
     assert result.returncode == 0 and net.blocks() == before
+
+
+# ----------------------------------------------------------------------------------------------
+# The order of a destination log and a subscription change
+# ----------------------------------------------------------------------------------------------
+
+
+def test_relay_does_not_replay_a_debt_from_before_the_enrollment(net):
+    canary = net.new_callback_canary()
+    net.pong(BASE, canary)
+    assert net.debt(BASE, canary) > 0
+    # The relay reads the debt log now: no subscription matches it.
+    assert relayed(net.relay()) == (0, 0)
+
+    # `setPolicy` pays the old debt at once. The subscription of the hub does not replay the old event.
+    result = net.ops("enroll", "--chain", BASE, "--target", canary, "--label", "old debt", *CANARY_POLICY)
+    assert result.returncode == 0, result.stderr
+    assert "the vault reconciled at once: Rescued" in result.stdout and net.debt(BASE, canary) == 0
+    result = net.relay()
+    assert relayed(result) == (0, 0) and "order not known" not in result.stdout
+
+
+def test_relay_names_a_log_with_an_order_that_it_does_not_know(net):
+    # A debt and then an enrollment, with no read of the relay between them: the relay cannot know the
+    # order. It uses the subscriptions of the time of its read, sends the log, and says so.
+    canary = net.new_callback_canary()
+    net.pong(BASE, canary)
+    result = net.ops("enroll", "--chain", BASE, "--target", canary, "--label", "order one", *CANARY_POLICY)
+    assert result.returncode == 0, result.stderr
+    result = net.relay()
+    assert relayed(result) == (1, 1)
+    assert "order not known: 1" in result.stdout and f"the Subscribe of {net.hub}" in result.stdout
+
+    # A debt and then a removal, with no read between them: the relay does not send the log, and says so.
+    assert net.debt(BASE, canary) == 0
+    net.pong(BASE, canary, 2)
+    assert net.debt(BASE, canary) > 0
+    result = net.ops("remove", "--chain", BASE, "--target", canary)
+    assert result.returncode == 0, result.stderr
+    result = net.relay()
+    assert relayed(result) == (0, 0)
+    assert "order not known: 1" in result.stdout and f"the Unsubscribe of {net.hub}" in result.stdout
 
 
 # ----------------------------------------------------------------------------------------------
@@ -579,6 +643,21 @@ def test_recover_deposits_then_sends_vault_up_until_nothing_is_pending(net):
     _, _, _, up, pending = net.read(LASNA, net.hub, net.hub_abi, "vaultInfo", 84532)
     assert (up, pending) == (True, 0)
 
+    # The rule: before each `vaultUp` the command reads `debt(vault)` at the proxy, and the answer is 0. The
+    # read after the deposit is at the block of the deposit or a later one.
+    records = net.proxy.records[mark:]
+    sends = [i for i, r in enumerate(records) if r["method"] == "eth_sendRawTransaction"]
+    debt_call = "0x" + net.ledger_abi.encode("debt", vault).hex()
+    reads = [i for i, r in enumerate(records)
+             if r["chain"] == BASE and r["method"] == "eth_call" and r["params"][0]["data"] == debt_call
+             and ops.same_address(r["params"][0]["to"], net.ledger[BASE])]
+    deposit_block = int(net.rpcs[BASE].receipt(sent[0][1])["blockNumber"], 16)
+    for before_send, after_send in ((sends[0], sends[1]), (sends[1], sends[2])):
+        between = [i for i in reads if before_send < i < after_send]
+        assert between, "no debt read before vaultUp"
+        assert int(records[between[-1]]["result"], 16) == 0
+        assert int(records[between[-1]]["params"][1], 16) >= deposit_block
+
     assert relayed(net.relay()) == (0, 2)
     for target in targets:
         assert net.debt(BASE, target) == 0
@@ -594,8 +673,109 @@ def test_cron_tick_runs_the_gauge(net):
     result = net.relay("--cron-tick")
     # One trigger for the hub. One sweep for each vault that is up and has an enrolled target.
     assert relayed(result) == (1, 2)
-    assert "cron tick of block" in result.stdout
+    assert "cron tick Cron10000 of block" in result.stdout
     assert net.read(LASNA, net.hub, net.hub_abi, "lastTick") > 0
+
+
+def test_forkrelay_refuses_a_state_file_that_is_not_usable_and_a_payload_with_no_first_argument(net, tmp_path):
+    before = net.blocks()
+    state = tmp_path / "state.json"
+    state.write_text('{"lasna": {"block"')
+    command = [part if part != str(net.state) else str(state) for part in net.relay_command()]
+    result = subprocess.run(command, env=net.env, capture_output=True, text=True, timeout=60, cwd=ops.ROOT)
+    assert result.returncode != 0 and "relay state" in result.stderr
+
+    with pytest.raises(ops.OpsError):
+        net.node.deliver(BASE, net.vault(BASE), bytes.fromhex("12345678"), 200_000, net.account.address)
+    assert net.blocks() == before
+
+
+# ----------------------------------------------------------------------------------------------
+# A run that stops between two steps
+# ----------------------------------------------------------------------------------------------
+
+
+class LostAnswer(ops.Rpc):
+    """The node gets the transaction, and its answer does not arrive."""
+
+    def request(self, method, params=(), attempts=None):
+        result = super().request(method, params, attempts)
+        if method == "eth_sendRawTransaction":
+            raise ops.TransportError("the answer is lost")
+        return result
+
+
+class NeverSent(ops.Rpc):
+    """The transaction does not reach the node."""
+
+    def request(self, method, params=(), attempts=None):
+        if method == "eth_sendRawTransaction":
+            raise ops.TransportError("the node is down")
+        return super().request(method, params, attempts)
+
+
+@pytest.mark.parametrize("broken", [LostAnswer, NeverSent])
+def test_a_deployment_that_stopped_is_continued_and_not_sent_a_second_time(net, broken):
+    rpc, sender = net.rpcs[LASNA], net.account.address
+    nonce = int(rpc.request("eth_getTransactionCount", [sender, "latest"]), 16)
+    entry, saved = {}, []
+
+    def save():
+        saved.append(json.loads(json.dumps(entry)))
+
+    with pytest.raises(ops.TransportError):
+        ops.deploy_recorded(broken(LASNA, [net.anvils[LASNA].url]), net.account, net.callback, (), 0, entry, save,
+                            "canary")
+    # The nonce and the hash were in the file before the transaction went to the node.
+    assert saved and saved[0]["pendingDeploy"]["nonce"] == nonce and saved[0]["pendingDeploy"]["txs"]
+    assert entry["address"] is None
+
+    receipt = ops.deploy_recorded(rpc, net.account, net.callback, (), 0, entry, save, "canary")
+    assert int(rpc.request("eth_getTransactionCount", [sender, "latest"]), 16) == nonce + 1, "two deployments"
+    assert entry["address"] == ops.create_address(sender, nonce) and rpc.code(entry["address"])
+    assert entry["deployTx"] == receipt["transactionHash"] and "pendingDeploy" not in entry
+    assert entry["deployBlock"] == int(receipt["blockNumber"], 16)
+
+
+def test_an_enrollment_that_stopped_is_restored_from_the_chain(net):
+    canary = net.new_callback_canary()
+    arguments = ["enroll", "--chain", BASE, "--target", canary, "--label", "restore"]
+    result = net.ops(*arguments, *CANARY_POLICY)
+    assert result.returncode == 0, result.stderr
+    complete = net.data()["enrollments"][-1]
+    before = net.blocks()
+
+    def run_again(change, policy=CANARY_POLICY):
+        data = net.data()
+        change(data["enrollments"])
+        net.manifest.write_text(json.dumps(data, indent=2))
+        return net.ops(*arguments, *policy)
+
+    # As if the run had stopped after `hub.enroll` was in a block and before the command wrote the result.
+    result = run_again(lambda records: records[-1]["txs"].update(enroll=None, enrollBlock=None))
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count("sent by an earlier run") == 2
+    restored = net.data()["enrollments"][-1]
+    assert {**restored, "txs": {**restored["txs"], "readBackBlock": None}} == \
+        {**complete, "txs": {**complete["txs"], "readBackBlock": None}}
+
+    # As if the run had written no record at all: the two hashes come from the logs of the vault and the hub.
+    result = run_again(lambda records: records.pop())
+    assert result.returncode == 0, result.stderr
+    restored = net.data()["enrollments"][-1]
+    assert restored["txs"]["setPolicy"] == complete["txs"]["setPolicy"]
+    assert (restored["txs"]["enroll"], restored["txs"]["enrollBlock"]) == \
+        (complete["txs"]["enroll"], complete["txs"]["enrollBlock"])
+
+    # Another policy than the one on the chain is refused, and the manifest gets no record.
+    count = len(net.data()["enrollments"]) - 1
+    other = [*CANARY_POLICY[:3], "0.000000000000002", *CANARY_POLICY[4:]]
+    result = run_again(lambda records: records.pop(), other)
+    assert result.returncode != 0 and "differs from the input" in result.stderr
+    assert len(net.data()["enrollments"]) == count
+
+    assert net.blocks() == before, "a restored enrollment sent a transaction"
+    assert net.target_state(BASE, canary) == "Active"
 
 
 def test_forkrelay_refuses_an_rpc_that_is_not_a_local_development_node(net, tmp_path):

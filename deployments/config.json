@@ -20,10 +20,10 @@
       "measuredSweepGas": 619221
     }
   },
-  "hub": { "principal": "0", "feeFloat": "0", "selfReserveTarget": "0", "selfCareDailyCap": "0", "principalFloor": "0" },
+  "hub": { "principal": "600000000000000000", "feeFloat": "200000000000000000", "selfReserveTarget": "200000000000000000", "selfCareDailyCap": "400000000000000000", "principalFloor": "50000000000000000" },
   "vaults": {
-    "unichain-sepolia": { "principal": "0", "feeFloat": "0", "selfReserveTarget": "0", "selfCareDailyCap": "0", "principalFloor": "0" },
-    "base-sepolia": { "principal": "0", "feeFloat": "0", "selfReserveTarget": "0", "selfCareDailyCap": "0", "principalFloor": "0" }
+    "unichain-sepolia": { "principal": "5000000000000000", "feeFloat": "200000000000000", "selfReserveTarget": "200000000000000", "selfCareDailyCap": "500000000000000", "principalFloor": "200000000000000" },
+    "base-sepolia": { "principal": "2000000000000000", "feeFloat": "200000000000000", "selfReserveTarget": "200000000000000", "selfCareDailyCap": "500000000000000", "principalFloor": "200000000000000" }
   },
   "callbackSender": "hub",
   "cronTopic": "Cron10000",
@@ -32,13 +32,13 @@
       "label": "FastfillReactive",
       "chain": "lasna",
       "address": "0x05a566959544A55c16012aeeF0a09067da1f204f",
-      "policy": { "low": "50000000000000000", "high": "250000000000000000", "maxDebt": "0", "dailyCap": "0", "maxRescues": 0, "window": 0 }
+      "policy": { "low": "50000000000000000", "high": "250000000000000000", "maxDebt": "250000000000000000", "dailyCap": "500000000000000000", "maxRescues": 2, "window": 3600 }
     },
     {
       "label": "FastfillExecutor",
       "chain": "unichain-sepolia",
       "address": "0x916D4d5f9E363CbdFA8C34fB41185a75A6a2E705",
-      "policy": { "low": "0", "high": "0", "maxDebt": "0", "dailyCap": "0", "maxRescues": 0, "window": 0 }
+      "policy": { "low": "500000000000000", "high": "2000000000000000", "maxDebt": "1000000000000000", "dailyCap": "4000000000000000", "maxRescues": 2, "window": 3600 }
     }
   ]
 }

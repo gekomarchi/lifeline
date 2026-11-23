@@ -9,8 +9,9 @@ command prints or stores it.
 
 Each ABI and each bytecode comes from the Foundry build output under `out/`.
 
-Reusable parts, for the later units: `load_artifact`, `Abi`, `Rpc`, `send_transaction`,
-`wait_receipt`, `transact`, `deploy_contract`, `find_logs`, `wait_for_log`, `Manifest`.
+Reusable parts, for the later units: `load_artifact`, `Artifact`, `Abi`, `Rpc`, `load_owner`,
+`send_transaction`, `wait_receipt`, `transact`, `deploy_contract`, `find_logs`, `wait_for_log`, `receipt_logs`,
+`Manifest`, `Policy`, `Session`, `enroll_target`, `to_wei`, `from_wei`.
 """
 
 from __future__ import annotations
@@ -167,61 +168,96 @@ def host_of(url: str) -> str:
 _NO_BLOCK = re.compile(r"header not found|unknown block|block not found|block .*not available|blockoutofrange")
 
 
-class Rpc:
-    """A JSON-RPC client for one chain, with an ordered list of URLs. A failed URL gives its place to the next."""
+class _NoAnswer(Exception):
+    """One URL gave no JSON-RPC answer."""
 
-    def __init__(self, name, urls, timeout=30.0, attempts=4):
+
+class Rpc:
+    """A JSON-RPC client for one chain, with an ordered list of URLs. A failed URL gives its place to the next.
+
+    With `chain_id`, each URL must answer `eth_chainId` with that value before its first use. So a retry on
+    another URL can never move a transaction to another network."""
+
+    def __init__(self, name, urls, chain_id=None, timeout=30.0, attempts=4):
         if not urls:
             raise OpsError(f"no RPC URL for chain {name}: use --rpc {name}=<url>")
         self.name = name
         self.urls = list(urls)
+        self.expected_chain_id = chain_id
         self.timeout = timeout
         self.attempts = attempts
         self._id = 0
         self._dev = None
+        self._verified = set()
         # The newest block that a receipt of this session named. A node behind a load balancer can be some
         # blocks behind the node that gave the receipt: each read waits for this block.
         self.floor = 0
         self._nonces = {}
 
+    def _post(self, url, method, params):
+        """One request to one URL. Returns the result. A JSON-RPC error is `RpcError`."""
+        self._id += 1
+        payload = {"jsonrpc": "2.0", "id": self._id, "method": method, "params": list(params)}
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode(),
+            headers={"content-type": "application/json", "user-agent": "lifeline-ops"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                body = json.loads(response.read())
+        except urllib.error.HTTPError as error:
+            try:
+                body = json.loads(error.read())
+            except ValueError:
+                body = None
+            if error.code == 429 or error.code >= 500 or not isinstance(body, dict):
+                raise _NoAnswer(f"HTTP {error.code}") from None
+        except (OSError, ValueError) as error:
+            raise _NoAnswer(type(error).__name__) from None
+        if isinstance(body, dict) and body.get("error") is not None:
+            raise RpcError(method, body["error"])
+        if isinstance(body, dict) and "result" in body:
+            return body["result"]
+        raise _NoAnswer("no result")
+
+    def _verify(self, url) -> None:
+        if self.expected_chain_id is None or url in self._verified:
+            return
+        actual = hex_int(self._post(url, "eth_chainId", []))
+        if actual != self.expected_chain_id:
+            raise OpsError(f"{self.name}: the RPC {host_of(url)} answers for chain ID {actual}, not "
+                           f"{self.expected_chain_id}")
+        self._verified.add(url)
+
     def request(self, method, params=(), attempts=None):
+        attempts = attempts or self.attempts
         last = None
-        for attempt in range(attempts or self.attempts):
+        for attempt in range(attempts):
             for url in self.urls:
-                self._id += 1
-                payload = {"jsonrpc": "2.0", "id": self._id, "method": method, "params": list(params)}
-                request = urllib.request.Request(
-                    url,
-                    data=json.dumps(payload).encode(),
-                    headers={"content-type": "application/json", "user-agent": "lifeline-ops"},
-                )
                 try:
-                    with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                        body = json.loads(response.read())
-                except urllib.error.HTTPError as error:
-                    try:
-                        body = json.loads(error.read())
-                    except ValueError:
-                        body = None
-                    if error.code == 429 or error.code >= 500 or not isinstance(body, dict):
-                        last = f"HTTP {error.code}"
-                        continue
-                except (OSError, ValueError) as error:
-                    last = type(error).__name__
-                    continue
-                if isinstance(body, dict) and body.get("error") is not None:
-                    raise RpcError(method, body["error"])
-                if isinstance(body, dict) and "result" in body:
-                    return body["result"]
-                last = "no result"
-            if attempt + 1 < (attempts or self.attempts):
+                    self._verify(url)
+                    return self._post(url, method, params)
+                except _NoAnswer as failure:
+                    last = failure
+            if attempt + 1 < attempts:
                 time.sleep(min(2.0**attempt, 8.0) * 0.5)
         raise TransportError(f"{self.name}: no answer for {method} ({last})")
+
+    def chain_ids(self) -> list:
+        """(host, chain ID or None) for each URL: what each one answers now."""
+        answers = []
+        for url in self.urls:
+            try:
+                answers.append((host_of(url), hex_int(self._post(url, "eth_chainId", []))))
+            except (_NoAnswer, RpcError):
+                answers.append((host_of(url), None))
+        return answers
 
     # Reads
 
     def chain_id(self) -> int:
-        return hex_int(self.request("eth_chainId"))
+        return self.expected_chain_id or hex_int(self.request("eth_chainId"))
 
     def block_number(self) -> int:
         return hex_int(self.request("eth_blockNumber"))
@@ -251,7 +287,7 @@ class Rpc:
         return hex_int(self.request("eth_getBalance", [address, "latest"]))
 
     def code(self, address) -> bytes:
-        return bytes.fromhex(self.request("eth_getCode", [address, "latest"])[2:])
+        return bytes.fromhex(self._read_at("eth_getCode", [address])[1][2:])
 
     def head(self) -> int:
         """The newest block of the node. It waits until the node has the newest block of a receipt of this
@@ -265,19 +301,23 @@ class Rpc:
                 raise TransportError(f"{self.name}: the node is at block {block}, behind block {self.floor}")
             time.sleep(min(POLL_SECONDS, 1.0))
 
-    def call_at(self, to, data: bytes, block=None):
-        """Calls a view at one block: `head()` if none is given. Returns (block, return data)."""
+    def _read_at(self, method, params, block=None):
+        """Sends a state read for one block: `head()` if none is given. Returns (block, result)."""
         deadline = time.monotonic() + 30
         while True:
             number = self.head() if block is None else block
             try:
-                result = self.request("eth_call", [{"to": to, "data": "0x" + data.hex()}, hex(number)])
-                return number, bytes.fromhex(result[2:])
+                return number, self.request(method, [*params, hex(number)])
             except RpcError as error:
                 # Another node of the same URL does not have the block yet.
                 if not _NO_BLOCK.search(error.message.lower()) or time.monotonic() >= deadline:
                     raise
             time.sleep(min(POLL_SECONDS, 1.0))
+
+    def call_at(self, to, data: bytes, block=None):
+        """Calls a view at one block: `head()` if none is given. Returns (block, return data)."""
+        number, result = self._read_at("eth_call", [{"to": to, "data": "0x" + data.hex()}], block)
+        return number, bytes.fromhex(result[2:])
 
     def call(self, to, data: bytes, block=None) -> bytes:
         return self.call_at(to, data, block)[1]
@@ -316,13 +356,15 @@ class Rpc:
         return sorted(found, key=lambda log: (hex_int(log["blockNumber"]), hex_int(log["logIndex"])))
 
     def is_dev_node(self) -> bool:
-        """True if the node is a local development node (anvil): it answers `anvil_nodeInfo`."""
+        """True if one of the URLs is a local development node (anvil): it answers `anvil_nodeInfo`."""
         if self._dev is None:
-            try:
-                self.request("anvil_nodeInfo", attempts=1)
-                self._dev = True
-            except (RpcError, TransportError):
-                self._dev = False
+            self._dev = False
+            for url in self.urls:
+                try:
+                    self._post(url, "anvil_nodeInfo", [])
+                    self._dev = True
+                except (_NoAnswer, RpcError):
+                    pass
         return self._dev
 
 
@@ -510,9 +552,14 @@ def _revert_reason(error: RpcError, abi: Abi = None) -> str:
     return error.message
 
 
-def send_transaction(rpc: Rpc, account, to=None, data=b"", value=0, gas=None, abi: Abi = None, what="") -> str:
+def send_transaction(rpc: Rpc, account, to=None, data=b"", value=0, gas=None, abi: Abi = None, what="",
+                     nonce=None, before_send=None) -> str:
     """Signs and sends one transaction. Returns its hash. It sends nothing if the call would revert or if
-    the balance does not cover the value and the largest fee."""
+    the balance does not cover the value and the largest fee.
+
+    `before_send(hash, nonce)` runs after the signature and before the transaction goes to the node: a
+    caller that writes the hash to a file there can find the transaction again after a lost answer.
+    `nonce` gives the nonce; without it the transaction gets the next nonce of the sender."""
     sender = account.address
     what = what or "transaction"
     balance = rpc.balance(sender)
@@ -540,8 +587,10 @@ def send_transaction(rpc: Rpc, account, to=None, data=b"", value=0, gas=None, ab
             f"{what} on {rpc.name} was not sent: the balance of {sender} is {amount(balance)}; the transaction "
             f"needs {amount(value)} of value and at most {amount(gas * price)} of fee"
         )
-    nonce = rpc.next_nonce(sender)
+    if nonce is None:
+        nonce = rpc.next_nonce(sender)
     signed = account.sign_transaction({
+        # The chain ID of the configuration or of the manifest: each URL was checked against it.
         "chainId": rpc.chain_id(),
         "nonce": nonce,
         "to": to or "",
@@ -553,6 +602,8 @@ def send_transaction(rpc: Rpc, account, to=None, data=b"", value=0, gas=None, ab
     })
     raw = "0x" + bytes(signed.raw_transaction).hex()
     tx_hash = "0x" + bytes(signed.hash).hex()
+    if before_send is not None:
+        before_send(tx_hash, nonce)
     try:
         rpc.request("eth_sendRawTransaction", [raw])
     except RpcError as error:
@@ -563,19 +614,31 @@ def send_transaction(rpc: Rpc, account, to=None, data=b"", value=0, gas=None, ab
     return tx_hash
 
 
-def wait_receipt(rpc: Rpc, tx_hash: str, timeout: float = None) -> dict:
-    """Waits for the receipt of a transaction. A reverted transaction is an error."""
+def _mined(rpc: Rpc, tx_hash: str):
+    """The receipt of a transaction if it is in a block, or None. A reverted transaction is an error."""
+    receipt = rpc.receipt(tx_hash)
+    if receipt is None or not receipt.get("blockNumber"):
+        return None
+    block = hex_int(receipt["blockNumber"])
+    rpc.floor = max(rpc.floor, block)
+    if hex_int(receipt["status"]) != 1:
+        raise OpsError(f"transaction {tx_hash} on {rpc.name} reverted in block {block}")
+    return receipt
+
+
+def wait_receipt(rpc: Rpc, tx_hash, timeout: float = None) -> dict:
+    """Waits for the receipt of a transaction: one hash, or a list of hashes of which one at most can be in
+    a block. A reverted transaction is an error."""
+    hashes = [tx_hash] if isinstance(tx_hash, str) else list(tx_hash)
     deadline = time.monotonic() + (RECEIPT_TIMEOUT if timeout is None else timeout)
     while True:
-        receipt = rpc.receipt(tx_hash)
-        if receipt is not None and receipt.get("blockNumber"):
-            block = hex_int(receipt["blockNumber"])
-            rpc.floor = max(rpc.floor, block)
-            if hex_int(receipt["status"]) != 1:
-                raise OpsError(f"transaction {tx_hash} on {rpc.name} reverted in block {block}")
-            return receipt
+        for candidate in hashes:
+            receipt = _mined(rpc, candidate)
+            if receipt is not None:
+                return receipt
         if time.monotonic() >= deadline:
-            raise OpsError(f"no receipt for transaction {tx_hash} on {rpc.name}: check it before the next run")
+            raise OpsError(f"no receipt for transaction {', '.join(hashes)} on {rpc.name}: run the command "
+                           f"again to continue")
         time.sleep(min(POLL_SECONDS, 1.0))
 
 
@@ -584,18 +647,93 @@ def transact(rpc: Rpc, account, to, data=b"", value=0, abi: Abi = None, what="")
     return wait_receipt(rpc, send_transaction(rpc, account, to, data, value, abi=abi, what=what))
 
 
-def deploy_contract(rpc: Rpc, account, artifact: Artifact, args=(), value=0) -> dict:
-    """Deploys a contract from its build artifact. Returns the receipt: `contractAddress` is the new address."""
+def transact_recorded(rpc: Rpc, account, to, data, record: dict, key: str, save, value=0, abi: Abi = None,
+                      what="") -> dict:
+    """Sends one transaction, waits for its receipt, and keeps its hash in `record[key]`. `save()` writes
+    the file of the record. The hash is in the file before the transaction goes to the node.
+
+    If `record[key]` holds a hash already, an earlier run stopped here: a transaction that the chain has
+    is not sent again."""
+    recorded = record.get(key)
+    if recorded:
+        rpc.head()
+        if _mined(rpc, recorded) is not None or rpc.transaction(recorded) is not None:
+            return wait_receipt(rpc, recorded)
+
+    def journal(tx_hash, _nonce):
+        record[key] = tx_hash
+        save()
+
+    return wait_receipt(rpc, send_transaction(rpc, account, to, data, value, abi=abi, what=what,
+                                              before_send=journal))
+
+
+def create_address(sender: str, nonce: int) -> str:
+    """The address of the contract that a sender creates with a nonce."""
+    import rlp  # a dependency of eth-account
+
+    return checksum("0x" + keccak256(rlp.encode([bytes.fromhex(sender[2:]), nonce]))[12:].hex())
+
+
+def deploy_recorded(rpc: Rpc, account, artifact: Artifact, args, value, entry: dict, save, what) -> dict:
+    """Deploys one contract and fills its record `entry`: `address`, `deployBlock`, `deployTx`. `save()`
+    writes the file of the record. Returns the receipt.
+
+    The nonce and the hash of the transaction are in the file (`pendingDeploy`) before the transaction goes
+    to the node. So the next run continues a deployment that stopped at any point, and no contract is
+    deployed two times."""
     if not artifact.bytecode:
         raise OpsError(f"the build artifact of {artifact.name} has no bytecode")
     data = artifact.bytecode + artifact.abi.encode_constructor(*args)
-    receipt = transact(rpc, account, None, data, value, abi=artifact.abi, what=f"the deployment of {artifact.name}")
-    if not receipt.get("contractAddress") or not rpc.code(receipt["contractAddress"]):
-        raise OpsError(f"the deployment of {artifact.name} on {rpc.name} left no code: {receipt['transactionHash']}")
+    sender = account.address
+    pending = entry.get("pendingDeploy")
+    nonce = None
+    if pending:
+        say(f"{what}: an earlier run stopped in this deployment (nonce {pending['nonce']}); it continues")
+        rpc.head()
+        known = any(_mined(rpc, h) is not None or rpc.transaction(h) is not None for h in pending["txs"])
+        if not known:
+            used = hex_int(rpc.request("eth_getTransactionCount", [sender, "latest"])) > pending["nonce"]
+            expected = create_address(sender, pending["nonce"])
+            if used and rpc.code(expected):
+                raise OpsError(
+                    f"{what}: {rpc.name} has code at {expected}, the address of the deployment, and the node "
+                    f"knows none of its recorded transactions ({', '.join(pending['txs'])}). Run the command "
+                    f"again; if the result is the same, check the address in a block explorer"
+                )
+            if used:
+                # Another transaction took the nonce: no recorded transaction can be in a block.
+                pending = None
+            else:
+                # The node never got the transaction, or dropped it. The same nonce: one of them at most.
+                nonce = pending["nonce"]
+    if pending is None or nonce is not None:
+        def journal(tx_hash, used_nonce):
+            recorded = entry.get("pendingDeploy") if nonce is not None else None
+            hashes = [*(recorded["txs"] if recorded else []), tx_hash]
+            entry["pendingDeploy"] = {"nonce": used_nonce, "txs": list(dict.fromkeys(hashes))}
+            save()
+
+        entry.setdefault("address", None)
+        send_transaction(rpc, account, None, data, value, abi=artifact.abi, what=f"the deployment of the {what}",
+                         nonce=nonce, before_send=journal)
+    receipt = wait_receipt(rpc, entry["pendingDeploy"]["txs"])
+    address = checksum(receipt["contractAddress"]) if receipt.get("contractAddress") else None
+    if not address or not rpc.code(address):
+        raise OpsError(f"the deployment of the {what} on {rpc.name} left no code: {receipt['transactionHash']}")
+    entry.update(address=address, deployBlock=hex_int(receipt["blockNumber"]), deployTx=receipt["transactionHash"])
+    del entry["pendingDeploy"]
+    save()
     return receipt
 
 
+def deploy_contract(rpc: Rpc, account, artifact: Artifact, args=(), value=0) -> dict:
+    """Deploys a contract from its build artifact. Returns the receipt: `contractAddress` is the new address."""
+    return deploy_recorded(rpc, account, artifact, args, value, {}, lambda: None, artifact.name)
+
+
 def find_logs(rpc: Rpc, address, topics, from_block, to_block=None) -> list:
+    """The logs of one emitter with a topic filter, in ascending order: `Rpc.logs` as a function."""
     return rpc.logs(address, topics, from_block, to_block)
 
 
@@ -611,6 +749,7 @@ def wait_for_log(rpc: Rpc, address, topics, from_block, deadline: float):
 
 
 def receipt_logs(receipt: dict, address, topic0) -> list:
+    """The logs of a receipt that one emitter wrote with one topic 0."""
     return [
         log for log in receipt["logs"]
         if same_address(log["address"], address) and log["topics"] and log["topics"][0] == topic0
@@ -838,14 +977,16 @@ class Manifest:
         return bool(entry and entry.get("address"))
 
     def active_enrollment(self, chain: str, target: str):
-        """The newest enrollment record of a target that has no complete removal."""
+        """The newest enrollment record of a target, if `remove` did not close it. None if there is none."""
         for record in reversed(self.data["enrollments"]):
             if record.get("chain") == chain and same_address(record.get("target"), target):
-                removed = record.get("removed")
-                if not removed or (chain != LASNA and not removed.get("vaultDisarm")):
-                    return record
-                return None
+                return None if record.get("removed") else record
         return None
+
+    @staticmethod
+    def enrollment_complete(record) -> bool:
+        """True if the enrollment reached its last step: `hub.enroll` is in a block."""
+        return bool(record) and (record.get("txs") or {}).get("enrollBlock") is not None
 
 
 @dataclass
@@ -856,18 +997,20 @@ class Chain:
     rpc: Rpc
 
     def check_id(self) -> None:
-        actual = self.rpc.chain_id()
-        if actual != self.chain_id:
-            raise OpsError(
-                f"{self.name}: the RPC {host_of(self.rpc.urls[0])} answers for chain ID {actual}, "
-                f"not {self.chain_id}"
-            )
+        """Each URL that answers must answer for this chain, and one URL at least must answer."""
+        answers = self.rpc.chain_ids()
+        for host, actual in answers:
+            if actual is not None and actual != self.chain_id:
+                raise OpsError(f"{self.name}: the RPC {host} answers for chain ID {actual}, not {self.chain_id}")
+        if all(actual is None for _, actual in answers):
+            raise TransportError(f"{self.name}: no RPC answers eth_chainId")
 
 
 def open_chain(name: str, entry: dict, overrides: dict) -> Chain:
     """One chain of the configuration or of the manifest. `--rpc` URLs replace its RPC list."""
     urls = overrides.get(name) or entry.get("rpc") or []
-    return Chain(name, int(entry["chainId"]), parse_address(entry["ledger"], f"chains.{name}.ledger"), Rpc(name, urls))
+    chain_id = int(entry["chainId"])
+    return Chain(name, chain_id, parse_address(entry["ledger"], f"chains.{name}.ledger"), Rpc(name, urls, chain_id))
 
 
 def guard_manifest(manifest_path: Path, chains) -> None:
@@ -1025,20 +1168,33 @@ def _deploy_checks(config, chains, manifest: Manifest, ledger_abi: Abi, owner_ad
         if not ok:
             failures.append(text)
 
+    def stop_on_failures() -> None:
+        if failures:
+            raise OpsError("deploy sent no transaction. Failed checks:\n  - " + "\n  - ".join(failures))
+
     say("checks before deployment:")
     for name, chain in chains.items():
-        actual = chain.rpc.chain_id()
-        check(actual == chain.chain_id, f"{name}: eth_chainId is {actual}, the configuration has {chain.chain_id}")
-        if actual == chain.chain_id:
+        # Each URL of the chain: a retry on another URL must stay on the same network.
+        answers = chain.rpc.chain_ids()
+        right = True
+        for host, actual in answers:
+            if actual is not None:
+                right &= actual == chain.chain_id
+                check(actual == chain.chain_id,
+                      f"{name}: eth_chainId of {host} is {actual}, the configuration has {chain.chain_id}")
+        if all(actual is None for _, actual in answers):
+            right = False
+            check(False, f"{name}: no RPC answers eth_chainId")
+        if right:
             check(bool(chain.rpc.code(chain.ledger)), f"{name}: the ledger {chain.ledger} has code")
-    if failures:
-        raise OpsError("deploy sent no transaction. Failed checks:\n  - " + "\n  - ".join(failures))
+    # The later checks read the ledgers, so they need the right chains.
+    stop_on_failures()
 
     need = {name: 0 for name in chains}
 
     lasna = chains[LASNA]
     hub = config["hub"]
-    if manifest.hub and manifest.hub.get("deployTx"):
+    if _deployment_started(manifest.hub):
         say("  ok   hub: in the manifest; the float checks apply to a new deployment only")
     else:
         price = lasna.rpc.gas_price()
@@ -1060,7 +1216,7 @@ def _deploy_checks(config, chains, manifest: Manifest, ledger_abi: Abi, owner_ad
         check(entry["measuredSweepGas"] > 0, f"{name}: measuredSweepGas is above 0")
         check(entry["sweepBase"] > 0, f"{name}: sweepBase is above 0")
         deployed = manifest.vaults.get(name)
-        if deployed and deployed.get("deployTx"):
+        if _deployment_started(deployed):
             say(f"  ok   vault of {name}: in the manifest; the float check applies to a new deployment only")
             continue
         need[name] += funds["value"]
@@ -1091,14 +1247,22 @@ def _deploy_checks(config, chains, manifest: Manifest, ledger_abi: Abi, owner_ad
             check(balance > value, f"{name}: the owner balance {amount(balance)} is above the value of the "
                                    f"deployments, {amount(value)}")
 
-    if failures:
-        raise OpsError("deploy sent no transaction. Failed checks:\n  - " + "\n  - ".join(failures))
+    stop_on_failures()
 
 
-def _deploy_step(manifest: Manifest, entry_of, store, chain: Chain, owner, artifact: Artifact, args, value, what):
-    """Deploys one contract, or takes it from the manifest. The transaction hash is in the manifest before
-    the receipt, so a run that stops in between does not deploy the contract a second time."""
-    entry = entry_of()
+def _deployment_started(entry) -> bool:
+    """True if the manifest holds the contract, or a deployment of it that an earlier run started."""
+    return bool(entry and (entry.get("address") or entry.get("pendingDeploy")))
+
+
+def _new_entry(chain_id: int, **first) -> dict:
+    """The manifest entry of a contract that is not deployed yet."""
+    return {**first, "chainId": chain_id, "address": None, "deployBlock": None, "deployTx": None}
+
+
+def _deploy_step(manifest: Manifest, entry: dict, chain: Chain, owner, artifact: Artifact, args, value, what):
+    """Deploys one contract, or takes it from the manifest. `entry` is its manifest entry: `deploy_recorded`
+    fills it. Returns the entry."""
     if manifest.deployed(entry):
         if not chain.rpc.code(entry["address"]):
             raise OpsError(
@@ -1106,28 +1270,11 @@ def _deploy_step(manifest: Manifest, entry_of, store, chain: Chain, owner, artif
                 f"manifest is from another network or from a dry run"
             )
         say(f"{what}: in the manifest at {entry['address']} (block {entry['deployBlock']}); no deployment")
-        return entry, False
-    if entry and entry.get("deployTx"):
-        say(f"{what}: the manifest has the transaction {entry['deployTx']} with no receipt; waiting for it")
-        if chain.rpc.transaction(entry["deployTx"]) is None and chain.rpc.receipt(entry["deployTx"]) is None:
-            raise OpsError(
-                f"{chain.name} does not know the transaction {entry['deployTx']} of the {what}. If it was "
-                f"dropped, remove this entry from the manifest and run deploy again"
-            )
-        tx_hash = entry["deployTx"]
-    else:
-        data = artifact.bytecode + artifact.abi.encode_constructor(*args)
-        tx_hash = send_transaction(chain.rpc, owner, None, data, value, abi=artifact.abi,
-                                   what=f"the deployment of the {what}")
-        entry = store({"chainId": chain.chain_id, "address": None, "deployBlock": None, "deployTx": tx_hash})
-        manifest.save()
-    receipt = wait_receipt(chain.rpc, tx_hash)
-    entry["address"] = checksum(receipt["contractAddress"])
-    entry["deployBlock"] = block_of(receipt)
-    manifest.save()
-    say(f"{what}: deployed at {entry['address']} on {chain.name}, block {entry['deployBlock']}, tx {tx_hash}, "
-        f"value {amount(value)}")
-    return entry, True
+        return entry
+    deploy_recorded(chain.rpc, owner, artifact, args, value, entry, manifest.save, what)
+    say(f"{what}: deployed at {entry['address']} on {chain.name}, block {entry['deployBlock']}, tx "
+        f"{entry['deployTx']}, value {amount(value)}")
+    return entry
 
 
 def cmd_deploy(args) -> int:
@@ -1159,18 +1306,20 @@ def cmd_deploy(args) -> int:
     lasna = chains[LASNA]
     funds = config["hub"]
 
-    def store_hub(entry):
-        manifest.data["contracts"]["hub"] = {"chain": LASNA, **entry}
-        return manifest.data["contracts"]["hub"]
-
-    hub, _ = _deploy_step(
-        manifest, lambda: manifest.hub, store_hub, lasna, owner, hub_artifact,
+    if manifest.hub is None:
+        manifest.data["contracts"]["hub"] = _new_entry(lasna.chain_id, chain=LASNA)
+    hub = _deploy_step(
+        manifest, manifest.hub, lasna, owner, hub_artifact,
         (lasna.ledger, funds["feeFloat"], funds["selfReserveTarget"], funds["selfCareDailyCap"],
          funds["principalFloor"]),
         funds["value"], "hub",
     )
     hub_address = hub["address"]
-    hub_owner = hub_abi.decode("owner", lasna.rpc.call(hub_address, hub_abi.encode("owner")))
+
+    def read_hub(function, *arguments):
+        return hub_abi.decode(function, lasna.rpc.call(hub_address, hub_abi.encode(function, *arguments)))
+
+    hub_owner = read_hub("owner")
     if not same_address(hub_owner, owner.address):
         raise OpsError(f"{OWNER_KEY_VARIABLE} is the key of {owner.address}; the owner of the hub is {hub_owner}")
 
@@ -1180,13 +1329,8 @@ def cmd_deploy(args) -> int:
 
     for name, funds in config["vaults"].items():
         chain = chains[name]
-
-        def store_vault(entry, name=name):
-            manifest.vaults[name] = entry
-            return entry
-
-        vault, _ = _deploy_step(
-            manifest, lambda name=name: manifest.vaults.get(name), store_vault, chain, owner, vault_artifact,
+        vault = _deploy_step(
+            manifest, manifest.vaults.setdefault(name, _new_entry(chain.chain_id)), chain, owner, vault_artifact,
             (chain.ledger, sender, funds["feeFloat"], funds["selfReserveTarget"], funds["selfCareDailyCap"],
              funds["principalFloor"]),
             funds["value"], f"vault of {name}",
@@ -1200,46 +1344,42 @@ def cmd_deploy(args) -> int:
     for name in config["vaults"]:
         chain, vault = chains[name], manifest.vaults[name]
         sweep_base = config["chains"][name]["sweepBase"]
-        proxy, registered, base, _, _ = hub_abi.decode(
-            "vaultInfo", lasna.rpc.call(hub_address, hub_abi.encode("vaultInfo", chain.chain_id)))
+        proxy, registered, base, _, _ = read_hub("vaultInfo", chain.chain_id)
         if same_address(proxy, chain.ledger) and same_address(registered, vault["address"]) and base == sweep_base:
             say(f"hub.setVault for {name}: registered already; no transaction")
             continue
-        receipt = transact(lasna.rpc, owner, hub_address,
-                           hub_abi.encode("setVault", chain.chain_id, chain.ledger, vault["address"], sweep_base),
-                           abi=hub_abi, what=f"hub.setVault for {name}")
-        vault["setVaultTx"] = receipt["transactionHash"]
-        manifest.save()
+        vault["setVaultTx"] = None
+        receipt = transact_recorded(
+            lasna.rpc, owner, hub_address,
+            hub_abi.encode("setVault", chain.chain_id, chain.ledger, vault["address"], sweep_base),
+            vault, "setVaultTx", manifest.save, abi=hub_abi, what=f"hub.setVault for {name}")
         say(f"hub.setVault for {name}: tx {receipt['transactionHash']} block {block_of(receipt)} "
             f"(proxy {chain.ledger}, vault {vault['address']}, sweepBase {sweep_base})")
 
     wanted = int.from_bytes(keccak256(f"{config['cronTopic']}(uint256)".encode()), "big")
     cron = hub.setdefault("cron", {"topic": config["cronTopic"], "setCronTopicTx": None, "resumeCronTx": None})
     cron["topic"] = config["cronTopic"]
-    if hub_abi.decode("cronTopic", lasna.rpc.call(hub_address, hub_abi.encode("cronTopic"))) != wanted:
-        receipt = transact(lasna.rpc, owner, hub_address, hub_abi.encode("setCronTopic", wanted), abi=hub_abi,
-                           what="hub.setCronTopic")
-        cron["setCronTopicTx"] = receipt["transactionHash"]
-        manifest.save()
+    if read_hub("cronTopic") != wanted:
+        cron["setCronTopicTx"] = None
+        receipt = transact_recorded(lasna.rpc, owner, hub_address, hub_abi.encode("setCronTopic", wanted), cron,
+                                    "setCronTopicTx", manifest.save, abi=hub_abi, what="hub.setCronTopic")
         say(f"hub.setCronTopic({config['cronTopic']}): tx {receipt['transactionHash']} block {block_of(receipt)}")
-    if hub_abi.decode("cronSubscribed", lasna.rpc.call(hub_address, hub_abi.encode("cronSubscribed"))):
+    if read_hub("cronSubscribed"):
         say(f"cron: subscribed already to {config['cronTopic']}; no transaction")
     else:
-        receipt = transact(lasna.rpc, owner, hub_address, hub_abi.encode("resumeCron"), abi=hub_abi,
-                           what="hub.resumeCron")
-        cron["resumeCronTx"] = receipt["transactionHash"]
+        cron["resumeCronTx"] = None
+        receipt = transact_recorded(lasna.rpc, owner, hub_address, hub_abi.encode("resumeCron"), cron,
+                                    "resumeCronTx", manifest.save, abi=hub_abi, what="hub.resumeCron")
         say(f"hub.resumeCron ({config['cronTopic']}): tx {receipt['transactionHash']} block {block_of(receipt)}")
     manifest.save()
 
     say("state after deploy:")
     say(f"  hub {hub_address} on {LASNA} (chain ID {lasna.chain_id}), deployBlock {hub['deployBlock']}")
     for name in config["vaults"]:
-        _, registered, base, up, pending = hub_abi.decode(
-            "vaultInfo", lasna.rpc.call(hub_address, hub_abi.encode("vaultInfo", chains[name].chain_id)))
+        _, registered, base, up, pending = read_hub("vaultInfo", chains[name].chain_id)
         say(f"  vault {registered} on {name} (chain ID {chains[name].chain_id}), deployBlock "
             f"{manifest.vaults[name]['deployBlock']}: up {str(up).lower()}, pending {pending}, sweepBase {base}")
-    subscribed = hub_abi.decode("cronSubscribed", lasna.rpc.call(hub_address, hub_abi.encode("cronSubscribed")))
-    say(f"  cronSubscribed {str(subscribed).lower()}")
+    say(f"  cronSubscribed {str(read_hub('cronSubscribed')).lower()}")
     return 0
 
 
@@ -1364,7 +1504,9 @@ def enroll_target(session: Session, chain_name, target, label, policy: Policy, g
     """The one onboarding path. A destination target: (1) `vault.setPolicy`, (2) read the stored policy
     back, (3) `hub.enroll` with the same policy value. A Lasna target: `hub.enroll` only.
 
-    Each check comes before the first transaction. Returns the record that it added to the manifest."""
+    Each check comes before the first transaction. The record of the enrollment is in the manifest before
+    the first transaction, and each hash is in it before its transaction goes to the node. So the next run
+    with the same policy continues an enrollment that stopped. Returns the record."""
     if guest and not consent:
         raise OpsError("a guest needs the written consent of the target owner: give --consent <reference>")
     policy.validate(f"the policy of {label}")
@@ -1372,16 +1514,14 @@ def enroll_target(session: Session, chain_name, target, label, policy: Policy, g
     destination = chain_name != LASNA
     chain = session.destination(chain_name) if destination else session.lasna
     lasna, hub, hub_abi, vault_abi = session.lasna, session.hub, session.hub_abi, session.vault_abi
+    manifest = session.manifest
     session.require_owner(chain_name if destination else None)
 
     if same_address(target, hub):
         raise OpsError("the target is the hub")
     if not chain.rpc.code(target):
         raise OpsError(f"the target {target} has no code on {chain_name}")
-    kind, state, _ = session.read_hub("targetInfo", chain.chain_id, target)
-    if kind != 0 and TARGET_STATES[state] != "Disarmed":
-        raise OpsError(f"the hub has the target {target} of {chain_name} in state {TARGET_STATES[state]}: "
-                       f"remove it before a new enrollment")
+    vault = None
     if destination:
         vault = session.vault(chain_name)
         if same_address(target, vault):
@@ -1391,57 +1531,127 @@ def enroll_target(session: Session, chain_name, target, label, policy: Policy, g
             raise OpsError(f"the hub has the vault {registered} for {chain_name}, the manifest has {vault}: "
                            f"run deploy again")
 
+    kind, state, hub_policy = session.read_hub("targetInfo", chain.chain_id, target)
+    enrolled = kind != 0 and TARGET_STATES[state] != "Disarmed"
+    record = manifest.active_enrollment(chain_name, target)
+    if manifest.enrollment_complete(record):
+        if enrolled:
+            raise OpsError(f"the hub has the target {target} of {chain_name} in state {TARGET_STATES[state]}: "
+                           f"remove it before a new enrollment")
+        raise OpsError(f"the manifest has an enrollment of {target} on {chain_name}, and the hub does not have "
+                       f"the target: run remove to close that record before a new enrollment")
+    if record is not None and record["policy"] != policy.to_json():
+        raise OpsError(f"the manifest has an enrollment of {target} on {chain_name} that did not finish, with "
+                       f"another policy: give that policy again, or run remove")
+
     say(f"enroll {label}: target {target} on {chain_name} (chain ID {chain.chain_id})"
         + (f", guest with consent {consent}" if guest else ""))
     say(f"  policy: {policy.describe()}")
-    txs = {"setPolicy": None, "readBackBlock": None, "enroll": None, "enrollBlock": None}
+    if record is None:
+        record = {
+            "label": label,
+            "chain": chain_name,
+            "chainId": chain.chain_id,
+            "target": target,
+            "policy": policy.to_json(),
+            "guest": bool(guest),
+            "consent": consent if guest else None,
+            "txs": {"setPolicy": None, "readBackBlock": None, "enroll": None, "enrollBlock": None},
+            "removed": None,
+        }
+        new = True
+    else:
+        say("  an earlier run stopped in this enrollment; it continues")
+        record.update(label=label, guest=bool(guest), consent=consent if guest else None)
+        new = False
+    txs = record["txs"]
+
+    if enrolled:
+        # The hub has the target and the record is not complete: an earlier run sent `hub.enroll` and stopped
+        # before it wrote the result. The chain gives the record, if the policy on the chain is the input.
+        _adopt_enrollment(session, chain, vault, target, policy, Policy(*hub_policy), record)
+        if new:
+            manifest.data["enrollments"].append(record)
+        manifest.save()
+        return record
+
+    if new:
+        manifest.data["enrollments"].append(record)
+    manifest.save()
     step = 1
     if destination:
-        receipt = transact(chain.rpc, session.owner, vault, vault_abi.encode("setPolicy", target, policy.as_tuple()),
-                           abi=vault_abi, what="vault.setPolicy")
-        txs["setPolicy"] = receipt["transactionHash"]
+        receipt = transact_recorded(chain.rpc, session.owner, vault,
+                                    vault_abi.encode("setPolicy", target, policy.as_tuple()), txs, "setPolicy",
+                                    manifest.save, abi=vault_abi, what="vault.setPolicy")
         results = receipt_logs(receipt, vault, vault_abi.topic("Result"))
         outcome = vault_abi.decode_event("Result", results[0]) if results else None
         say(f"  1 setPolicy  on {chain_name}: tx {txs['setPolicy']} block {block_of(receipt)}"
             + (f"; the vault reconciled at once: {OUTCOMES[outcome['outcome']]}, paid {amount(outcome['paid'])}"
                if outcome else ""))
-
-        block, data = chain.rpc.call_at(vault, vault_abi.encode("policyOf", target))
-        stored = Policy(*vault_abi.decode("policyOf", data))
-        differences = [
-            f"{field}: stored {getattr(stored, field)}, input {getattr(policy, field)}"
-            for field in POLICY_FIELDS if getattr(stored, field) != getattr(policy, field)
-        ]
-        if differences:
-            raise OpsError(
-                f"the policy that vault.policyOf gave at block {block} of {chain_name} differs from the input "
-                f"({'; '.join(differences)}). Nothing was sent to Lasna: hub.enroll did not run"
-            )
-        txs["readBackBlock"] = block
-        say(f"  2 read-back  on {chain_name}: block {block}; vault.policyOf equals the input in each field")
+        txs["readBackBlock"] = _read_back(chain, vault, vault_abi, target, policy)
+        manifest.save()
+        say(f"  2 read-back  on {chain_name}: block {txs['readBackBlock']}; vault.policyOf equals the input in "
+            f"each field")
         step = 3
 
-    receipt = transact(lasna.rpc, session.owner, hub,
-                       hub_abi.encode("enroll", chain.chain_id, target, policy.as_tuple()),
-                       abi=hub_abi, what="hub.enroll")
-    txs["enroll"], txs["enrollBlock"] = receipt["transactionHash"], block_of(receipt)
+    receipt = transact_recorded(lasna.rpc, session.owner, hub,
+                                hub_abi.encode("enroll", chain.chain_id, target, policy.as_tuple()), txs, "enroll",
+                                manifest.save, abi=hub_abi, what="hub.enroll")
+    txs["enrollBlock"] = block_of(receipt)
+    manifest.save()
     say(f"  {step} enroll     on {LASNA}: tx {txs['enroll']} block {txs['enrollBlock']}; "
         f"hub.enroll({chain.chain_id}, {target}, policy)")
-
-    record = {
-        "label": label,
-        "chain": chain_name,
-        "chainId": chain.chain_id,
-        "target": target,
-        "policy": policy.to_json(),
-        "guest": bool(guest),
-        "consent": consent if guest else None,
-        "txs": txs,
-        "removed": None,
-    }
-    session.manifest.data["enrollments"].append(record)
-    session.manifest.save()
     return record
+
+
+def _read_back(chain: Chain, vault, vault_abi: Abi, target, policy: Policy) -> int:
+    """Reads `vault.policyOf(target)` over RPC and compares each field with the input. Returns the block of
+    the read. A difference is an error: the caller then sends nothing to Lasna."""
+    block, data = chain.rpc.call_at(vault, vault_abi.encode("policyOf", target))
+    stored = Policy(*vault_abi.decode("policyOf", data))
+    differences = [
+        f"{field}: stored {getattr(stored, field)}, input {getattr(policy, field)}"
+        for field in POLICY_FIELDS if getattr(stored, field) != getattr(policy, field)
+    ]
+    if differences:
+        raise OpsError(
+            f"the policy that vault.policyOf gave at block {block} of {chain.name} differs from the input "
+            f"({'; '.join(differences)}). Nothing was sent to Lasna: hub.enroll did not run"
+        )
+    return block
+
+
+def _adopt_enrollment(session: Session, chain: Chain, vault, target, policy: Policy, hub_policy: Policy,
+                      record: dict) -> None:
+    """Completes the record of a target that the hub has already, from the chain. The policy on the chain
+    must be the input policy."""
+    lasna, hub, hub_abi, vault_abi = session.lasna, session.hub, session.hub_abi, session.vault_abi
+    txs = record["txs"]
+    # Of the policy of a destination target, the hub keeps `maxRescues` and `window` only.
+    fields = ("maxRescues", "window") if vault else POLICY_FIELDS
+    if any(getattr(hub_policy, field) != getattr(policy, field) for field in fields):
+        raise OpsError(f"the hub has the target {target} of {chain.name} with another policy: remove it before "
+                       f"a new enrollment")
+    step = 1
+    if vault:
+        block = _read_back(chain, vault, vault_abi, target, policy)
+        if not txs["setPolicy"]:
+            logs = chain.rpc.logs(vault, [vault_abi.topic("PolicySet"), topic_of_address(target)],
+                                  session.manifest.vaults[chain.name]["deployBlock"])
+            if not logs:
+                raise OpsError(f"the vault of {chain.name} has no PolicySet log for {target}")
+            txs["setPolicy"] = logs[-1]["transactionHash"]
+        txs["readBackBlock"] = block
+        say(f"  1 setPolicy  on {chain.name}: tx {txs['setPolicy']}; sent by an earlier run")
+        say(f"  2 read-back  on {chain.name}: block {block}; vault.policyOf equals the input in each field")
+        step = 3
+    logs = lasna.rpc.logs(hub, [hub_abi.topic("Enrolled"), topic_of_int(chain.chain_id), topic_of_address(target)],
+                          session.manifest.hub["deployBlock"])
+    if not logs:
+        raise OpsError(f"the hub has no Enrolled log for {target} of {chain.name}")
+    txs["enroll"], txs["enrollBlock"] = logs[-1]["transactionHash"], hex_int(logs[-1]["blockNumber"])
+    say(f"  {step} enroll     on {LASNA}: tx {txs['enroll']} block {txs['enrollBlock']}; sent by an earlier run; "
+        f"hub.enroll({chain.chain_id}, {target}, policy)")
 
 
 def cmd_enroll(args) -> int:
@@ -1473,18 +1683,16 @@ def cmd_fleet(args) -> int:
     for entry in config["fleet"]:
         chain = session.chain(entry["chain"])
         kind, state, _ = session.read_hub("targetInfo", chain.chain_id, entry["address"])
-        if kind != 0 and TARGET_STATES[state] != "Disarmed":
-            record = session.manifest.active_enrollment(entry["chain"], entry["address"]) or {}
-            block = (record.get("txs") or {}).get("enrollBlock")
+        record = session.manifest.active_enrollment(entry["chain"], entry["address"])
+        if kind != 0 and TARGET_STATES[state] != "Disarmed" and session.manifest.enrollment_complete(record):
             say(f"enroll {entry['label']}: the hub has the target in state {TARGET_STATES[state]} already; "
                 f"no transaction")
         else:
-            block = enroll_target(session, entry["chain"], entry["address"], entry["label"],
-                                  entry["policy"])["txs"]["enrollBlock"]
-        blocks.append((entry["label"], block))
+            record = enroll_target(session, entry["chain"], entry["address"], entry["label"], entry["policy"])
+        blocks.append((entry["label"], record["txs"]["enrollBlock"]))
     say("enrollment blocks on lasna (the start of the 48-hour window):")
     for label, block in blocks:
-        say(f"  {label}: block {block if block is not None else 'not in the manifest'}")
+        say(f"  {label}: block {block}")
     return 0
 
 
@@ -1524,65 +1732,68 @@ def cmd_remove(args) -> int:
     destination = args.chain != LASNA
     chain = session.destination(args.chain) if destination else session.lasna
     lasna, hub, hub_abi, vault_abi = session.lasna, session.hub, session.hub_abi, session.vault_abi
+    manifest = session.manifest
     session.require_owner(args.chain if destination else None)
 
     kind, state, _ = session.read_hub("targetInfo", chain.chain_id, target)
-    if kind == 0:
+    vault = session.vault(args.chain) if destination else None
+    has_policy = destination and session.read_vault(args.chain, "hasPolicy", target)
+    record = manifest.active_enrollment(args.chain, target)
+    if kind == 0 and not has_policy and record is None:
         raise OpsError(f"the hub has no target {target} on {args.chain}")
-    record = session.manifest.active_enrollment(args.chain, target)
     if record is None:
         say(f"note: the manifest has no open enrollment record of {target} on {args.chain}; the hashes are "
             f"printed only")
-    removed = (record or {}).get("removed") or {"hubDisarm": None, "vaultDisarm": None}
+    # The hashes go to `removing` of the record first. `removed` is written when the removal is complete.
+    removing = (record if record is not None else {}).setdefault("removing", {"hubDisarm": None, "vaultDisarm": None})
+    save = manifest.save if record is not None else (lambda: None)
 
     say(f"remove: target {target} on {args.chain} (chain ID {chain.chain_id})")
-    in_receipt = False
-    if TARGET_STATES[state] == "Disarmed":
-        say("  1 hub.disarm: the hub has the target in state Disarmed already; no transaction")
+    if kind == 0:
+        say("  1 hub.disarm: the hub never had the target; no transaction")
     else:
-        receipt = transact(lasna.rpc, session.owner, hub, hub_abi.encode("disarm", chain.chain_id, target),
-                           abi=hub_abi, what="hub.disarm")
-        removed["hubDisarm"] = receipt["transactionHash"]
-        if record is not None:
-            record["removed"] = removed
-            session.manifest.save()
-        say(f"  1 hub.disarm   on {LASNA}: tx {removed['hubDisarm']} block {block_of(receipt)}")
-        in_receipt = any(
-            log["topics"][1:] == [topic_of_address(hub), topic_of_int(chain.chain_id), topic_of_address(chain.ledger)]
-            and _is_debt_tuple(log, session.ledger_abi, target)
-            for log in receipt_logs(receipt, lasna.ledger, session.system_abi.topic("Unsubscribe"))
-        )
+        in_receipt = False
+        if TARGET_STATES[state] == "Disarmed":
+            say("  1 hub.disarm: the hub has the target in state Disarmed already; no transaction")
+        else:
+            receipt = transact_recorded(lasna.rpc, session.owner, hub,
+                                        hub_abi.encode("disarm", chain.chain_id, target), removing, "hubDisarm",
+                                        save, abi=hub_abi, what="hub.disarm")
+            say(f"  1 hub.disarm   on {LASNA}: tx {removing['hubDisarm']} block {block_of(receipt)}")
+            tuple_topics = [topic_of_address(hub), topic_of_int(chain.chain_id), topic_of_address(chain.ledger)]
+            in_receipt = any(
+                log["topics"][1:] == tuple_topics and _is_debt_tuple(log, session.ledger_abi, target)
+                for log in receipt_logs(receipt, lasna.ledger, session.system_abi.topic("Unsubscribe"))
+            )
 
-    active, last = target_subscription(session, chain, target)
-    if active:
-        raise OpsError(f"the debt tuple of {target} is still subscribed: the newest log is Subscribe in "
-                       f"{last['transactionHash']}")
-    if in_receipt:
-        say("    the receipt holds Unsubscribe of the debt tuple of the target")
-    elif last is not None:
-        say(f"    the debt tuple was unsubscribed already, in tx {last['transactionHash']} block "
-            f"{hex_int(last['blockNumber'])}")
-    else:
-        say("    the hub has no Subscribe log for the debt tuple of the target")
-    _, state, _ = session.read_hub("targetInfo", chain.chain_id, target)
-    if TARGET_STATES[state] != "Disarmed":
-        raise OpsError(f"hub.targetInfo reports state {TARGET_STATES[state]}, not Disarmed")
-    say("    hub.targetInfo reports state Disarmed")
+        active, last = target_subscription(session, chain, target)
+        if active:
+            raise OpsError(f"the debt tuple of {target} is still subscribed: the newest log is Subscribe in "
+                           f"{last['transactionHash']}")
+        if in_receipt:
+            say("    the receipt holds Unsubscribe of the debt tuple of the target")
+        elif last is not None:
+            say(f"    the debt tuple was unsubscribed already, in tx {last['transactionHash']} block "
+                f"{hex_int(last['blockNumber'])}")
+        else:
+            say("    the hub has no Subscribe log for the debt tuple of the target")
+        _, state, _ = session.read_hub("targetInfo", chain.chain_id, target)
+        if TARGET_STATES[state] != "Disarmed":
+            raise OpsError(f"hub.targetInfo reports state {TARGET_STATES[state]}, not Disarmed")
+        say("    hub.targetInfo reports state Disarmed")
 
     if destination:
-        vault = session.vault(args.chain)
-        if session.read_vault(args.chain, "hasPolicy", target):
-            receipt = transact(chain.rpc, session.owner, vault, vault_abi.encode("disarm", target), abi=vault_abi,
-                               what="vault.disarm")
-            removed["vaultDisarm"] = receipt["transactionHash"]
-            say(f"  2 vault.disarm on {args.chain}: tx {removed['vaultDisarm']} block {block_of(receipt)}")
+        if has_policy:
+            receipt = transact_recorded(chain.rpc, session.owner, vault, vault_abi.encode("disarm", target),
+                                        removing, "vaultDisarm", save, abi=vault_abi, what="vault.disarm")
+            say(f"  2 vault.disarm on {args.chain}: tx {removing['vaultDisarm']} block {block_of(receipt)}")
             if session.read_vault(args.chain, "hasPolicy", target):
                 raise OpsError("the vault still has a policy for the target")
         else:
             say("  2 vault.disarm: the vault has no policy for the target; no transaction")
     if record is not None:
-        record["removed"] = removed
-        session.manifest.save()
+        record["removed"] = record.pop("removing")
+        manifest.save()
     say("removed: no subscription and no policy for the target")
     return 0
 
@@ -1640,12 +1851,13 @@ def cmd_recover(args) -> int:
 # loop-check
 # ----------------------------------------------------------------------------------------------
 
-LOOP_STEPS = (
-    ("debt", "the proxy event BlacklistContract(canary)"),
-    ("relayed", "the hub event Relayed on Lasna"),
-    ("result", "the vault event Result with outcome Rescued"),
-    ("debtZero", "debt(canary) == 0 at the proxy"),
-)
+# The steps that the loop check waits for, by their key in `loopCheck.steps` of the manifest.
+LOOP_STEPS = {
+    "debt": "the proxy event BlacklistContract(canary)",
+    "relayed": "the hub event Relayed on Lasna",
+    "result": "the vault event Result with outcome Rescued",
+    "debtZero": "debt(canary) == 0 at the proxy",
+}
 
 
 def cmd_loop_check(args) -> int:
@@ -1676,52 +1888,56 @@ def cmd_loop_check(args) -> int:
         manifest.save()
 
     say(f"loop-check on {args.chain} (chain ID {chain.chain_id}), timeout {args.timeout} s")
-    if "canaryCallback" not in record:
-        receipt = deploy_contract(chain.rpc, session.owner, callback_artifact)
-        record["canaryCallback"] = {"address": checksum(receipt["contractAddress"]),
-                                    "deployTx": receipt["transactionHash"], "deployBlock": block_of(receipt)}
-        save()
-    canary = record["canaryCallback"]["address"]
-    say(f"  CanaryCallback {canary} on {args.chain}: tx {record['canaryCallback']['deployTx']} "
-        f"block {record['canaryCallback']['deployBlock']}")
+    # The record is in the manifest before the first transaction, and each hash before its transaction goes
+    # to the node: the next run continues a check that stopped at any point.
+    save()
+    callback = record.setdefault("canaryCallback", {})
+    if not callback.get("address"):
+        deploy_recorded(chain.rpc, session.owner, callback_artifact, (), 0, callback, save, "CanaryCallback")
+    canary = callback["address"]
+    say(f"  CanaryCallback {canary} on {args.chain}: tx {callback['deployTx']} block {callback['deployBlock']}")
 
-    if "canaryReactive" not in record:
-        receipt = deploy_contract(lasna.rpc, session.owner, reactive_artifact,
-                                  (lasna.ledger, chain.chain_id, canary, CANARY_CALLBACK_GAS))
-        record["canaryReactive"] = {"address": checksum(receipt["contractAddress"]),
-                                    "deployTx": receipt["transactionHash"], "deployBlock": block_of(receipt)}
-        save()
-    reactive = record["canaryReactive"]["address"]
-    say(f"  CanaryReactive {reactive} on {LASNA}: tx {record['canaryReactive']['deployTx']} "
-        f"block {record['canaryReactive']['deployBlock']}")
+    lasna_canary = record.setdefault("canaryReactive", {})
+    if not lasna_canary.get("address"):
+        deploy_recorded(lasna.rpc, session.owner, reactive_artifact,
+                        (lasna.ledger, chain.chain_id, canary, CANARY_CALLBACK_GAS), 0, lasna_canary, save,
+                        "CanaryReactive")
+    reactive = lasna_canary["address"]
+    say(f"  CanaryReactive {reactive} on {LASNA}: tx {lasna_canary['deployTx']} block "
+        f"{lasna_canary['deployBlock']}")
 
-    if "fundTx" not in record:
+    if "reserve" not in record:
         if args.canary_reserve is not None:
             reserve = to_wei(args.canary_reserve)
         else:
             coeff, _ = ledger_parameter(lasna, session.ledger_abi, "_gasPriceCoeffPer1000",
                                         manifest.data["chains"][LASNA], "gasPriceCoeffPer1000")
             reserve = trigger_fee(lasna.rpc.gas_price(), coeff or 1000, CANARY_RESERVE_GAS)
-        receipt = transact(lasna.rpc, session.owner, lasna.ledger, session.ledger_abi.encode("depositTo", reactive),
-                           value=reserve, abi=session.ledger_abi, what="depositTo for the Lasna canary")
-        record["fundTx"] = receipt["transactionHash"]
+        record["reserve"] = str(reserve)
         save()
-        say(f"  reserves of the Lasna canary: {amount(reserve)}, tx {record['fundTx']}")
+    if not record.get("funded"):
+        transact_recorded(lasna.rpc, session.owner, lasna.ledger, session.ledger_abi.encode("depositTo", reactive),
+                          record, "fundTx", save, value=int(record["reserve"]), abi=session.ledger_abi,
+                          what="depositTo for the Lasna canary")
+        record["funded"] = True
+        save()
+    say(f"  reserves of the Lasna canary: {amount(int(record['reserve']))}, tx {record['fundTx']}")
 
-    if "enrolled" not in record:
+    if "policy" not in record:
         # `low` 0: `setPolicy` does not fund the canary, so its first callback puts it into debt.
         reserve_target = session.read_vault(args.chain, "selfReserveTarget")
         high = to_wei(args.high) if args.high is not None else max(reserve_target // 4, 1)
         max_debt = to_wei(args.max_debt) if args.max_debt is not None else max(reserve_target, 1)
-        policy = Policy(0, high, max_debt, max_debt + high, 2, 3600)
-        enroll_target(session, args.chain, canary, f"loop-check canary ({args.chain})", policy)
-        record["enrolled"] = True
+        record["policy"] = Policy(0, high, max_debt, max_debt + high, 2, 3600).to_json()
         save()
+    if not manifest.enrollment_complete(manifest.active_enrollment(args.chain, canary)):
+        enroll_target(session, args.chain, canary, f"loop-check canary ({args.chain})",
+                      Policy.from_json(record["policy"]))
 
-    if "pokeTx" not in record:
-        receipt = transact(lasna.rpc, session.owner, reactive, reactive_artifact.abi.encode("poke"),
-                           abi=reactive_artifact.abi, what="poke")
-        record["pokeTx"], record["pokeBlock"] = receipt["transactionHash"], block_of(receipt)
+    if record.get("pokeBlock") is None:
+        receipt = transact_recorded(lasna.rpc, session.owner, reactive, reactive_artifact.abi.encode("poke"),
+                                    record, "pokeTx", save, abi=reactive_artifact.abi, what="poke")
+        record["pokeBlock"] = block_of(receipt)
         record["status"] = "waiting"
         save()
     say(f"  poke() on {LASNA}: tx {record['pokeTx']} block {record['pokeBlock']}")
@@ -1733,7 +1949,7 @@ def cmd_loop_check(args) -> int:
     def missing(key: str) -> int:
         record["status"], record["missing"] = "timeout", key
         save()
-        text = dict(LOOP_STEPS)[key]
+        text = LOOP_STEPS[key]
         ticks = lasna.rpc.logs(reactive, [reactive_artifact.abi.topic("Tick")], record["pokeBlock"])
         note = "The Lasna canary reacted (Tick)." if ticks else "The Lasna canary did not react (no Tick)."
         print(f"error: loop-check timed out after {args.timeout} s: the step that did not occur is {text}. "
@@ -1858,11 +2074,9 @@ def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.run(args)
-    except OpsError as error:
+    except (OpsError, RpcError, TransportError) as error:
         print(f"error: {error}", file=sys.stderr)
-    except (RpcError, TransportError) as error:
-        print(f"error: {error}", file=sys.stderr)
-    return 1
+        return 1
 
 
 if __name__ == "__main__":

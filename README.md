@@ -110,10 +110,14 @@ export LIFELINE_OWNER_KEY=<private key of the owner account>
 | Argument | Meaning |
 |---|---|
 | `--manifest <file>` | The manifest. Default: `deployments/manifest.json`. Each command accepts it. |
-| `--rpc <chain>=<url>` | RPC URL for one chain. Repeat the flag for more chains. More than one URL for a chain makes an ordered list. The URLs replace the `rpc` list of the configuration (`deploy`) or of the manifest (all other commands) for that chain. Each command accepts it. |
+| `--rpc <chain>=<url>` | RPC URL for one chain. Repeat the flag for more chains. More than one URL for a chain makes an ordered list: a request that gets no answer goes to the next URL. The URLs replace the `rpc` list of the configuration (`deploy`) or of the manifest (all other commands) for that chain. Each command accepts it. |
 | `--config <file>` | The configuration. Default: `deployments/config.json`. For `deploy` and `fleet`. |
 
-Chain names: `lasna`, `unichain-sepolia`, `base-sepolia`. An amount on the command line is a decimal number in the native unit of the chain (lREACT on Lasna, ETH on a destination chain). The command converts it to wei and prints both values. Each command exits with status 0 after success and with status 1 after a refusal or a failure; the reason is on standard error.
+Chain names: `lasna`, `unichain-sepolia`, `base-sepolia`. An amount on the command line is a decimal number in the native unit of the chain (lREACT on Lasna, ETH on a destination chain). The command converts it to wei and prints both values.
+
+Each command exits with status 0 after success and with status 1 after a refusal or a failure; the reason is on standard error. Two exceptions: an argument that the command line does not accept gives status 2, and `verify` prints the result of each contract on standard output and exits with status 1 if one contract is not verified.
+
+Each URL of a chain must answer `eth_chainId` with the chain ID of the configuration or of the manifest. A command sends no other request to a URL that answers for another chain, and it signs each transaction with the chain ID of the file.
 
 | Command | Arguments | What it does |
 |---|---|---|
@@ -138,7 +142,7 @@ The one input of `deploy` and `fleet`. Amounts are decimal strings in wei.
 | `chains.<name>.measuredSweepGas` | Destination chains only. The gas of one full sweep of 8 targets (`SWEEP_MAX`): the line `SWEEP_GAS n=8 base=<sweepBase> used=<gas>` of `forge test --match-test test_sweepFitsItsGasLimit_eachCountOnEachConfiguration -vv`. |
 | `chains.<name>.extraGas`, `gasPriceCoeffPer1000`, `ledgerNote` | Optional. Used only if the ledger has no getter `_extraGas()` or `_gasPriceCoeffPer1000()`. `ledgerNote` says how the value was read; without the note the value is not used. |
 | `hub`, `vaults.<name>` | `principal`, `feeFloat`, `selfReserveTarget`, `selfCareDailyCap`, `principalFloor`. The deployment sends `principal + feeFloat`; `feeFloat` goes to the reserves of the contract at its ledger. |
-| `callbackSender` | `"hub"` (the address of the deployed hub) or an address. It is the immutable `callbackSender` of each vault: the value that the node writes into the first argument of a callback that the hub requests. |
+| `callbackSender` | `"hub"` (the address of the deployed hub) or an address. It is the immutable `callbackSender` of each vault: the address that the vault expects in the first argument of a callback. The node writes the address of the contract that made the request into that argument. So a vault accepts the callbacks of the hub only if the value is the hub address. Another address does not change what the node writes. |
 | `cronTopic` | `Cron10000` or `Cron1000`. |
 | `fleet` | The targets of `fleet`: `label`, `chain`, `address`, `policy` (`low`, `high`, `maxDebt`, `dailyCap` in wei, `maxRescues`, `window` in seconds). |
 
@@ -146,7 +150,8 @@ Values of the file and their sources:
 
 - Ledgers: Lasna `0x8888888888888888888888888888888888888888`, Base Sepolia `0x476F44b11F5C942c58f4c8E3d0300E5710743585`, Unichain Sepolia `0x775c9B990ADe401060B78D0e98684eEf8d2466C1` (chain ID 1301). Source: the Reactive Network documentation, "Origins & Destinations"; they are the ledgers of `config/network.json`.
 - `sweepBase` 220,000: both proxies answer `_extraGas()` 80,000 and `_maxChargeGas()` 50,000.
-- `measuredSweepGas` 619,221: the `SWEEP_GAS n=8 base=220000` line of the test, on the Base Sepolia fork. The Unichain Sepolia proxy has the same three fee values, so the file uses the same number for it.
+- `measuredSweepGas` 619,221: the `SWEEP_GAS n=8 base=220000` line of the test, on the Base Sepolia fork. The Unichain Sepolia proxy answers the same three fee values, and the file uses the same number for it. This is an assumption: the test does not run on a Unichain Sepolia fork.
+- The amounts of `hub` and `vaults` and the policies of `fleet` are operator inputs. The source gives only the marks of FastfillReactive: `low` 0.05 and `high` 0.25 lREACT.
 - The fleet addresses are the Fastfill contracts of the builder.
 
 ### `deployments/manifest.json`
@@ -160,11 +165,19 @@ The output of `deploy`. The commands after `deploy` read it and add their record
 | `chains.<name>` | `chainId`, `ledger` and the `rpc` list of the configuration. |
 | `contracts.hub` | `chain`, `chainId`, `address`, `deployBlock`, `deployTx`, and `cron` (`topic`, `setCronTopicTx`, `resumeCronTx`). |
 | `contracts.vaults.<name>` | `chainId`, `address`, `deployBlock`, `deployTx`, `setVaultTx`. |
-| `enrollments[]` | One record for each enrollment: `label`, `chain`, `chainId`, `target`, `policy`, `guest`, `consent`, `txs` (`setPolicy`, `readBackBlock`, `enroll`, `enrollBlock`) and `removed`. For a Lasna target `setPolicy` and `readBackBlock` are null. `removed` is null, or `{ "hubDisarm", "vaultDisarm" }` after `remove`. |
-| `loopCheck` | The newest loop check: `chain`, `chainId`, `status` (`setup`, `waiting`, `timeout`, `failed` or `passed`), `missing`, the two canaries, and `steps` with the hash and the block of each step. |
+| `enrollments[]` | One record for each enrollment: `label`, `chain`, `chainId`, `target`, `policy`, `guest`, `consent`, `txs` (`setPolicy`, `readBackBlock`, `enroll`, `enrollBlock`) and `removed`. For a Lasna target `setPolicy` and `readBackBlock` are null. A record with `enrollBlock` null is an enrollment that did not finish. `removed` is null, or `{ "hubDisarm", "vaultDisarm" }` after `remove`; a hash is null if that step needed no transaction. |
+| `loopCheck` | The newest loop check: `chain`, `chainId`, `status` (`setup`, `waiting`, `timeout`, `failed` or `passed`), `missing`, the two canaries (`canaryCallback`, `canaryReactive`), `reserve`, `fundTx`, `policy`, `pokeTx`, `pokeBlock`, and `steps` with the hash and the block of each step. |
 | `fixtures` | An empty object. The experiment fixtures fill it. |
 
 A command changes only its own entries and keeps each other entry of the file. The file holds no key. An `--rpc` URL is not written to it.
+
+### A run that stops
+
+A command writes the manifest before each transaction goes to the node, with the hash of that transaction. So the same command, run again, continues after a failure or a lost answer of a node:
+
+- `deploy` and `loop-check` write the nonce and the hash of a deployment to `pendingDeploy` of its entry. The next run waits for that transaction, or sends it again with the same nonce if the node does not know it. No contract is deployed two times. A contract entry with `address` null is a deployment that did not finish.
+- `enroll` and `fleet` write the enrollment record before `setPolicy`. The next run with the same policy sends only the steps that are missing. If the hub has the target already and the record is not complete, the command takes the hashes from the `PolicySet` log of the vault and the `Enrolled` log of the hub, after it compares the policy on the chain with the input.
+- `remove` writes its hashes to `removing` of the record, and moves them to `removed` at the end.
 
 ### Checks before deployment
 
@@ -186,7 +199,9 @@ For a target on a destination chain, `enroll` does three steps and prints them i
 2. Read-back: `vault.policyOf(target)` over RPC. The output has the block of the read. If one field differs from the input, the command stops with status 1 and sends nothing to Lasna.
 3. `hub.enroll(chainId, target, policy)` on Lasna, with the destination chain ID and the same policy value. The output has the transaction hash.
 
-The vault policy comes first for two reasons. `vault.setPolicy` reconciles the target at once, so a debt that the target has already is paid; a subscription of the hub does not replay an old debt event, and `hub.enroll` sends no callback. And when the hub starts to relay debt events of the target, the vault has the policy already, so no relay ends with `NoPolicy`.
+The vault policy comes first for two reasons. `vault.setPolicy` reconciles the target at once, inside the limits of the policy. A subscription of the hub does not replay an old debt event, and `hub.enroll` sends no callback, so this reconcile is the only one for a debt that the target has already. And when the hub starts to relay debt events of the target, the vault has the policy already, so no relay ends with `NoPolicy`.
+
+The `setPolicy` line of the output has the outcome of that reconcile. `Rescued` and `ToppedUp` are payments. With `DebtAboveCap`, `DailyCap` or `Floor` the vault paid nothing and an old debt stays: the enrollment continues, and the operator must clear that debt or give another policy.
 
 For a target on Lasna, `enroll` sends one transaction: `hub.enroll(5318007, target, policy)`. The hub holds the policy and reconciles the target at once.
 
@@ -199,7 +214,9 @@ Before the first transaction, `enroll` checks the policy rule, the consent of a 
 1. `hub.disarm(chainId, target)` on Lasna. The command confirms that the receipt holds the `Unsubscribe` log of the debt tuple of the target, or that the tuple was unsubscribed before, and that `hub.targetInfo` reports the state `Disarmed`.
 2. For a destination target: `vault.disarm(target)` on the destination chain.
 
-The hub stops to listen first, so no relay goes to a vault that has no policy for the target. The command writes the two hashes to `removed` of the enrollment record. A second run sends nothing.
+The hub stops to listen first, so it sends no new request for the target to a vault that has no policy for it. A request that the hub sent before `hub.disarm` can still arrive at the vault after `vault.disarm`; its result is `NoPolicy`. The command writes the two hashes to `removed` of the enrollment record. A second run sends nothing.
+
+For a target with an enrollment that did not finish (the vault has the policy and the hub does not have the target), `remove` sends `vault.disarm` only and closes the record.
 
 ### Recovery
 
@@ -221,7 +238,7 @@ Rule: `hub.vaultUp` runs only when the vault debt is 0. The hub cannot read the 
 3. `Result(requestId, canary, Rescued, paid)` of the vault, with the same `requestId`.
 4. `debt(canary) == 0` at the callback proxy.
 
-At the timeout the command exits with status 1 and names the step that did not occur. The next run continues the same check; `--new` starts a new one. The defaults of the canary policy are `high = selfReserveTarget / 4` and `maxDebt = selfReserveTarget` of the vault. The default reserves of the Lasna canary are the fee of 400,000 gas at the current gas price.
+At the timeout the command exits with status 1 and names the step that did not occur. The next run continues a check that did not pass: it sends only what is missing and waits again. After a check that passed, the next run starts a new check with two new canaries. `--new` starts a new check in each case. The callback canary stays enrolled after the check; `remove` removes it. The defaults of the canary policy are `high = selfReserveTarget / 4` and `maxDebt = selfReserveTarget` of the vault. The default reserves of the Lasna canary are the fee of 400,000 gas at the current gas price.
 
 ### Fork dry run
 
@@ -245,8 +262,9 @@ python -m lifeline.ops loop-check --chain base-sepolia --canary-reserve 0.05 --m
 - Use a throwaway key and a scratch manifest. A command refuses to write `deployments/manifest.json` when an RPC is a local development node.
 - Give `--rpc` for each chain to each command. The manifest holds the RPC list of the configuration, not the fork URLs.
 - Mine one block on the Lasna fork first: anvil refuses a call at the fork block of Lasna.
-- `forkrelay` refuses an RPC that is not a local development node. One run relays until no new log remains, and prints the number of triggers and deliveries. `--watch` keeps it running, for `loop-check`. `--cron-tick` first sends one cron log record to each cron subscriber. `--state <file>` holds the blocks that earlier runs relayed (default `.cache/forkrelay/state.json`): use a new file for new forks. `--operator <chain>=<address>` and `--gas-price <chain>=<wei>` replace the delivery account and the gas price of the node transactions.
-- On an anvil fork the base fee goes down with each empty block. The node transactions of `forkrelay` use the base fee of the fork point. The float checks of `deploy` and the default canary reserves of `loop-check` use the gas price of the fork, which is lower than the live price: give `--canary-reserve`.
+- `forkrelay` takes one URL for each chain and refuses an RPC that is not a local development node. One run relays until no new log remains, and prints the number of triggers and deliveries. `--watch` keeps it running, for `loop-check`. `--cron-tick` first sends one cron log record of the newest block to each cron subscriber. `--state <file>` holds the blocks that earlier runs relayed (default `.cache/forkrelay/state.json`): use a new file for new forks. The command refuses a state file that it cannot read. `--operator <chain>=<address>` and `--gas-price <chain>=<wei>` replace the delivery account and the gas price of the node transactions.
+- Order of two chains. A Lasna log matches the subscriptions that were active at its place in the Lasna log order. A destination log matches the subscriptions that are active when the relay reads it; on the network, a subscription matches a log from the time of the log. The two rules agree if the relay reads between a destination log and a change of a subscription that matches it. So keep the relay running with `--watch`, or run it one time before an enrollment or a removal of a target that has a new debt. If both came between two reads, the relay prints `note: order not known` with the choice that it made, and a last line `order not known: <n>`.
+- On an anvil fork the base fee goes down with each empty block. The node transactions of `forkrelay` use one gas price for each chain: the largest of `eth_gasPrice` at the start of the command, the base fee of the fork block and the base fee of the block before it. The float checks of `deploy` and the default canary reserves of `loop-check` use the gas price of the fork, which is lower than the live price: give `--canary-reserve`.
 - `verify` needs the live chains.
 
 The fork dry run is also a test module. It starts the three forks itself and runs the real commands:

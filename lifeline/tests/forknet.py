@@ -101,7 +101,7 @@ class RecordingProxy:
             def do_POST(self):
                 chain = self.path.strip("/")
                 payload = json.loads(self.rfile.read(int(self.headers["content-length"])))
-                if payload["method"].startswith(tuple(proxy.refuse)) and proxy.refuse:
+                if payload["method"].startswith(tuple(proxy.refuse)):
                     body = {"jsonrpc": "2.0", "id": payload.get("id"),
                             "error": {"code": -32601, "message": "the method does not exist"}}
                 else:

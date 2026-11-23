@@ -4,6 +4,8 @@ before the first request. The commands run against forks in `test_ops_forks.py`.
 from __future__ import annotations
 
 import json
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
@@ -164,3 +166,74 @@ def test_forkrelay_accepts_only_urls_of_this_machine():
     for url in ("https://lasna-rpc.rnk.dev/", "http://203.0.113.7:8545", "http://localhost.example.org:8545"):
         with pytest.raises(ops.OpsError):
             forkrelay.require_local("lasna", url)
+
+
+class FakeNode:
+    """A local JSON-RPC server that answers `eth_chainId` and `eth_blockNumber`, and `anvil_nodeInfo` if it
+    is a development node."""
+
+    def __init__(self, chain_id, development=False):
+        node = self
+        self.methods = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                payload = json.loads(self.rfile.read(int(self.headers["content-length"])))
+                node.methods.append(payload["method"])
+                answers = {"eth_chainId": hex(chain_id), "eth_blockNumber": "0x1"}
+                if development:
+                    answers["anvil_nodeInfo"] = {}
+                body = {"jsonrpc": "2.0", "id": payload["id"]}
+                if payload["method"] in answers:
+                    body["result"] = answers[payload["method"]]
+                else:
+                    body["error"] = {"code": -32601, "message": "the method does not exist"}
+                raw = json.dumps(body).encode()
+                self.send_response(200)
+                self.send_header("content-length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = HTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def test_a_retry_on_another_url_stays_on_the_chain_of_the_configuration():
+    dead = "http://127.0.0.1:9"
+    lasna, other, fork = FakeNode(5318007), FakeNode(84532), FakeNode(5318007, development=True)
+    try:
+        # The first URL gives no answer. The second one answers for the right chain: it is used.
+        assert ops.Rpc("lasna", [dead, lasna.url], chain_id=5318007, attempts=1).block_number() == 1
+        # The second one answers for another chain: no request but `eth_chainId` goes to it.
+        rpc = ops.Rpc("lasna", [dead, other.url], chain_id=5318007, attempts=1)
+        with pytest.raises(ops.OpsError, match="answers for chain ID 84532"):
+            rpc.block_number()
+        assert other.methods == ["eth_chainId"]
+        # The chain ID of a signature is the one of the configuration, not an answer of a node.
+        assert rpc.chain_id() == 5318007
+
+        chain = ops.Chain("lasna", 5318007, FASTFILL_REACTIVE, ops.Rpc("lasna", [lasna.url, other.url], 5318007))
+        with pytest.raises(ops.OpsError, match="answers for chain ID 84532"):
+            chain.check_id()
+        ops.Chain("lasna", 5318007, FASTFILL_REACTIVE, ops.Rpc("lasna", [dead, lasna.url], 5318007)).check_id()
+
+        # A development node at any place of the list makes the chain a dry-run chain.
+        assert ops.Rpc("lasna", [lasna.url, fork.url], 5318007).is_dev_node()
+        assert not ops.Rpc("lasna", [dead, lasna.url], 5318007).is_dev_node()
+    finally:
+        for node in (lasna, other, fork):
+            node.close()
+
+
+def test_create_address():
+    # The first contract of the first default account of anvil.
+    assert ops.create_address("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", 0) == \
+        "0x5FbDB2315678afecb367f032d93F642f64180aa3"
