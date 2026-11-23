@@ -27,6 +27,14 @@ FORK_VARIABLES = {
     "base-sepolia": "BASE_SEPOLIA_RPC_URL",
 }
 
+# Optional: the block of each fork. Without the variable a fork starts at the newest block of its chain. A
+# destination fork needs a block at which the proxy has an authorized delivery account.
+FORK_BLOCK_VARIABLES = {
+    "lasna": "LASNA_FORK_BLOCK",
+    "unichain-sepolia": "UNICHAIN_SEPOLIA_FORK_BLOCK",
+    "base-sepolia": "BASE_SEPOLIA_FORK_BLOCK",
+}
+
 
 def free_port() -> int:
     with socket.socket() as listener:
@@ -55,10 +63,11 @@ class Anvil:
         self.port = free_port()
         self.url = f"http://127.0.0.1:{self.port}"
         self._log = open(log_dir / f"anvil-{name}.log", "w")
-        self.process = subprocess.Popen(
-            [ANVIL, "--fork-url", upstream, "--port", str(self.port), "--disable-min-priority-fee"],
-            stdout=self._log, stderr=subprocess.STDOUT,
-        )
+        command = [ANVIL, "--fork-url", upstream, "--port", str(self.port), "--disable-min-priority-fee"]
+        block = os.environ.get(FORK_BLOCK_VARIABLES.get(name, ""), "").strip()
+        if block:
+            command += ["--fork-block-number", block]
+        self.process = subprocess.Popen(command, stdout=self._log, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 90
         while True:
             try:

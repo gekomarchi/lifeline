@@ -846,6 +846,8 @@ def reconcile_recorded(rpc: Rpc, record: dict, key: str, save, what, unknown="er
             say(f"{what}: the node does not know the transaction {', '.join(hashes)} of an earlier run, and its "
                 f"nonce {journal['nonce']} is free; the journal stays")
             return None
+        say(f"{what}: the node does not know the transaction {', '.join(hashes)} of an earlier run, and its "
+            f"nonce {journal['nonce']} was used, so it can never get into a block; its journal is closed")
     else:
         say(f"{what}: the step is done, and the node does not know the transaction {', '.join(hashes)} of an "
             f"earlier run; its journal is closed")
@@ -1520,18 +1522,21 @@ def cmd_deploy(args) -> int:
         (done, receipt or None).
 
         A journal with other values than the values of this run is a call that can change the state after
-        this step. So it is settled before the state is read: the chain has it (wait for it), or its nonce
-        was used (it can never run), or the command stops."""
+        this step. A journal with no digest of its values (written by an earlier version) is not known to
+        have the values of this run. So each of the two is settled before the state is read: the chain has
+        the transaction (wait for it), or its nonce was used (it can never run), or the command stops."""
         journal = _journal(record, key)
-        if journal.get("txs") and journal.get("intent") not in (None, _intent(hub_address, 0, data)):
+        if journal.get("txs") and journal.get("intent") != _intent(hub_address, 0, data):
+            values = "other values" if journal.get("intent") else "values that the journal does not hold"
             reconcile_recorded(lasna.rpc, record, key, manifest.save, what, unknown="keep", sender=owner.address)
             if _journal(record, key):
                 raise OpsError(
-                    f"{what} on {LASNA}: an earlier run recorded this call with other values "
+                    f"{what} on {LASNA}: an earlier run recorded this call with {values} "
                     f"({', '.join(journal['txs'])}). The node does not know that transaction and its nonce "
                     f"{journal['nonce']} is free, so it can still get into a block and change the hub after "
                     f"this run. Nothing was sent. Run deploy again with the configuration of that run; then "
-                    f"run it with this configuration"
+                    f"run it with this configuration. If that transaction can never reach a node, use its "
+                    f"nonce with another transaction of the owner"
                 )
         if is_done():
             # The same call a second time gives the same state: a journal that the node does not know goes.
@@ -2000,29 +2005,51 @@ def cmd_recover(args) -> int:
     # The record of this recovery: `recoveries` of the vault entry. A record with a journal is a recovery
     # that an earlier run did not finish. A new record goes to the manifest with its first transaction.
     recoveries = manifest.vaults[args.chain].setdefault("recoveries", [])
-    if recoveries and recoveries[-1].get("pending"):
-        record = recoveries[-1]
-    else:
-        record = {"deposit": None, "depositBlock": None, "vaultUp": []}
+
+    def new_record() -> dict:
+        return {"deposit": None, "depositBlock": None, "vaultUp": []}
+
+    # The newest record continues if it has a journal, or a deposit and no `vaultUp` yet.
+    last = recoveries[-1] if recoveries else None
+    unfinished = last is not None and (last.get("pending") or (last.get("deposit") and not last.get("vaultUp")))
+    record = last if unfinished else new_record()
 
     def save():
         if not any(entry is record for entry in recoveries):
             recoveries.append(record)
         manifest.save()
 
-    # The debt decides the deposit: read it after each earlier transaction of the owner has a receipt. The
-    # one exception is the deposit of an earlier run: the steps below wait for it and send no second one.
-    if not chain.rpc.wait_idle(session.owner.address) and not _journal(record, "deposit"):
-        raise chain.rpc.not_idle(session.owner.address)
-    block, debt = session.read_ledger(chain, "debt", vault)
     say(f"recover: vault {vault} on {args.chain} (chain ID {chain.chain_id})")
+    # The deposit of an earlier run comes first. It is the one transaction that this command waits for: the
+    # chain has it (wait for its receipt), or its nonce was used (it can never run), or its nonce is free (the
+    # journal stays, and a later deposit uses that nonce). A deposit must not run a second time: reserves
+    # cannot be withdrawn.
+    earlier = None
+    if _journal(record, "deposit").get("txs"):
+        say(f"proxy.depositTo: an earlier run stopped at this transaction (nonce "
+            f"{_journal(record, 'deposit')['nonce']}); it continues")
+        try:
+            earlier = reconcile_recorded(chain.rpc, record, "deposit", save, "proxy.depositTo", unknown="keep",
+                                         sender=session.owner.address)
+        except OpsError as error:
+            raise OpsError(f"{error}. hub.vaultUp was not sent") from None
+        if earlier is not None:
+            record["depositBlock"] = block_of(earlier)
+            save()
+    # The debt decides the deposit: read it only when each transaction of the owner has a receipt. Another
+    # transaction that waits can use the nonce of the journal, or can change the state after this run.
+    chain.rpc.require_idle(session.owner.address)
+    block, debt = session.read_ledger(chain, "debt", vault)
     say(f"  debt of the vault at the proxy, block {block}: {amount(debt)}")
     if debt > 0:
+        if record.get("deposit"):
+            # The deposit of the earlier run is in a block, and the vault has a new debt: a new recovery.
+            record = new_record()
         reserve = session.read_vault(args.chain, "selfReserveTarget")
         value = debt + reserve
         try:
-            # The debt changes between two runs, so the journal is not bound to the value. A deposit of an
-            # earlier run that waits for a receipt is not sent a second time.
+            # The debt changes between two runs, so the journal is not bound to the value. A journal that
+            # stays has a free nonce: this deposit uses that nonce, so one of the two at most gets into a block.
             receipt = transact_recorded(chain.rpc, session.owner, chain.ledger,
                                         session.ledger_abi.encode("depositTo", vault), record, "deposit", save,
                                         value=value, abi=session.ledger_abi, what="proxy.depositTo", bind=False)
@@ -2037,15 +2064,8 @@ def cmd_recover(args) -> int:
         block, debt = session.read_ledger(chain, "debt", vault)
         say(f"  debt of the vault at the proxy, block {block}: {amount(debt)}")
     else:
-        # A deposit of an earlier run cleared the debt, or nothing waits. A deposit must not run a second
-        # time: its journal stays while its transaction can still get into a block.
-        receipt = reconcile_recorded(chain.rpc, record, "deposit", save, "proxy.depositTo", unknown="keep",
-                                     sender=session.owner.address)
-        if receipt is not None:
-            record["depositBlock"] = block_of(receipt)
-            save()
         say("  1 proxy.depositTo: no debt, so no deposit"
-            + (f" (tx {record['deposit']} of an earlier run cleared it)" if receipt else ""))
+            + (f" (tx {record['deposit']} of an earlier run cleared it)" if earlier else ""))
 
     sends = 0
     while True:

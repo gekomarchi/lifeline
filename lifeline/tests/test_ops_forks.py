@@ -19,6 +19,8 @@ import secrets
 import signal
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -1109,56 +1111,78 @@ def unsent_cron_call(net, topic_name: str):
     return journal, captured.raw[0]
 
 
-def test_deploy_keeps_the_journal_of_a_call_with_other_values_that_can_still_run(net):
+@pytest.mark.parametrize("legacy", [False, True], ids=["other values", "no digest of the values"])
+def test_deploy_keeps_the_journal_of_a_call_with_other_values_that_can_still_run(net, legacy):
     """An earlier run recorded `setCronTopic(Cron1000)`, and the node does not know that transaction. A run
     with Cron10000, which is the topic of the hub, must not close that journal: the transaction can still get
-    into a block and change the topic after the run."""
+    into a block and change the topic after the run. The same holds for the journal of an earlier version,
+    which has no digest of its values."""
     rpc = net.rpcs[LASNA]
 
     def cron_record() -> dict:
         return net.data()["contracts"]["hub"]["cron"]
 
-    def set_journal(journal):
+    def unsent() -> tuple:
+        journal, raw = unsent_cron_call(net, "Cron1000")
+        if legacy:
+            del journal["intent"]
         net.edit_manifest(lambda manifest: manifest["contracts"]["hub"]["cron"].update(
             pending={"setCronTopicTx": journal}))
+        return journal, raw
 
     assert net.read(LASNA, net.hub, net.hub_abi, "cronTopic") == cron_topic("Cron10000")
     clean = cron_record()
 
     # The nonce of the recorded call is free: the command stops, sends nothing and keeps the journal.
-    journal, raw = unsent_cron_call(net, "Cron1000")
-    set_journal(journal)
+    journal, raw = unsent()
     before, mark = net.blocks(), net.proxy.mark()
     result = net.ops("deploy", "--config", str(net.config))
     assert result.returncode != 0, result.stdout
-    assert "with other values" in result.stderr and "can still get into a block" in result.stderr
+    assert ("values that the journal does not hold" if legacy else "with other values") in result.stderr
+    assert "can still get into a block" in result.stderr
     assert net.blocks() == before and net.proxy.sent(mark) == []
     assert cron_record()["pending"] == {"setCronTopicTx": journal}
 
-    # That transaction gets into a block: the hub has the other topic. The next run finds the transaction of
-    # the journal, reads the state after it, and sends the call of the configuration.
-    late = rpc.request("eth_sendRawTransaction", [raw])
-    assert late == journal["txs"][0] and int(ops.wait_receipt(rpc, late)["status"], 16) == 1
-    assert net.read(LASNA, net.hub, net.hub_abi, "cronTopic") == cron_topic("Cron1000")
-    mark = net.proxy.mark()
-    result = net.ops("deploy", "--config", str(net.config))
+    # That transaction reaches the node while the next run works: the run waits for its block, reads the
+    # state after it (the hub has the other topic then), and sends the call of the configuration.
+    net.anvils[LASNA].request("evm_setAutomine", [False])
+    try:
+        late = rpc.request("eth_sendRawTransaction", [raw])
+        assert late == journal["txs"][0] and rpc.receipt(late) is None
+        mark, box = net.proxy.mark(), {}
+        run = threading.Thread(target=lambda: box.update(result=net.ops("deploy", "--config", str(net.config))))
+        run.start()
+        deadline = time.monotonic() + 120
+        while sum(1 for r in net.proxy.records[mark:]
+                  if r["method"] == "eth_getTransactionReceipt" and r["params"] == [late]) < 3:
+            assert run.is_alive() and time.monotonic() < deadline, "the run did not wait for the transaction"
+            time.sleep(0.2)
+        assert net.proxy.sent(mark) == [], "the run sent a call before the recorded transaction had a block"
+        assert net.read(LASNA, net.hub, net.hub_abi, "cronTopic") == cron_topic("Cron10000")
+    finally:
+        net.anvils[LASNA].request("evm_setAutomine", [True])
+        net.anvils[LASNA].request("anvil_mine", ["0x1"])
+        run.join(240)
+    result = box["result"]
     assert result.returncode == 0, result.stderr + result.stdout
+    assert int(rpc.receipt(late)["status"], 16) == 1
     sent = net.proxy.sent(mark)
     assert [chain for chain, _ in sent] == [LASNA], "one call: setCronTopic of the configuration"
+    assert int(rpc.receipt(sent[0][1])["blockNumber"], 16) > int(rpc.receipt(late)["blockNumber"], 16)
     assert net.read(LASNA, net.hub, net.hub_abi, "cronTopic") == cron_topic("Cron10000")
     assert net.read(LASNA, net.hub, net.hub_abi, "cronSubscribed") is True
     assert cron_record() == {**clean, "setCronTopicTx": sent[0][1]}
 
     # The nonce of the recorded call was used by another transaction: the call can never run. The journal
     # goes, and the step is done.
-    journal, raw = unsent_cron_call(net, "Cron1000")
+    journal, raw = unsent()
     ops.transact(rpc, net.account, net.account.address, b"", 1)
     assert net.nonce(LASNA) == journal["nonce"] + 1
-    set_journal(journal)
     done = cron_record()
     before, mark = net.blocks(), net.proxy.mark()
     result = net.ops("deploy", "--config", str(net.config))
     assert result.returncode == 0, result.stderr + result.stdout
+    assert "its journal is closed" in result.stdout
     assert net.blocks() == before and net.proxy.sent(mark) == []
     assert cron_record() == {key: value for key, value in done.items() if key != "pending"}
     with pytest.raises(ops.RpcError):
@@ -1202,6 +1226,14 @@ def test_remove_stops_while_a_transaction_of_the_owner_has_no_receipt(net):
     assert net.read(BASE, vault, net.vault_abi, "hasPolicy", canary) is False
 
 
+def debt_reads(net, name, mark) -> list:
+    """The `debt(vault)` calls at the proxy of a chain that the commands sent after a mark."""
+    call = "0x" + net.ledger_abi.encode("debt", net.vault(name)).hex()
+    return [record for record in net.proxy.records[mark:]
+            if record["chain"] == name and record["method"] == "eth_call" and record["params"][0]["data"] == call
+            and ops.same_address(record["params"][0]["to"], net.ledger[name])]
+
+
 def test_recover_stops_while_another_transaction_of_the_owner_has_no_receipt(net):
     """A transaction of the owner that is not the deposit of an earlier run waits for its block: `recover`
     reads no debt and sends nothing."""
@@ -1215,6 +1247,7 @@ def test_recover_stops_while_another_transaction_of_the_owner_has_no_receipt(net
         assert result.returncode != 0 and "has a transaction with no receipt" in result.stderr
         assert "recovered" not in result.stdout
         assert net.proxy.sent(mark) == [] and net.blocks() == before
+        assert debt_reads(net, name, mark) == [], "the command read the debt that decides the deposit"
     finally:
         net.anvils[name].request("evm_setAutomine", [True])
         net.anvils[name].request("anvil_mine", ["0x1"])
@@ -1350,3 +1383,87 @@ def test_a_deposit_after_a_kept_journal_uses_the_nonce_of_the_journal(net):
     assert len(after) == len(recoveries) + 1 and after[:-1] == recoveries
     assert after[-1]["deposit"] == sent[0][1] and "pending" not in after[-1]
     assert after[-1]["depositBlock"] == int(net.rpcs[name].receipt(sent[0][1])["blockNumber"], 16)
+
+
+def test_recover_with_a_deposit_journal_stops_while_another_transaction_waits(net):
+    """The journal of a deposit lets `recover` wait for that deposit only. Another transaction of the owner
+    that waits stops the command: at the nonce of the journal (a deposit with that nonce would replace it),
+    and at the next nonce (it can change the state after `vaultUp`)."""
+    name, vault, rpc = UNICHAIN, net.vault(UNICHAIN), net.rpcs[UNICHAIN]
+    ledger, deposit_call = net.ledger[name], net.ledger_abi.encode("depositTo", net.vault(UNICHAIN))
+    reserve = net.read(name, vault, net.vault_abi, "selfReserveTarget")
+    short = {"LIFELINE_RECEIPT_TIMEOUT": "3"}
+    net.junk_until_vault_debt(name)
+    assert relayed(net.relay()) == (1, 0)
+    debt = net.debt(name, vault)
+    recoveries = net.data()["contracts"]["vaults"][name]["recoveries"]
+
+    def unsent_deposit() -> tuple:
+        """The journal of a signed deposit that did not reach the node, as the newest recovery record."""
+        captured, record = Captured(name, [net.anvils[name].url]), {}
+        with pytest.raises(ops.TransportError):
+            ops.transact_recorded(captured, net.account, ledger, deposit_call, record, "deposit", lambda: None,
+                                  value=debt + reserve, abi=net.ledger_abi, what="proxy.depositTo", bind=False)
+        journal = record["pending"]["deposit"]
+        net.edit_manifest(lambda manifest: manifest["contracts"]["vaults"][name].update(recoveries=[*recoveries, {
+            "deposit": None, "depositBlock": None, "vaultUp": [], "pending": {"deposit": journal}}]))
+        return journal, captured.raw[0]
+
+    def newest() -> dict:
+        return net.data()["contracts"]["vaults"][name]["recoveries"][-1]
+
+    def waiting_transfer() -> str:
+        return ops.send_transaction(rpc, net.account, net.account.address, b"", 1, gas=21_000)
+
+    # 1. The node does not know the deposit of the journal, and another transaction waits with its nonce.
+    journal, raw = unsent_deposit()
+    net.anvils[name].request("evm_setAutomine", [False])
+    try:
+        other = waiting_transfer()
+        assert int(rpc.transaction(other)["nonce"], 16) == journal["nonce"]
+        before, mark = net.blocks(), net.proxy.mark()
+        result = net.ops("recover", "--chain", name, env=short)
+        assert result.returncode != 0 and "has a transaction with no receipt" in result.stderr
+        assert "the journal stays" in result.stdout
+        assert net.proxy.sent(mark) == [] and net.blocks() == before, "a deposit or a vaultUp went out"
+        assert rpc.transaction(other) is not None, "the transaction that waited is no more in the pool"
+        assert debt_reads(net, name, mark) == []
+        assert newest()["pending"] == {"deposit": journal}
+    finally:
+        net.anvils[name].request("evm_setAutomine", [True])
+        net.anvils[name].request("anvil_mine", ["0x1"])
+    assert int(rpc.receipt(other)["status"], 16) == 1 and net.nonce(name) == journal["nonce"] + 1
+    with pytest.raises(ops.RpcError):  # the nonce of that deposit was used: it can never run
+        rpc.request("eth_sendRawTransaction", [raw])
+
+    # 2. The deposit of the journal is in a block, and another transaction waits with the next nonce.
+    journal, raw = unsent_deposit()
+    deposit = ops.wait_receipt(rpc, rpc.request("eth_sendRawTransaction", [raw]))
+    assert deposit["transactionHash"] == journal["txs"][0] and net.debt(name, vault) == 0
+    net.anvils[name].request("evm_setAutomine", [False])
+    try:
+        other = waiting_transfer()
+        before, mark = net.blocks(), net.proxy.mark()
+        result = net.ops("recover", "--chain", name, env=short)
+        assert result.returncode != 0 and "has a transaction with no receipt" in result.stderr
+        assert net.proxy.sent(mark) == [] and net.blocks() == before, "vaultUp went out"
+        assert rpc.transaction(other) is not None and debt_reads(net, name, mark) == []
+        # The deposit of the journal has its place in the record.
+        assert newest() == {"deposit": journal["txs"][0], "depositBlock": int(deposit["blockNumber"], 16),
+                            "vaultUp": []}
+    finally:
+        net.anvils[name].request("evm_setAutomine", [True])
+        net.anvils[name].request("anvil_mine", ["0x1"])
+
+    # Each transaction has a receipt: the recovery ends with `vaultUp`, in the same record, with no deposit.
+    mark = net.proxy.mark()
+    result = net.ops("recover", "--chain", name)
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert [chain for chain, _ in net.proxy.sent(mark)] == [LASNA]
+    after = net.data()["contracts"]["vaults"][name]["recoveries"]
+    assert len(after) == len(recoveries) + 1 and after[:-1] == recoveries
+    assert after[-1]["deposit"] == journal["txs"][0] and len(after[-1]["vaultUp"]) == 1
+    _, _, _, up, pending = net.read(LASNA, net.hub, net.hub_abi, "vaultInfo", net.chain_id[name])
+    assert (up, pending) == (True, 0)
+    assert net.debt(name, vault) == 0
+    assert net.read(name, ledger, net.ledger_abi, "reserves", vault) == reserve

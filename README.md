@@ -183,8 +183,8 @@ A command writes the manifest before each transaction goes to the node, with the
 - Journal, and the node does not know the transaction, and the nonce was used: the result is not known. The command stops and sends nothing. It does not use a new nonce. Run the command again later. If the result is the same, find the transaction of that nonce in a block explorer and correct the manifest.
 - Journal with other inputs than the inputs of this run (for example another amount in the configuration): the command stops. Give the inputs of the earlier run again.
 - A step that the state of the chain shows as done needs no transaction. The command first closes the journal of that step: it waits for a recorded transaction that the chain has and writes its hash to its place.
-- `deploy`, journal of a hub call (`setVault`, `setCronTopic`) with other values than the values of this run: the command settles that journal before it reads the state. If the chain has the transaction, the command waits for it. If its nonce was used, the transaction can never get into a block and the journal goes. If the node does not know it and its nonce is free, the command stops and sends nothing: run `deploy` again with the configuration of the earlier run first.
-- `remove` and `recover` wait until each earlier transaction of the owner has a receipt before they read the state that decides their steps. At the timeout they stop and send nothing: a transaction that waits can still change that state. One exception: `recover` continues if the manifest has the journal of its own deposit, and then waits for that deposit.
+- `deploy`, journal of a hub call (`setVault`, `setCronTopic`) with other values than the values of this run, or with no digest of its values (a journal of an earlier version): the command settles that journal before it reads the state. If the chain has the transaction, the command waits for it. If its nonce was used, the transaction can never get into a block and the journal goes. If the node does not know it and its nonce is free, the command stops and sends nothing: run `deploy` again with the configuration of the earlier run first.
+- `remove` and `recover` wait until each earlier transaction of the owner has a receipt before they read the state that decides their steps. At the timeout they stop and send nothing: a transaction that waits can still change that state. `recover` first settles the deposit of its own journal: it waits for that deposit if the chain has it. Each other transaction that waits stops the command, also if the manifest has a deposit journal.
 
 Where the journal is:
 
@@ -312,7 +312,7 @@ export LASNA_RPC_URL=<url> UNICHAIN_SEPOLIA_RPC_URL=<url> BASE_SEPOLIA_RPC_URL=<
 python -m pytest lifeline/tests/test_ops_forks.py
 ```
 
-Without `anvil`, the build output or one of the three variables, the module is skipped.
+Without `anvil`, the build output or one of the three variables, the module is skipped. A fork starts at the newest block of its chain. The optional variables `LASNA_FORK_BLOCK`, `UNICHAIN_SEPOLIA_FORK_BLOCK` and `BASE_SEPOLIA_FORK_BLOCK` give another block. A destination fork needs a block at which the proxy has an authorized delivery account: on 2026-11-23 the owner of the two proxies removed both delivery accounts (Base Sepolia block 62,527,928, Unichain Sepolia block 68,575,027), so a fork of a later block has none, and `forkrelay` refuses it. Use a block before those two, for example `BASE_SEPOLIA_FORK_BLOCK=62527000` and `UNICHAIN_SEPOLIA_FORK_BLOCK=68574000`, or `anvil --fork-block-number` for a manual dry run.
 
 ## Development
 
