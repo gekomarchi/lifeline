@@ -1031,15 +1031,14 @@ def cmd_junk(args) -> int:
         record.setdefault("pendingRequests", []).append({"nonce": nonce, "tx": tx_hash})
         scenarios.save()
 
-    def settle_journal(logs: list, nonce: int) -> None:
+    def open_requests(logs: list, nonce: int) -> list:
         """Compares the requests that the record has as sent with the logs that the node gave, at the nonce
-        of the same read. A request of a run that stopped before it saw the receipt is in the journal. If
-        that request is in a block and the node gave no log of it, the list of the node is not complete:
-        the command stops. A list with a request too few would permit a request above the limit, a burst
-        before the delivery of the burst before it, and a number that a request has already."""
+        of the same read, and returns the entries that stay in the journal. It changes nothing. A request of
+        a run that stopped before it saw the receipt is in the journal. If that request is in a block and the
+        node gave no log of it, the list of the node is not complete: the command stops. A list with a
+        request too few would permit a request above the limit, a burst before the delivery of the burst
+        before it, and a number that a request has already."""
         pending = record.get("pendingRequests") or []
-        if not pending:
-            return
         found = {log["transactionHash"] for log in logs}
         # A request with a log is settled, and with it each other transaction that was signed with its nonce.
         settled = {entry["nonce"] for entry in pending if entry["tx"] in found}
@@ -1059,8 +1058,7 @@ def cmd_junk(args) -> int:
                                f"command again. If another command used the nonce, delete the entries with "
                                f"that nonce from pendingRequests of the junk record")
             settled.add(used)  # it reverted: no request
-        record["pendingRequests"] = [entry for entry in pending if entry["nonce"] not in settled]
-        scenarios.save()
+        return [entry for entry in pending if entry["nonce"] not in settled]
 
     def requests_to(recipient: str) -> list:
         """The callback requests of the requester for one recipient since the start of the flood. The chain is
@@ -1071,8 +1069,26 @@ def cmd_junk(args) -> int:
         block, state["nonce"] = idle_block(lasna.rpc, account.address)
         logs = logs_now(lasna.rpc, lasna.ledger, [CALLBACK_REQUEST, chain_topic, topic_of_address(requester),
                                                   [vault_topic, waiting_topic]], lasna_start, block)
-        settle_journal(logs, state["nonce"])
-        return [log for log in logs if log["topics"][3] == topic_of_address(recipient)]
+        lists = {name: [log for log in logs if log["topics"][3] == topic]
+                 for name, topic in (("junkRequests", vault_topic), ("pongRequests", waiting_topic))}
+        for name, found in lists.items():
+            # The record has the count of a read before this one, or of the receipts of a burst.
+            if len(found) < record.get(name, 0):
+                kind = "junk" if name == "junkRequests" else "pong"
+                raise OpsError(f"the node of {LASNA} gave {len(found)} {kind} request(s) of this flood, and the "
+                               f"record has {record[name]}: the node is behind. Nothing was sent. Run the "
+                               f"command again")
+        pending = open_requests(logs, state["nonce"])
+        # One write for the two counts and for the journal: an entry leaves the journal only with the count
+        # that has its request. A run that stops before or after this write finds one of the two.
+        record["pendingRequests"] = pending
+        for name, found in lists.items():
+            record[name] = len(found)
+        if lists["junkRequests"]:
+            newest = lists["junkRequests"][-1]
+            record["lastJunkRequest"] = {"block": block_of(newest), "tx": newest["transactionHash"]}
+        scenarios.save()
+        return lists["junkRequests" if same_address(recipient, vault) else "pongRequests"]
 
     def delivered(from_block: int = None) -> set:
         """The numbers of the junk requests of this flood that the proxy delivered. Each delivery is a
@@ -1085,20 +1101,11 @@ def cmd_junk(args) -> int:
         return {number for number in numbers if number is not None}
 
     def issued() -> set:
-        """The numbers of the junk requests of this flood that are on the chain. It also writes their count
-        to the record. A burst with a transaction that failed leaves a gap in the numbers."""
+        """The numbers of the junk requests of this flood that are on the chain: `requests_to` writes their
+        count to the record. A burst with a transaction that failed leaves a gap in the numbers."""
         sent = requests_to(vault)
-        if len(sent) < record["junkRequests"]:
-            # The record has the count of a read before this one, or of the receipts of a burst.
-            raise OpsError(f"the node of {LASNA} gave {len(sent)} junk request(s) of this flood, and the record "
-                           f"has {record['junkRequests']}: the node is behind. Nothing was sent. Run the "
-                           f"command again")
         if sent and not find_step(record, "first junk request"):
             step("first junk request", LASNA, sent[0])
-        if sent:
-            record["lastJunkRequest"] = {"block": block_of(sent[-1]), "tx": sent[-1]["transactionHash"]}
-        record["junkRequests"] = len(sent)
-        scenarios.save()
         numbers = (junk_number(vault_abi, lasna_start, requested_payload(log)) for log in sent)
         return {number for number in numbers if number is not None}
 

@@ -696,7 +696,7 @@ def junk_numbers(net, tag: int) -> list:
             for log in junk_request_logs(net)]
 
 
-def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net):
+def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net, monkeypatch):
     """The limit of the junk requests holds over runs that stop: the chain is the journal of the requests."""
     short = ["--burst", "8", "--pause", "1", "--timeout", "60"]
     # A node of Lasna that goes back: from the first request on the chain, after each read that shows the
@@ -779,20 +779,51 @@ def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net):
                               "tx": logs[2]["transactionHash"]}])
         net.scenarios.write_text(json.dumps(stopped))
         blocks = net.blocks()
-        net.proxy.tamper = lambda chain, method, params, result: (
-            result[:2] if chain == LASNA and method == "eth_getLogs" and params[0]["topics"][0] == request_topic
-            else result)
+
+        def two_logs(chain, method, params, result):
+            cut = chain == LASNA and method == "eth_getLogs" and params[0]["topics"][0] == request_topic
+            return result[:2] if cut else result
+
+        net.proxy.tamper = two_logs
         try:
             result = net.experiment("junk", "--chain", BASE, "--max-junk", "3", *short)
         finally:
             net.proxy.tamper = None
         assert result.returncode == 1 and "the node gave no log of it" in result.stderr, result.stderr + result.stdout
+        assert net.blocks() == blocks and junk_requests(net) == 3 and net.scenarios.read_text() == json.dumps(stopped)
+
+        # With each log the request leaves the journal, in the write that has the count with that request.
+        # Here the command stops directly after that write: the record has no entry and the count 3, never
+        # no entry and the count 2.
+        class Stop(BaseException):
+            pass
+
+        def save_then_stop(scenarios, save=experiment.Scenarios.save):
+            save(scenarios)
+            if scenarios.data["junk"].get("pendingRequests") == []:
+                raise Stop
+
+        with monkeypatch.context() as patch:
+            patch.setenv(ops.OWNER_KEY_VARIABLE, net.env[ops.OWNER_KEY_VARIABLE])
+            patch.setattr(experiment.Scenarios, "save", save_then_stop)
+            with pytest.raises(Stop):
+                experiment.main(["junk", "--chain", BASE, "--max-junk", "3", *short, "--manifest", str(net.manifest),
+                                 *net._rpc_arguments(), "--scenarios", str(net.scenarios)])
+        after = net.scenario("junk")
+        assert after["pendingRequests"] == [] and after["junkRequests"] == 3
+        assert after["lastJunkRequest"]["tx"] == logs[2]["transactionHash"]
+
+        # The next run, at a node that gives the logs of 2 requests: the count of the record stops it.
+        net.proxy.tamper = two_logs
+        try:
+            result = net.experiment("junk", "--chain", BASE, "--max-junk", "3", *short)
+        finally:
+            net.proxy.tamper = None
+        assert result.returncode == 1 and "gave 2 junk request(s) of this flood, and the record has 3" in result.stderr
         assert net.blocks() == blocks and junk_requests(net) == 3
-        # With each log the request of the journal is settled, and the count is 3.
         result = net.experiment("junk", "--chain", BASE, "--max-junk", "3", *short)
         assert result.returncode == 1 and "not in debt after 3 junk requests" in result.stderr, result.stdout
-        assert net.scenario("junk")["pendingRequests"] == [] and net.scenario("junk")["junkRequests"] == 3
-        assert net.blocks() == blocks
+        assert net.blocks() == blocks and net.scenario("junk")["pendingRequests"] == []
 
         # A run that continues checks the hub again: a paused hub cannot report the vault as down.
         ops.transact(net.rpcs[LASNA], net.account, net.hub, net.hub_abi.encode("pause"), abi=net.hub_abi)
