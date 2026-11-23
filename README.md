@@ -420,6 +420,105 @@ The junk evidence in `data.json`: the balance of the vault at the start block an
 
 The `Pong` callbacks of the load and the junk scenario need callback delivery on the destination chain. The Lasna part of the load and `quarantine` do not.
 
+## Evidence
+
+One read-only command reads Lifeline's own events on Lasna and on the destination chains and writes the judge document `JUDGE.md` and a data file with the same figures. It needs no key and sends no transaction. `JUDGE.md` is generated: do not edit it by hand. Run the command again to change it.
+
+```
+python -m lifeline.judge --rpc <chain>=<url> ... [--heights <file>] [--manifest <file>] [--out <dir>] [--judge <file>]
+```
+
+The command reads each event ABI from the Foundry build output in `out/`, and it decodes logs with the library of the operator commands: run `pip install -e ".[ops]"` and `forge build` first.
+
+### Flags
+
+| Flag | Meaning |
+|---|---|
+| `--rpc <chain>=<url>` | RPC URL for one chain. Repeat the flag for more chains or for an ordered list of URLs. A chain with no `--rpc` uses the `rpc` list of the manifest. |
+| `--heights <file>` | Use the heights and the saved state of a `heights.json` file. The run reads no chain head and writes the same `JUDGE.md` and `data.json`, byte for byte. |
+| `--manifest <file>` | Manifest file. Default: `deployments/manifest.json`. |
+| `--out <dir>` | Directory of `data.json` and `heights.json`. Default: `evidence/judge/`. |
+| `--judge <file>` | The judge document. Default: `JUDGE.md` at the repository root. |
+| `--experiment <dir>` | Directory of `table.md` and `data.json` of the experiment. Default: `evidence/experiment/`. |
+| `--scenarios <file>` | Scenario file of the experiment. Default: `scenarios.json` in the `--experiment` directory. |
+| `--config <file>` | Configuration with the fill subject `subjects.fastfill.fill`. Default: `config/network.json`. |
+| `--cache <dir>`, `--retries <n>`, `--backoff <seconds>` | As for the network statistics. |
+
+The command reads the chains only through the reader and the snapshot of the network statistics. It reads Lasna and each chain that has a vault in the manifest.
+
+### Output files
+
+| File | Content |
+|---|---|
+| `JUDGE.md` | The judge document. Each figure has its block or its transaction hash next to it, and each figure is in `data.json`. |
+| `evidence/judge/data.json` | The same figures as data. Amounts are decimal strings in wei. |
+| `evidence/judge/heights.json` | The heights snapshot: `from`, `to` and the block timestamp of `to` for each chain, and each state value read at `to`. |
+
+- No file has a wall-clock time, a run date or an RPC URL. With the same heights and the same input files, `JUDGE.md` and `data.json` are identical.
+- A first run pins `to` of each chain at the head. `from` of each chain is the deployment block of the Lifeline contract of that chain: the hub on Lasna, the vault on a destination chain. Each log query of the hub, of a vault, of a callback proxy and of the fill contract starts at that block. No query starts before it. A run with `--heights` refuses a file whose `from` is not that block.
+- A run with `--heights` asks the node for each state value again. A value that the node cannot serve at the old block comes from the file, and standard output names it. The files do not name it.
+- A run that fails exits with a non-zero status and writes no file. The three files are written together. Status 2: an input file or an argument is not usable. Status 1: the retries of a request are used, or a file cannot be written.
+- A run against a local node (a fork) refuses the default `--cache`, `--out` and `--judge`: give the three paths.
+
+### `JUDGE.md`
+
+Sections, in this order:
+
+| Section | Content |
+|---|---|
+| Claim limit | Lifeline restores future delivery, not zero loss. |
+| Heights | `from` and `to` of each chain. |
+| Destination rescues | Each `Relayed` log of the hub, joined with the `Result` log of the vault that has the same request ID and target: first the joined requests, then the open ones. |
+| Lasna rescues and gaps | Each `Rescued` log of the hub with the `Gap` log of the same transaction. |
+| Fleet report | For each fleet target since its enrollment: fills, rescues, guardian top-ups, gaps, principal paid, reserves kept. |
+| Guardian cost | For the hub and for each vault since deployment: principal paid, fee float consumed, balance and reserves. |
+| Three-arm table | `evidence/experiment/table.md`, unchanged, between two marker lines. |
+| Quarantine | The quarantine record of `scenarios.json`, confirmed on the chain. |
+| Junk recovery | The junk record of `scenarios.json`, confirmed on the chain, with the balance figures of the data file of the experiment. |
+| Guests | Each guest with its consent reference, its enrollment hashes and its rescue hashes, or the sentence "No guest enrolled." |
+
+Definitions:
+
+- **Join.** The debt event of a request is the last `BlacklistContract(target)` log of the callback proxy before the `Result` log, or before `to` for an open request. The whitelist is the `WhitelistContract(target)` log of the proxy in the transaction of the `Result`. It is null for an outcome that is not `Rescued`. A rescue of a sweep or of `setPolicy` has no `Relayed` log: it is in the fleet report and in the guardian cost, not in the join.
+- **Fleet.** Each enrollment of the manifest that is not a guest and not a fixture of the experiment (a target that `fixtures` of the manifest has). The canary of `loop-check` is such an enrollment. An enrollment stays in the report after `remove`, with the hashes of the removal.
+- **Enrollment block.** The block of the target's own chain at which its guardian took it: the block of `hub.enroll` for a Lasna target, the block of `vault.setPolicy` for a destination target. The command finds it from the `Enrolled` log of the hub or the `PolicySet` log of the vault that has the transaction hash of the manifest. An enrollment with no such log in the heights is not in the report, and standard output names it.
+- **Fills.** The specification does not define a fill. The command reads it as a fill event of the fleet itself, as `subjects.fastfill.fill` of `config/network.json` defines it (chain, address, event, `where`). The count starts at the enrollment block for a target on the fill chain. For a target on another chain it starts at the first block of the fill chain with a timestamp at or after the timestamp of the enrollment block. A guardian top-up is a separate figure. If the subject is not configured, or the manifest has no Lifeline contract on its chain, the value is null and `JUDGE.md` says "not configured".
+- **Gaps.** Lasna target: the `Gap` logs of the hub. Destination target: the debt intervals of the target at the callback proxy, from a `BlacklistContract` log to the next `WhitelistContract` log, or to `to`, in blocks.
+- **Guardian cost.** Principal paid: the sum of `Rescued.paid` and `ToppedUp.paid` of the hub, of `Result.paid` of a vault. Fee float consumed: the sum of `SelfCare.added` (the constructor emits the first one), minus the reserves at `to`, plus the debt at `to`. A deposit to the float by another account is not visible in these events: it makes the figure too low by its amount. The deposit of `recover` is such a deposit.
+- **Quarantine.** The `Rescued` logs of the looping canary before its `Quarantined` log, the principal that the hub paid to it before that log, and the principal paid after that log up to `to`: the expected value is 0. Each `Rescued` step and the `Quarantined` step of the record must be a log of the chain with the same transaction hash.
+- **Junk recovery.** Six logs, each with the transaction hash of its step of the record: `BlacklistContract(vault)` of the proxy, `VaultDown` and `Pending` of the hub, `WhitelistContract(vault)` of the proxy (the transaction of the step `recovery deposit`), `VaultUp` of the hub, and the `Result` of the target that waited. The balance figures come from `junk` of `evidence/experiment/data.json`: run `measure` after `junk`.
+
+A step of a scenario record that the chain data of the heights does not have stops the run with status 2. A scenario record that is absent, or that does not have each of its steps, gives "Status: not recorded." in its section. If `evidence/experiment/table.md` or `evidence/experiment/data.json` is absent, the command exits with status 2, names the file, and sends no request.
+
+### `data.json`
+
+```
+{"version": 1, "heights": {...}, "rescues": [...], "lasnaRescues": [...], "fleet": [...], "guardian": {...},
+ "quarantine": {...}, "junkRecovery": {...}, "guests": [...], "experiment": {...}}
+```
+
+| Key | Entry |
+|---|---|
+| `heights` | For each chain: `chainId`, `from`, `to`, `toTimestamp` (the block timestamp of `to`). |
+| `rescues[]` | `requestId` (decimal string), `chain`, `chainId`, `target`, `status` (`joined` or `open`), `debtEvent`, `relayed`, `result`, `whitelist`. Each of the four is `{block, tx}` or null; `result` also has `outcome` and `paid`. `chain` is null for a chain ID with no vault in the manifest. |
+| `lasnaRescues[]` | `target`, `rescued` (`block`, `tx`, `debt`, `paid`), `gap` (`deadFromBlock`, `aliveAtBlock`). A `deadFromBlock` of 0 is the value of the hub for a rescue that no debt log started. |
+| `fleet[]` | `label`, `chain`, `chainId`, `target`, `enrollBlock`, `fills`, `rescues`, `topUps` (counts), `gaps[]`, `principalPaid`, `reserves` (`block`, `value`), and also `enrollTx` (the transaction of the enrollment block), `fillsFrom` (`chain`, `address`, `block`: where the fill count starts), `marks` (`low`, `high` of the policy) and `removed` (null, or `hubDisarm` and `vaultDisarm`). A gap is `{deadFromBlock, aliveAtBlock, blocks, tx}`: `deadFromBlock` is null if no debt log of the heights started it, `aliveAtBlock` and `tx` are null if the target is in debt at `to`, and `tx` is the transaction that ended the gap. |
+| `guardian` | `hub` and `vaults.<chain>`, each with `principalPaid`, `floatConsumed`, `balance` and `reserves` (`block`, `value`), and also `chain`, `address`, `deployBlock`, `selfCareAdded` and `debt` (`block`, `value`). |
+| `quarantine` | `recorded`, `target`, `rescues[]` (`block`, `tx`), `quarantined` (`block`, `tx`), `principalPaid`, `paidAfterQuarantine`, and also `chain`, `maxRescues` and `dailyCap` of the policy in the manifest, and `policyTx` (the `hub.enroll` transaction that gave the policy to the hub). |
+| `junkRecovery` | `recorded`, `chain`, `vault`, `steps[]` (`step`, `chain`, `block`, `tx`), `balanceStart` and `balanceEnd` (`block`, `value`), `unexplainedChange`, and also `waitingRescue` (`target`, `requestId`, `outcome`, `paid`). |
+| `guests[]` | `label`, `chain`, `chainId`, `target`, `consent`, `enrollment` (`setPolicy`, `enroll`), `rescues[]` (`block`, `tx`). |
+| `experiment` | The content of `evidence/experiment/data.json`, unchanged. |
+
+A section with no record has `recorded` false, null values and empty lists.
+
+### Order
+
+Run `measure` of the experiment first, then this command: `JUDGE.md` includes the table and the data file that `measure` wrote. The final run, with `to` pinned after the 48 hours of the fleet, is an operator step: keep its `heights.json`.
+
+### Tests
+
+`lifeline/tests/test_judge.py` runs the real command and the real reader against a local JSON-RPC server. `lifeline/tests/test_judge_forks.py` is the fork dry run: it runs the command on the events that `loop-check`, `enroll`, `quarantine`, `junk` and `measure` leave on local forks, and compares each figure with a log that it reads from the forks itself. It needs what the fork dry run of the experiment needs, and is skipped without it.
+
 ## Development
 
 The contracts are one Foundry project at the repository root: `src/`, `test/`, `lib/`.

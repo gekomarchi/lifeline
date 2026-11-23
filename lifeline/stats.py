@@ -127,34 +127,39 @@ def report(snapshot, chains, rows, notes) -> list:
 
 def publish(out: Path, files: dict) -> None:
     """Write all the files, or leave the directory as it was before the run."""
-    staged = {name: out / f"{name}.tmp" for name in files}
-    previous = {name: out / f"{name}.previous" for name in files}
+    publish_paths({out / name: text for name, text in files.items()})
+
+
+def publish_paths(files: dict) -> None:
+    """Write each file of {path: text}, or leave each directory as it was before the run."""
+    staged = {path: path.with_name(path.name + ".tmp") for path in files}
+    previous = {path: path.with_name(path.name + ".previous") for path in files}
     kept, published = [], []
     try:
-        out.mkdir(parents=True, exist_ok=True)
-        for name in files:
-            if (out / name).is_dir():
-                raise IsADirectoryError(f"{out / name} is a directory")
-        for name, text in files.items():
-            staged[name].write_text(text)
-        for name in files:
-            if (out / name).exists():
-                os.replace(out / name, previous[name])
-                kept.append(name)
-        for name in files:
-            os.replace(staged[name], out / name)
-            published.append(name)
+        for path in files:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.is_dir():
+                raise IsADirectoryError(f"{path} is a directory")
+        for path, text in files.items():
+            staged[path].write_text(text)
+        for path in files:
+            if path.exists():
+                os.replace(path, previous[path])
+                kept.append(path)
+        for path in files:
+            os.replace(staged[path], path)
+            published.append(path)
     except OSError:
-        for name in published:
-            (out / name).unlink()
-        for name in kept:
-            os.replace(previous[name], out / name)
-        for path in staged.values():
-            if path.is_file():
-                path.unlink()
+        for path in published:
+            path.unlink()
+        for path in kept:
+            os.replace(previous[path], path)
+        for temporary in staged.values():
+            if temporary.is_file():
+                temporary.unlink()
         raise
-    for name in kept:
-        previous[name].unlink()
+    for path in kept:
+        previous[path].unlink()
 
 
 def main(argv=None) -> int:

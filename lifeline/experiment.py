@@ -1594,9 +1594,10 @@ def _flood_of(path: Path):
     return {"chain": junk["chain"], "startBlock": junk["startBlock"], "endBlock": junk["floodEndBlock"]}
 
 
-def _guard_local_outputs(args, urls: list) -> None:
+def guard_local_outputs(urls: list, paths) -> None:
     """A fork has the chain IDs of the live chains and other logs. A run against a local node must not write
-    the cache or the evidence of the live run. `urls`: each RPC URL that the run uses."""
+    the cache or the evidence of the live run. `urls`: each RPC URL that the run uses. `paths`: (flag, value,
+    default) of each path that the run writes."""
 
     def is_local(url: str) -> bool:
         host = urllib.parse.urlsplit(url).hostname or ""
@@ -1607,11 +1608,13 @@ def _guard_local_outputs(args, urls: list) -> None:
 
     if not any(is_local(url) for url in urls):
         return
-    defaults = [flag for flag, value, default in (("--cache", args.cache, ".cache/chain"),
-                                                  ("--out", args.out, str(DEFAULT_OUT)))
-                if Path(value).resolve() == Path(default).resolve()]
+    defaults = [flag for flag, value, default in paths if Path(value).resolve() == Path(default).resolve()]
     if defaults:
         raise OpsError(f"an RPC is a local node: a dry run needs its own {' and '.join(defaults)}")
+
+
+def _guard_local_outputs(args, urls: list) -> None:
+    guard_local_outputs(urls, (("--cache", args.cache, ".cache/chain"), ("--out", args.out, str(DEFAULT_OUT))))
 
 
 def cmd_measure(args) -> int:

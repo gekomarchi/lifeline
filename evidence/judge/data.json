@@ -1,0 +1,460 @@
+{
+ "experiment": {
+  "arms": {
+   "A": {
+    "callbacksDropped": 0,
+    "capitalLocked": {
+     "callback.reserves": "1452000000000",
+     "reactive.reserves": "80000000000000000"
+    },
+    "capitalShared": [],
+    "contracts": {
+     "callback": "0x0084fd7F5CEE4ae63ED78CCE7Aa2704D8ec03899",
+     "reactive": "0xacF7a5E9B0e986863579f4E1bA0bd2c54FF7a427"
+    },
+    "debtIntervals": {
+     "base-sepolia": 0,
+     "lasna": 0
+    },
+    "downtimeBlocks": {
+     "base-sepolia": 0,
+     "lasna": 0
+    },
+    "eventsMissed": 0,
+    "guardian": "none",
+    "guardianCost": {
+     "feeDetail": {},
+     "feeScope": "no guardian",
+     "fees": {
+      "base-sepolia": "0",
+      "lasna": "0"
+     },
+     "principal": {
+      "base-sepolia": "0",
+      "lasna": "0"
+     }
+    },
+    "guardianDowntimeBlocks": {},
+    "pokes": 0,
+    "pongs": 0,
+    "ticks": 0
+   },
+   "B": {
+    "callbacksDropped": 0,
+    "capitalLocked": {
+     "callback.reserves": "1452000000000",
+     "poller.balance": "192000000000000000",
+     "poller.reserves": "320000000000000000",
+     "reactive.reserves": "80000000000000000"
+    },
+    "capitalShared": [],
+    "contracts": {
+     "callback": "0x65Dd2D77e59b3249FE58402e95a3Cc90dC269a22",
+     "reactive": "0x052BfF110A8d2e36310A23BF2D03CffcA82Ad3F0"
+    },
+    "debtIntervals": {
+     "base-sepolia": 0,
+     "lasna": 0
+    },
+    "downtimeBlocks": {
+     "base-sepolia": 0,
+     "lasna": 0
+    },
+    "eventsMissed": 0,
+    "guardian": "cron poller",
+    "guardianCost": {
+     "feeDetail": {
+      "lasna": {
+       "closing": "320000000000000000",
+       "deposits": "320000000000000000",
+       "exact": true,
+       "fees": "0",
+       "opening": "0",
+       "selfCare": "0",
+       "unloggedDeposits": "0"
+      }
+     },
+     "feeScope": "the poller serves the reactive canary of this arm only; the figure is from its deployment to `to`",
+     "fees": {
+      "base-sepolia": "0",
+      "lasna": "0"
+     },
+     "principal": {
+      "base-sepolia": "0",
+      "lasna": "0"
+     }
+    },
+    "guardianDowntimeBlocks": {
+     "lasna": 0
+    },
+    "pokes": 0,
+    "pongs": 0,
+    "ticks": 0
+   },
+   "C": {
+    "callbacksDropped": 0,
+    "capitalLocked": {
+     "callback.reserves": "1452000000000",
+     "hub.balance": "4465672600000000000",
+     "hub.reserves": "178891600000000000",
+     "reactive.reserves": "80000000000000000",
+     "vault.balance": "1948400410800000",
+     "vault.reserves": "199130951600000"
+    },
+    "capitalShared": [
+     "hub.balance",
+     "hub.reserves",
+     "vault.balance",
+     "vault.reserves"
+    ],
+    "contracts": {
+     "callback": "0x313496642Ce898F7dD723B6AB6CF4A5891A456ed",
+     "reactive": "0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948"
+    },
+    "debtIntervals": {
+     "base-sepolia": 0,
+     "lasna": 0
+    },
+    "downtimeBlocks": {
+     "base-sepolia": 0,
+     "lasna": 0
+    },
+    "eventsMissed": 0,
+    "guardian": "Lifeline",
+    "guardianCost": {
+     "feeDetail": {
+      "base-sepolia": {
+       "closing": "199130951600000",
+       "deposits": "0",
+       "exact": true,
+       "fees": "0",
+       "opening": "199130951600000",
+       "selfCare": "0",
+       "unloggedDeposits": "0"
+      },
+      "lasna": {
+       "closing": "178891600000000000",
+       "deposits": "0",
+       "exact": true,
+       "fees": "67036500000000000",
+       "opening": "179647800000000000",
+       "selfCare": "66280300000000000",
+       "unloggedDeposits": "0"
+      }
+     },
+     "feeScope": "the hub and the vault serve each enrolled target of the deployment and each scenario; the figures are their whole fee consumption in `from..to`, and no share is estimated",
+     "fees": {
+      "base-sepolia": "0",
+      "lasna": "67036500000000000"
+     },
+     "principal": {
+      "base-sepolia": "0",
+      "lasna": "0"
+     }
+    },
+    "guardianDowntimeBlocks": {
+     "base-sepolia": 0,
+     "lasna": 0
+    },
+    "pokes": 0,
+    "pongs": 0,
+    "ticks": 0
+   }
+  },
+  "definitions": {
+   "callbacksDropped": "`Tick(n)` logs of the reactive canary in `from..to` with no `Pong(n)` log of its callback canary.",
+   "capitalLocked": "At `to`: the reserves of the two contracts of the arm, and the funds of the guardian (arm B: the balance and the reserves of the poller; arm C: the balance and the reserves of the hub and of the vault, which are shared with each other enrolled target).",
+   "downtimeBlocks": "Blocks inside the debt intervals of the reactive canary on Lasna and of the callback canary on the destination chain, for each chain: from a `BlacklistContract` log of the ledger to the next `WhitelistContract` log, or to `to`; the `Gap` event of the hub is not used, because its start block is 0 for a rescue that no debt log started.",
+   "eventsMissed": "`Poke(n)` logs of the reactive canary in `from..to` with no `Tick(n)` log of that canary.",
+   "guardianCost": "Principal is the sum that the guardian paid to the two contracts of the arm (arm B: `Paid` of the poller; arm C: `Rescued` and `ToppedUp` of the hub and `Result.paid` of the vault); fees are what the ledger took from the guardian: its reserves minus its debt at block `from - 1`, minus the same value at `to`, plus its `SelfCare` deposits, plus each deposit that cleared a debt of it (the ledger state at the block of its `WhitelistContract` log against the block before), and for the poller plus its fee float of the deployment; each fee figure is a lower bound, because a deposit of another account to a guardian with no debt has no log and is not in the figure, and a fee that the ledger took in the block of a deposit that cleared a debt is not in it; `feeDetail.exact` is false for a figure that holds a deposit that cleared a debt, and for a figure of 0 with `feeDetail.unloggedDeposits` above 0, which is the least sum of deposits with no log that the ledger state proves.",
+   "guardianDowntimeBlocks": "Blocks inside the debt intervals of the guardian itself (arm B: the poller; arm C: the hub on Lasna and the vault on the destination chain), from the ledger logs: a hub at its principal floor goes into debt with no `HubLow` event, so that event is not the source.",
+   "junk": "The balance of the vault at the start block and at the end block of the junk flood, the sums of `Result.paid` and `SelfCare.added` of the vault after the start block up to the end block, and the balance change that these payments do not explain; the expected value is 0."
+  },
+  "heights": {
+   "base-sepolia": {
+    "chainId": 84532,
+    "from": 62552591,
+    "to": 62554317,
+    "toTimestamp": 1795432732
+   },
+   "lasna": {
+    "chainId": 5318007,
+    "from": 9051258,
+    "to": 9051573,
+    "toTimestamp": 1795432730
+   }
+  },
+  "junk": {
+   "status": "not recorded"
+  },
+  "version": 1
+ },
+ "fleet": [
+  {
+   "chain": "lasna",
+   "chainId": 5318007,
+   "enrollBlock": 9039243,
+   "enrollTx": "0x77b119294494b9d86b3b24f19e00787054aa13344203aeee5835ab6524a21cf8",
+   "fills": 0,
+   "fillsFrom": {
+    "address": "0x6999526e507Cc3b03b180BbE05E1Ff938259A874",
+    "block": 68567263,
+    "chain": "unichain-sepolia"
+   },
+   "gaps": [],
+   "label": "FastfillReactive",
+   "marks": {
+    "high": "250000000000000000",
+    "low": "50000000000000000"
+   },
+   "principalPaid": "0",
+   "removed": null,
+   "rescues": 0,
+   "reserves": {
+    "block": 9068356,
+    "value": "60373758200000000000"
+   },
+   "target": "0x05a566959544A55c16012aeeF0a09067da1f204f",
+   "topUps": 0
+  },
+  {
+   "chain": "unichain-sepolia",
+   "chainId": 1301,
+   "enrollBlock": 68567271,
+   "enrollTx": "0xeddc1f5a5d9f9ace1caa51759c57ae0d13f9675e474b5a9057306b191aa7a3c0",
+   "fills": 0,
+   "fillsFrom": {
+    "address": "0x6999526e507Cc3b03b180BbE05E1Ff938259A874",
+    "block": 68567271,
+    "chain": "unichain-sepolia"
+   },
+   "gaps": [],
+   "label": "FastfillExecutor",
+   "marks": {
+    "high": "2000000000000000",
+    "low": "500000000000000"
+   },
+   "principalPaid": "0",
+   "removed": null,
+   "rescues": 0,
+   "reserves": {
+    "block": 68598126,
+    "value": "1985547990287874"
+   },
+   "target": "0x916D4d5f9E363CbdFA8C34fB41185a75A6a2E705",
+   "topUps": 0
+  },
+  {
+   "chain": "base-sepolia",
+   "chainId": 84532,
+   "enrollBlock": 62489400,
+   "enrollTx": "0xd4d84e16adb7312d39b564934fa9f9673c2bc825ab5c0973f6adfc6889b5ce71",
+   "fills": 0,
+   "fillsFrom": {
+    "address": "0x6999526e507Cc3b03b180BbE05E1Ff938259A874",
+    "block": 68567320,
+    "chain": "unichain-sepolia"
+   },
+   "gaps": [
+    {
+     "aliveAtBlock": 62489499,
+     "blocks": 5,
+     "deadFromBlock": 62489494,
+     "tx": "0xd19743a00790ed97d97e0a4d830759dbf1293d2257fd61eb0f56f47b25091adf"
+    }
+   ],
+   "label": "loop-check canary (base-sepolia)",
+   "marks": {
+    "high": "50000000000000",
+    "low": "0"
+   },
+   "principalPaid": "50559145400000",
+   "removed": {
+    "hubDisarm": "0x8452aa6825b4eabe87a6c5b5a4a74b2b364e36745afdea8934b7b1ad3537e307",
+    "vaultDisarm": "0xc3313c96bea2d9c5c3b512309bb857337fd415157953fda47d79a4af79e40df1"
+   },
+   "rescues": 1,
+   "reserves": {
+    "block": 62643435,
+    "value": "50000000000000"
+   },
+   "target": "0xa462B906917C0372872AD35C0321eB5Daa60692E",
+   "topUps": 0
+  }
+ ],
+ "guardian": {
+  "hub": {
+   "address": "0xbba61E507e7CC334e57A62c39A776272DA6b07Dd",
+   "balance": {
+    "block": 9068356,
+    "value": "4444564200000000000"
+   },
+   "chain": "lasna",
+   "debt": {
+    "block": 9068356,
+    "value": "0"
+   },
+   "deployBlock": 9039165,
+   "floatConsumed": "155028400000000000",
+   "principalPaid": "24960000000000000",
+   "reserves": {
+    "block": 9068356,
+    "value": "175447400000000000"
+   },
+   "selfCareAdded": "330475800000000000"
+  },
+  "vaults": {
+   "base-sepolia": {
+    "address": "0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2",
+    "balance": {
+     "block": 62643435,
+     "value": "1948400410800000"
+    },
+    "chain": "base-sepolia",
+    "debt": {
+     "block": 62643435,
+     "value": "0"
+    },
+    "deployBlock": 62488753,
+    "floatConsumed": "1909492200000",
+    "principalPaid": "50559145400000",
+    "reserves": {
+     "block": 62643435,
+     "value": "199130951600000"
+    },
+    "selfCareAdded": "201040443800000"
+   },
+   "unichain-sepolia": {
+    "address": "0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26",
+    "balance": {
+     "block": 68598126,
+     "value": "5000000000000000"
+    },
+    "chain": "unichain-sepolia",
+    "debt": {
+     "block": 68598126,
+     "value": "0"
+    },
+    "deployBlock": 68567187,
+    "floatConsumed": "185524350000",
+    "principalPaid": "0",
+    "reserves": {
+     "block": 68598126,
+     "value": "199814475650000"
+    },
+    "selfCareAdded": "200000000000000"
+   }
+  }
+ },
+ "guests": [],
+ "heights": {
+  "base-sepolia": {
+   "chainId": 84532,
+   "from": 62488753,
+   "to": 62643435,
+   "toTimestamp": 1795450555
+  },
+  "lasna": {
+   "chainId": 5318007,
+   "from": 9039165,
+   "to": 9068356,
+   "toTimestamp": 1795450553
+  },
+  "unichain-sepolia": {
+   "chainId": 1301,
+   "from": 68567187,
+   "to": 68598126,
+   "toTimestamp": 1795450554
+  }
+ },
+ "junkRecovery": {
+  "balanceEnd": null,
+  "balanceStart": null,
+  "chain": null,
+  "recorded": false,
+  "steps": [],
+  "unexplainedChange": null,
+  "vault": null,
+  "waitingRescue": null
+ },
+ "lasnaRescues": [
+  {
+   "gap": {
+    "aliveAtBlock": 9051444,
+    "deadFromBlock": 9051443
+   },
+   "rescued": {
+    "block": 9051444,
+    "debt": "11980000000000000",
+    "paid": "12980000000000000",
+    "tx": "0xeb5f7b5f092550dc46bb9eee726ac6d0c9bcf0999510209cd32dafb48cb6b955"
+   },
+   "target": "0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9"
+  },
+  {
+   "gap": {
+    "aliveAtBlock": 9051466,
+    "deadFromBlock": 9051465
+   },
+   "rescued": {
+    "block": 9051466,
+    "debt": "10980000000000000",
+    "paid": "11980000000000000",
+    "tx": "0x0513ec1482d1df1aa9fa7a6376efd7656a3c320cfd7245a62cb37aed1a0acf2d"
+   },
+   "target": "0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9"
+  }
+ ],
+ "quarantine": {
+  "chain": "lasna",
+  "dailyCap": "260000000000000000",
+  "maxRescues": 2,
+  "paidAfterQuarantine": "0",
+  "policyTx": "0xa4538529f12a96807cb7a780b40433fae769f615af0dc3e489151210b94b4f65",
+  "principalPaid": "24960000000000000",
+  "quarantined": {
+   "block": 9051488,
+   "tx": "0xe5958954b40c20d3001134a31a5d3bd515f4c7b89f208940f2717e50cf95d0bd"
+  },
+  "recorded": true,
+  "rescues": [
+   {
+    "block": 9051444,
+    "tx": "0xeb5f7b5f092550dc46bb9eee726ac6d0c9bcf0999510209cd32dafb48cb6b955"
+   },
+   {
+    "block": 9051466,
+    "tx": "0x0513ec1482d1df1aa9fa7a6376efd7656a3c320cfd7245a62cb37aed1a0acf2d"
+   }
+  ],
+  "target": "0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9"
+ },
+ "rescues": [
+  {
+   "chain": "base-sepolia",
+   "chainId": 84532,
+   "debtEvent": {
+    "block": 62489494,
+    "tx": "0x9bb5e827d134906e1ec5f184cd2fecd4a0370974fb8711d2baaabedcb0c15727"
+   },
+   "relayed": {
+    "block": 9039315,
+    "tx": "0x33cc6420f62ea2653c5fe28ae6b41d572a06405d10fdbc43fa2c9244fc35061e"
+   },
+   "requestId": "340282366920938463463374607431768211457",
+   "result": {
+    "block": 62489499,
+    "outcome": "Rescued",
+    "paid": "50559145400000",
+    "tx": "0xd19743a00790ed97d97e0a4d830759dbf1293d2257fd61eb0f56f47b25091adf"
+   },
+   "status": "joined",
+   "target": "0xa462B906917C0372872AD35C0321eB5Daa60692E",
+   "whitelist": {
+    "block": 62489499,
+    "tx": "0xd19743a00790ed97d97e0a4d830759dbf1293d2257fd61eb0f56f47b25091adf"
+   }
+  }
+ ],
+ "version": 1
+}
