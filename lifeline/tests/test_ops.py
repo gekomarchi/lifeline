@@ -257,3 +257,44 @@ def test_replacement_fees_are_higher_in_each_field():
     assert ops._replacement_fees({"maxFeePerGas": "150000000001", "maxPriorityFeePerGas": "1"}) == \
         {"maxFeePerGas": 168750000002, "maxPriorityFeePerGas": 2}
     assert ops._replacement_fees(None) == {}
+
+
+def test_a_replacement_on_a_chain_with_no_base_fee_has_a_higher_gas_price():
+    assert ops._replacement_fees({"gasPrice": "1000"}) == {"gasPrice": 1126}
+
+    class Node:
+        """A chain with no base fee: a transaction has the one fee field `gasPrice`."""
+
+        name = "legacy"
+        sent = []
+
+        def balance(self, sender):
+            return 10**18
+
+        def block(self):
+            return {}
+
+        def chain_id(self):
+            return 1
+
+        def used_nonce(self, sender, nonce):
+            self.used = nonce
+
+        def request(self, method, params=()):
+            if method == "eth_gasPrice":
+                return hex(1000)
+            assert method == "eth_sendRawTransaction"
+            self.sent.append(params[0])
+            return "0x"
+
+    from eth_account import Account
+
+    node, journal = Node(), []
+    account = Account.from_key("0x" + "11" * 32)
+    for min_fees, price in ((None, 1000), ({"gasPrice": 1126}, 1126), ({"gasPrice": 900}, 1000),
+                            ({"maxFeePerGas": 5000, "maxPriorityFeePerGas": 5000}, 1000)):
+        ops.send_transaction(node, account, account.address, b"", 1, gas=21_000, nonce=7, min_fees=min_fees,
+                             before_send=lambda tx_hash, nonce, fees: journal.append((nonce, fees)))
+        assert journal[-1] == (7, {"gasPrice": price}) and node.used == 7
+        # A legacy transaction: an RLP list, with no type byte before it.
+        assert int(node.sent[-1][2:4], 16) >= 0xC0

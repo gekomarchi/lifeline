@@ -183,14 +183,15 @@ A command writes the manifest before each transaction goes to the node, with the
 - Journal, and the node does not know the transaction, and the nonce was used: the result is not known. The command stops and sends nothing. It does not use a new nonce. Run the command again later. If the result is the same, find the transaction of that nonce in a block explorer and correct the manifest.
 - Journal with other inputs than the inputs of this run (for example another amount in the configuration): the command stops. Give the inputs of the earlier run again.
 - A step that the state of the chain shows as done needs no transaction. The command first closes the journal of that step: it waits for a recorded transaction that the chain has and writes its hash to its place.
-- `remove` and `recover` wait until each earlier transaction of the owner has a receipt before they read the state that decides their steps.
+- `deploy`, journal of a hub call (`setVault`, `setCronTopic`) with other values than the values of this run: the command settles that journal before it reads the state. If the chain has the transaction, the command waits for it. If its nonce was used, the transaction can never get into a block and the journal goes. If the node does not know it and its nonce is free, the command stops and sends nothing: run `deploy` again with the configuration of the earlier run first.
+- `remove` and `recover` wait until each earlier transaction of the owner has a receipt before they read the state that decides their steps. At the timeout they stop and send nothing: a transaction that waits can still change that state. One exception: `recover` continues if the manifest has the journal of its own deposit, and then waits for that deposit.
 
 Where the journal is:
 
 - `deploy` and `loop-check`: `pendingDeploy` of the entry of a contract. No contract is deployed two times. A contract entry with `address` null is a deployment that did not finish. The float checks of `deploy` apply again to a deployment whose recorded transaction the node does not know.
 - `enroll`, `fleet` and each other transaction: `pending` next to the hash. `enroll` writes the enrollment record before `setPolicy`. The next run with the same policy sends only the steps that are missing.
 - `remove` writes its hashes to `removing` of the record, and moves them to `removed` at the end. It does not start while a transaction of the enrollment has no receipt: finish the enrollment with `enroll` first.
-- `recover` writes the deposit to the newest entry of `recoveries` of the vault. A deposit that waits for its receipt is not sent a second time. If the vault has no debt and the node does not know the recorded deposit, the journal stays while the nonce of that deposit is free, so a later deposit uses the same nonce. `hub.vaultUp` has no journal: the command reads `vaultInfo` and the vault debt before each call, and a call with no pending target changes nothing.
+- `recover` writes the deposit and its block to the newest entry of `recoveries` of the vault. A deposit that waits for its receipt is not sent a second time. If the vault has no debt and the node does not know the recorded deposit, the journal stays while the nonce of that deposit is free, so a later deposit uses the same nonce. `hub.vaultUp` has no journal: the command reads `vaultInfo` and the vault debt before each call, and a call with no pending target changes nothing.
 
 If the hub has a target and the manifest has no record of that enrollment, `enroll` and `fleet` refuse the target. `remove` removes it; that removal has no record in the manifest.
 
@@ -254,7 +255,7 @@ Each contract has two kinds of funds. Principal is the balance of the contract: 
 
 - Add principal: send the native currency to the address of the hub or of the vault (a plain transfer).
 - Add to a float: `depositTo(contract)` at the ledger, with a value. `recover` does this for a vault in debt.
-- `python -m lifeline.ops status` shows both for each contract, the number of full triggers that the funds of the hub cover, the state of each vault at the hub, and the debt and the reserves of each enrolled target.
+- `python -m lifeline.ops status` shows both for each contract, the number of full triggers that the funds of the hub cover, the state of each vault at the hub, and the debt and the reserves of each enrolled target. A paused hub and a paused vault each give a `WARN` line.
 
 Limits of the deployed contracts that the owner must know:
 
