@@ -184,11 +184,16 @@ def add_step(record: dict, step: str, chain: str, block, tx=None) -> None:
 # ----------------------------------------------------------------------------------------------
 
 
-def poke(rpc: ops.Rpc, account, canary: str) -> dict:
+def poke(rpc: ops.Rpc, account, canary: str, nonce: int = None) -> dict:
     """Calls `poke()` of a canary with the fixture key and waits for the receipt. Returns
-    `{"tx", "block", "n"}`: `n` is the number of the `Poke(n)` log."""
+    `{"tx", "block", "n"}`: `n` is the number of the `Poke(n)` log.
+
+    `nonce`: the nonce of the transaction, for a caller that decided the poke from a state of the chain with
+    that nonce. If the account sent another transaction after that state, the node refuses the poke.
+    Without it the nonce is the newest one of the account."""
     abi = ops.load_artifact("CanaryReactive").abi  # `poke()` and `Poke` are the same in `LoopingCanary`
-    receipt = ops.transact(rpc, account, canary, abi.encode("poke"), abi=abi, what="poke")
+    receipt = ops.wait_receipt(rpc, ops.send_transaction(rpc, account, canary, abi.encode("poke"), abi=abi,
+                                                         what="poke", nonce=nonce))
     logs = ops.receipt_logs(receipt, canary, abi.topic("Poke"))
     if not logs:
         raise OpsError(f"poke() of {canary} on {rpc.name} gave no Poke log: {receipt['transactionHash']}")
@@ -510,16 +515,17 @@ def _owned_fixture(store: FixtureStore, rpc: ops.Rpc, name: str, account) -> str
     return address
 
 
-def idle_block(rpc: ops.Rpc, sender: str) -> int:
-    """Waits until each transaction of a sender has a receipt. Returns the block of the read that showed it,
-    and makes that block the lowest block of each later read of this run: a node that is behind that block
-    then gives no answer in place of an older state. At the timeout it is an error."""
+def idle_block(rpc: ops.Rpc, sender: str) -> tuple:
+    """Waits until each transaction of a sender has a receipt. Returns (block, nonce): the block of the read
+    that showed it, and the nonce of the next transaction of the sender at that block. That block becomes the
+    lowest block of each later read of this run: a node that is behind that block then gives no answer in
+    place of an older state. At the timeout it is an error."""
     deadline = time.monotonic() + ops.RECEIPT_TIMEOUT
     while True:
         block, count = rpc._read_at("eth_getTransactionCount", [sender])
         if hex_int(rpc.request("eth_getTransactionCount", [sender, "pending"])) <= hex_int(count):
             rpc.floor = max(rpc.floor, block)
-            return block
+            return block, hex_int(count)
         if time.monotonic() >= deadline:
             raise rpc.not_idle(sender)
         time.sleep(min(ops.POLL_SECONDS, 1.0))
@@ -552,16 +558,28 @@ def cmd_load(args) -> int:
     require_guardian(session, dest)
 
     def send(arm: str, text: str) -> None:
-        result = poke(lasna.rpc, account, reactives[arm])
+        # The nonce binds each poke to the state that decided it: the counters at the block `start` and the
+        # pokes of this run after it. A transaction of the account that this run did not see, for example a
+        # poke of an earlier run that the node did not have at `start`, uses the nonce: the node then
+        # refuses the poke. The read here gives the reason before the signature if the node shows it.
+        used = hex_int(lasna.rpc.request("eth_getTransactionCount", [account.address, "pending"]))
+        if used > nonce["next"]:
+            raise OpsError(f"{account.address} has {used} transaction(s) on {LASNA}, and this run decided its "
+                           f"pokes at {nonce['next']}: the account sent a transaction that this run did not "
+                           f"send or did not see. The poke of arm {arm} was not sent. Run the command again: it "
+                           f"reads the pokes of each arm again and completes the step that stopped")
+        result = poke(lasna.rpc, account, reactives[arm], nonce["next"])
+        nonce["next"] += 1
         add_step(record, f"poke {result['n']} arm{arm}", LASNA, result["block"], result["tx"])
         scenarios.save()
         say(f"  {text} arm {arm}: Poke({result['n']}) tx {result['tx']} block {result['block']}")
 
     # The chain is the journal of the load. A run that stopped inside a step left the arms with different
-    # numbers of pokes, and a poke that is in a block can be absent from the record. One block for the three
-    # reads: the account has no transaction that waits at `start`, and the counters and the logs are the
-    # ones of `start`.
-    start = idle_block(lasna.rpc, account.address)
+    # numbers of pokes, and a poke that is in a block can be absent from the record. One block for the
+    # reads: the account has no transaction that waits at `start`, and the nonce, the counters and the logs
+    # are the ones of `start`.
+    start, count = idle_block(lasna.rpc, account.address)
+    nonce = {"next": count}
     if record["startBlock"] is None:
         record["startBlock"] = start
     topic = ops.load_artifact("CanaryReactive").abi.topic("Poke")

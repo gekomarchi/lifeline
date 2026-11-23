@@ -312,11 +312,45 @@ def test_load_completes_the_step_of_a_run_that_stopped_and_gives_each_arm_the_sa
     assert net.proxy.sent(mark) == []
     net.scenarios.write_text(saved)
 
+    # A node that is behind in each answer: its newest block is the block before the poke of arm A, and the
+    # nonce of the account, the counters and the logs are the ones of that block. Each arm looks as if it had
+    # no poke. The command binds its pokes to the nonce of that state, so no poke goes to arm A a second time.
+    poke_block = int(net.rpcs[LASNA].receipt(first[1])["blockNumber"], 16)
+
+    def behind(catches_up: bool):
+        node = {"behind": True}
+
+        def answer(chain, method, params, result):
+            if chain != LASNA or not node["behind"]:
+                return result
+            if method == "eth_blockNumber":
+                return hex(poke_block - 1)
+            if method == "eth_getTransactionCount" and params[1] == "pending":
+                return hex(int(result, 16) - 1)
+            if (catches_up and method == "eth_getLogs" and params[0]["topics"][0] == topic
+                    and ops.same_address(params[0]["address"], reactives["C"])):
+                node["behind"] = False  # the last read of the state that decides the pokes
+            return result
+        return answer
+
+    # The node catches up after the command read its state: the command sees the nonce that it did not expect.
+    # The node stays behind: the node that takes the transaction refuses its nonce.
+    for catches_up, text in ((True, "did not send or did not see"), (False, "was refused by the node")):
+        blocks = net.blocks()
+        net.proxy.tamper = behind(catches_up)
+        try:
+            result = net.experiment(*load)
+        finally:
+            net.proxy.tamper = None
+        assert result.returncode == 1 and text in result.stderr, result.stderr + result.stdout
+        assert net.blocks() == blocks and pokes() == {"A": {1}, "B": set(), "C": set()}
+        assert step_names(net.scenario("load"))[-2:] == ["start", "stopped"]
+        net.scenarios.write_text(saved)
+
     # The next run, at a node that goes back: after the read that shows the account as idle, the node gives
     # the block before the poke of arm A as its newest block three times. The command reads the logs at the
     # block of the idle read, not at an older one. The poke of arm A gets its step, arm B and arm C get the
     # poke of the step that stopped, and then the one step of this run goes to each arm.
-    poke_block = int(net.rpcs[LASNA].receipt(first[1])["blockNumber"], 16)
     node = {"idle": False, "stale": 0}
 
     def goes_back(chain, method, params, result):
