@@ -510,6 +510,28 @@ def _owned_fixture(store: FixtureStore, rpc: ops.Rpc, name: str, account) -> str
     return address
 
 
+def idle_block(rpc: ops.Rpc, sender: str) -> int:
+    """Waits until each transaction of a sender has a receipt. Returns the block of the read that showed it,
+    and makes that block the lowest block of each later read of this run: a node that is behind that block
+    then gives no answer in place of an older state. At the timeout it is an error."""
+    deadline = time.monotonic() + ops.RECEIPT_TIMEOUT
+    while True:
+        block, count = rpc._read_at("eth_getTransactionCount", [sender])
+        if hex_int(rpc.request("eth_getTransactionCount", [sender, "pending"])) <= hex_int(count):
+            rpc.floor = max(rpc.floor, block)
+            return block
+        if time.monotonic() >= deadline:
+            raise rpc.not_idle(sender)
+        time.sleep(min(ops.POLL_SECONDS, 1.0))
+
+
+def poke_count(rpc: ops.Rpc, canary: str, block: int) -> int:
+    """The number of `poke()` calls of a canary at one block: its counter, the one storage variable of
+    `CanaryReactive` (slot 0). The read names the block, so a node that does not have the block gives an
+    error and not an older value."""
+    return hex_int(rpc._read_at("eth_getStorageAt", [canary, "0x0"], block)[1])
+
+
 def cmd_load(args) -> int:
     if args.pokes < 1 or args.interval < 0:
         raise OpsError("--pokes is 1 or more and --interval is 0 or more")
@@ -536,25 +558,30 @@ def cmd_load(args) -> int:
         say(f"  {text} arm {arm}: Poke({result['n']}) tx {result['tx']} block {result['block']}")
 
     # The chain is the journal of the load. A run that stopped inside a step left the arms with different
-    # numbers of pokes, and a poke that is in a block can be absent from the record.
-    lasna.rpc.require_idle(account.address)
-    start = lasna.rpc.head()
+    # numbers of pokes, and a poke that is in a block can be absent from the record. One block for the three
+    # reads: the account has no transaction that waits at `start`, and the counters and the logs are the
+    # ones of `start`.
+    start = idle_block(lasna.rpc, account.address)
     if record["startBlock"] is None:
         record["startBlock"] = start
     topic = ops.load_artifact("CanaryReactive").abi.topic("Poke")
+    counted = {arm: poke_count(lasna.rpc, reactives[arm], start) for arm in ARMS}
     sent = {arm: lasna.rpc.logs(reactives[arm], [topic], store.entry(f"arm{arm}.reactive")["deployBlock"], start)
             for arm in ARMS}
     recorded = {entry["tx"] for entry in record["steps"]}
     for arm in ARMS:
+        # A node that is behind would make an arm look behind, and the command would poke it again.
+        if len(sent[arm]) != counted[arm]:
+            raise OpsError(f"the node of {LASNA} gave {len(sent[arm])} Poke log(s) of arm{arm}.reactive up to "
+                           f"block {start}, and the canary counted {counted[arm]} poke(s) at that block: the "
+                           f"node is behind. No transaction was sent. Run the command again")
         hashes = {log["transactionHash"] for log in sent[arm]}
         lost = [entry["step"] for entry in record["steps"]
                 if entry["step"].startswith("poke ") and entry["step"].endswith(f" arm{arm}")
                 and entry["tx"] not in hashes]
         if lost:
-            # A node that is behind would make an arm look behind, and the command would poke it again.
             raise OpsError(f"the node of {LASNA} at block {start} does not have the log of {lost[0]} of "
-                           f"{scenarios.path}: the node is behind, or the record is of another chain. No "
-                           f"transaction was sent")
+                           f"{scenarios.path}: the record is of another chain. No transaction was sent")
         for log in sent[arm]:
             if log["transactionHash"] not in recorded:
                 number = hex_int(log["topics"][1])
@@ -562,9 +589,8 @@ def cmd_load(args) -> int:
                 say(f"  arm {arm}: Poke({number}) tx {log['transactionHash']} block {block_of(log)} is on the "
                     f"chain and was not in the record: an earlier run stopped before it wrote the step")
     scenarios.save()
-    most = max(len(logs) for logs in sent.values())
     for arm in ARMS:
-        for _ in range(most - len(sent[arm])):
+        for _ in range(max(counted.values()) - counted[arm]):
             # The pokes that the stopped step did not send: then each arm has the same number of pokes.
             require_guardian(session, dest)
             send(arm, "step of an earlier run that stopped,")

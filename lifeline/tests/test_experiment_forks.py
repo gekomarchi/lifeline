@@ -283,30 +283,60 @@ def test_load_completes_the_step_of_a_run_that_stopped_and_gives_each_arm_the_sa
     assert step_names(record) == ["start", "stopped"], "the run that stopped does not leave `end`"
     assert record["startBlock"] <= record["endBlock"]
 
-    # A node that is behind does not have the poke of the record: the command must not poke that arm again.
-    # Here the record gets the poke of arm A, and the node gives no `Poke` log.
+    # A node that is behind gives no `Poke` log. The counter of the canary at the block of the read says 1, so
+    # the command does not take arm A for an arm with no poke: it sends nothing.
     saved = net.scenarios.read_text()
-    with_poke = json.loads(saved)
-    experiment.add_step(with_poke["load"], "poke 1 armA", LASNA, int(net.rpcs[LASNA].receipt(first[1])["blockNumber"], 16),
-                        first[1])
-    net.scenarios.write_text(json.dumps(with_poke))
     topic = net.canary_abi.topic("Poke")
-    net.proxy.tamper = lambda chain, method, params, result: (
-        [] if method == "eth_getLogs" and params[0]["topics"][0] == topic else result)
-    blocks, mark = net.blocks(), net.proxy.mark()
+
+    def no_poke_logs(chain, method, params, result):
+        return [] if method == "eth_getLogs" and params[0]["topics"][0] == topic else result
+
+    def refused(text: str) -> None:
+        blocks, mark = net.blocks(), net.proxy.mark()
+        net.proxy.tamper = no_poke_logs
+        try:
+            result = net.experiment(*load)
+        finally:
+            net.proxy.tamper = None
+        assert result.returncode == 1 and text in result.stderr, result.stderr + result.stdout
+        assert "No transaction was sent" in result.stderr and net.proxy.sent(mark) == [] and net.blocks() == blocks
+
+    refused("0 Poke log(s) of armA.reactive up to block")
+    # A record with a poke that the chain does not have is the record of another chain.
+    other = json.loads(saved)
+    experiment.add_step(other["load"], "poke 1 armA", LASNA, other["load"]["endBlock"], "0x" + "ee" * 32)
+    net.scenarios.write_text(json.dumps(other))
+    mark = net.proxy.mark()
+    result = net.experiment(*load)
+    assert result.returncode == 1 and "does not have the log of poke 1 armA" in result.stderr, result.stdout
+    assert net.proxy.sent(mark) == []
+    net.scenarios.write_text(saved)
+
+    # The next run, at a node that goes back: after the read that shows the account as idle, the node gives
+    # the block before the poke of arm A as its newest block three times. The command reads the logs at the
+    # block of the idle read, not at an older one. The poke of arm A gets its step, arm B and arm C get the
+    # poke of the step that stopped, and then the one step of this run goes to each arm.
+    poke_block = int(net.rpcs[LASNA].receipt(first[1])["blockNumber"], 16)
+    node = {"idle": False, "stale": 0}
+
+    def goes_back(chain, method, params, result):
+        if chain != LASNA:
+            return result
+        if method == "eth_getTransactionCount" and params[1] == "pending":
+            node["idle"] = True
+        elif method == "eth_blockNumber" and node["idle"] and node["stale"] < 3:
+            node["stale"] += 1
+            return hex(poke_block - 1)
+        return result
+
+    mark = net.proxy.mark()
+    net.proxy.tamper = goes_back
     try:
         result = net.experiment(*load)
     finally:
         net.proxy.tamper = None
-    assert result.returncode == 1 and "does not have the log of poke 1 armA" in result.stderr, result.stdout
-    assert "No transaction was sent" in result.stderr and net.proxy.sent(mark) == [] and net.blocks() == blocks
-    net.scenarios.write_text(saved)
-
-    # The next run: the poke of arm A gets its step, arm B and arm C get the poke of the step that stopped,
-    # and then the one step of this run goes to each arm.
-    mark = net.proxy.mark()
-    result = net.experiment(*load)
     assert result.returncode == 0, result.stderr + result.stdout
+    assert node["stale"] == 3, "the node went back after the idle read"
     assert "arm A: Poke(1)" in result.stdout and "was not in the record" in result.stdout
     assert result.stdout.count("step of an earlier run that stopped,") == 2
     assert pokes() == {arm: {1, 2} for arm in experiment.ARMS}, "the same number of pokes for each arm"
