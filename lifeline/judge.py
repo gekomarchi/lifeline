@@ -80,13 +80,20 @@ def deployment(manifest: dict, names) -> dict:
 def deploy_blocks(manifest: dict) -> dict:
     """The deployment block of the Lifeline contract of each chain: the hub on Lasna, a vault on a
     destination chain. No log query of that chain starts before it."""
+
+    def block_of_deployment(entry: dict, label: str) -> int:
+        block = entry["deployBlock"]
+        if isinstance(block, bool) or not isinstance(block, int) or block < 1:
+            raise OpsError(f"the manifest has the deployBlock {block!r} for {label}: it is not a block number")
+        return block
+
     hub = manifest["contracts"].get("hub")
     if not (hub and hub.get("address") and hub.get("deployBlock")):
         raise OpsError("the manifest has no hub with an address and a deployBlock")
-    blocks = {LASNA: int(hub["deployBlock"])}
+    blocks = {LASNA: block_of_deployment(hub, "the hub")}
     for chain, vault in manifest["contracts"]["vaults"].items():
         if vault and vault.get("address") and vault.get("deployBlock"):
-            blocks[chain] = int(vault["deployBlock"])
+            blocks[chain] = block_of_deployment(vault, f"the vault of {chain}")
     return blocks
 
 

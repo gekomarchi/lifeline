@@ -901,6 +901,9 @@ def test_heights_of_another_contract_and_output_paths_that_collide_are_refused(n
 
 @pytest.mark.parametrize("change, scenarios", [
     (lambda data: data["contracts"]["hub"].update(deployBlock="soon"), None),
+    (lambda data: data["contracts"]["hub"].update(deployBlock=-5), None),
+    (lambda data: data["contracts"]["vaults"][BASE].update(deployBlock=1.5), None),
+    (lambda data: data["contracts"]["vaults"][UNI].update(deployBlock=True), None),
     (lambda data: data["enrollments"][0].update(policy=None), None),
     (lambda data: data["fixtures"].update(looping=None, extra=7), {"quarantine": {"chain": LASNA, "steps": None}}),
     (None, {"junk": {"chain": BASE, "steps": [{"step": name} for _, name in judge.JUNK_STEPS]}}),
