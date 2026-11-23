@@ -169,7 +169,7 @@ The output of `deploy`. The commands after `deploy` read it and add their record
 | `contracts.vaults.<name>` | `chainId`, `address`, `deployBlock`, `deployTx`, `setVaultTx`, and after a recovery `recoveries[]`: for each run of `recover` that sent a transaction, `deposit`, `depositBlock` and `vaultUp[]` (`tx`, `block`, `requestId`, `sent`, `remaining`). |
 | `enrollments[]` | One record for each enrollment: `label`, `chain`, `chainId`, `target`, `policy`, `guest`, `consent`, `txs` (`setPolicy`, `readBackBlock`, `enroll`, `enrollBlock`) and `removed`. For a Lasna target `setPolicy` and `readBackBlock` are null. A record with `enrollBlock` null is an enrollment that did not finish. `removed` is null, or `{ "hubDisarm", "vaultDisarm" }` after `remove`; a hash is null if that step needed no transaction. |
 | `loopCheck` | The newest loop check: `chain`, `chainId`, `status` (`setup`, `waiting`, `timeout`, `failed` or `passed`), `missing`, the two canaries (`canaryCallback`, `canaryReactive`, each with `chain`, `chainId`, `address`, `deployBlock`, `deployTx`), `reserve`, `fundTx`, `policy`, `pokeTx`, `pokeBlock`, and `steps` with the hash and the block of each step. |
-| `fixtures` | An empty object. The experiment fixtures fill it. |
+| `fixtures` | The fixtures of the experiment, written by `python -m lifeline.experiment fixtures`: see "Experiment". An empty object before that. |
 
 A command changes only its own entries and keeps each other entry of the file. The file holds no key. An `--rpc` URL is not written to it.
 
@@ -313,6 +313,104 @@ python -m pytest lifeline/tests/test_ops_forks.py
 ```
 
 Without `anvil`, the build output or one of the three variables, the module is skipped. A fork starts at the newest block of its chain. The optional variables `LASNA_FORK_BLOCK`, `UNICHAIN_SEPOLIA_FORK_BLOCK` and `BASE_SEPOLIA_FORK_BLOCK` give another block. A destination fork needs a block at which the proxy has an authorized delivery account: on 2026-11-23 the owner of the two proxies removed both delivery accounts (Base Sepolia block 62,527,928, Unichain Sepolia block 68,575,027), so a fork of a later block has none, and `forkrelay` refuses it. Use a block before those two, for example `BASE_SEPOLIA_FORK_BLOCK=62527000` and `UNICHAIN_SEPOLIA_FORK_BLOCK=68574000`, or `anvil --fork-block-number` for a manual dry run.
+
+## Experiment
+
+The experiment commands run the control experiment and the two failure scenarios on the deployment of the manifest, and measure the experiment from chain data. Three identical canary automations get one scripted load: arm A has no guardian, arm B has a cron poller, arm C is enrolled in Lifeline.
+
+```
+python -m lifeline.experiment fixtures   [--dest-chain <name>]
+python -m lifeline.experiment load       --pokes <n> --interval <seconds>
+python -m lifeline.experiment quarantine
+python -m lifeline.experiment junk       --chain <name>
+python -m lifeline.experiment measure    --rpc <chain>=<url> ... [--heights <file>] [--out <dir>]
+```
+
+Each command accepts `--manifest <file>` and `--rpc <chain>=<url>`, with the meaning of the operator commands. `load`, `quarantine`, `junk` and `measure` accept `--scenarios <file>` (default `evidence/experiment/scenarios.json`).
+
+### Keys
+
+| Variable | Use |
+|---|---|
+| `LIFELINE_FIXTURE_KEY` | The fixture key: `0x` and 64 hexadecimal characters. It deploys the fixtures, owns them, calls `poke()` and sends the callback requests of `junk`. `fixtures`, `load`, `quarantine` and `junk` need it. |
+| `LIFELINE_OWNER_KEY` | The owner key of the hub and of the vaults. `fixtures` and `junk` need it: they run the operator commands `enroll` and `recover`, and the guard of `junk` reads its address. |
+
+`measure` needs no key and sends no transaction. No command prints or stores a key. The experiment commands write only the `fixtures` section of the manifest; `enroll` and `recover` write their own records.
+
+### Fixtures
+
+`fixtures` deploys ten contracts and writes one entry for each to `fixtures` of the manifest, with `contract`, `chain`, `chainId`, `address`, `deployBlock` and `deployTx`:
+
+| Entry | Contract | Chain | Purpose |
+|---|---|---|---|
+| `armA.reactive`, `armB.reactive`, `armC.reactive` | `CanaryReactive` | Lasna | One reaction for each `poke()`: `Tick(n)` and a `pong` callback request. |
+| `armA.callback`, `armB.callback`, `armC.callback` | `CanaryCallback` | destination | `Pong(n)` for each callback. |
+| `armB.poller` | `CronPoller` | Lasna | The guardian of arm B. |
+| `looping` | `LoopingCanary` | Lasna | Each reaction reverts. For `quarantine`. |
+| `waiting.callback` | `CanaryCallback` | destination | The target that waits for its rescue in `junk`. |
+| `junkRequester` | `JunkRequester` | Lasna | Requests one callback for each call of its owner. For `junk`. |
+
+- The destination chain is `--dest-chain` (default `base-sepolia`): one chain for the three arms.
+- The three automations have the same code and the same constructor values but for the callback recipient. Each reactive canary gets the same start reserves at the system contract, and each callback canary the same start reserves at the callback proxy (`depositTo`). The entries hold the amounts (`reserve`) and the hashes (`fundTx`).
+- Arm A has no guardian. Arm B: `CronPoller` with `armB.reactive` as ward, the cron topic of the manifest, and the `low` and `high` of the Lasna policy of arm C. On each tick, if the ward has a debt or reserves below `low`, the poller pays `debt + (high - reserves)` from its balance and emits `Paid(ward, amount)`. It has no `pay()`, it hears no debt event, and nothing refills its fee float. A payment that it cannot make gives `PaymentFailed` and no revert. Arm C: `armC.reactive` and `armC.callback` are enrolled with the `enroll` command.
+- `looping` is enrolled on the hub with the `enroll` command: `low` 0, a `high` below the fee of one reaction, `maxRescues` 2.
+- The amounts have flags: `--reactive-reserve`, `--callback-reserve`, `--lasna-low`, `--lasna-high`, `--dest-low`, `--dest-high`, `--poller-float`, `--poller-principal`, `--looping-high` (decimal, in the native unit), `--max-rescues`, `--window`, `--callback-gas`. The defaults come from the gas price of each chain at the first run: one reaction as 160,000 gas, one callback as `_extraGas` + 30,000 gas. They are start values, not protocol constants. The first run writes the amounts and the policies to the entries; a later run continues with them and deploys no contract a second time.
+- The command ends with a check: the hub and the vault have the two contracts of arm C and the looping canary, and have no contract of arm A or arm B.
+
+### Load and scenarios
+
+- `load` calls `poke()` on the three reactive canaries in each step: `--pokes` steps, `--interval` seconds apart. It takes each address from `fixtures` of the manifest. If an entry is absent, it exits with status 1 before any request. No argument names a target.
+- `quarantine` calls `poke()` on `looping` until the hub emits `Quarantined(looping)`: one poke, then the wait for `Rescued` or `Quarantined` (`--timeout`, default 600 s), at most `--max-pokes` pokes in one run. Then it sends one more poke, waits `--settle` seconds (default 60) and checks the budget: the number of `Rescued` equals `maxRescues`; no `Rescued` and no `ToppedUp` after `Quarantined`; the principal paid is at most `dailyCap`; the hub has the canary in state `Quarantined`. A check that fails gives status 1.
+- `junk --chain <name>` floods the vault of one chain with junk callbacks and restores it:
+  1. `enroll` for `waiting.callback` with `low` 0: `setPolicy` does not fund it, so its first callback is a debt.
+  2. The start block. Then callback requests to the vault through `JunkRequester`, in bursts (`--burst`, default 10; `--pause` seconds between two bursts), until the proxy emits `BlacklistContract(vault)`. Each request has the selector of `reconcile` and a first argument that is not the hub, so the vault refuses it and the proxy charges the fee float. Limits: `--max-junk` requests (default 1000) and `--timeout` seconds.
+  3. The wait for `VaultDown(chainId)` of the hub. Then the end block of the flood.
+  4. `pong` requests to `waiting.callback` until it is in debt (`--max-pongs`), and the wait for `Pending` of the hub.
+  5. The `recover` command. Then the wait for `VaultUp` with `remaining` 0 and for `Result(requestId, waiting.callback, Rescued, paid)`, and the check that `debt(waiting.callback)` and `debt(vault)` are 0.
+- Each driver runs again after a stop and continues from the chain data and from its record.
+
+The guard of `junk`. Before any transaction the command checks that the recipient is `contracts.vaults.<chain>.address` of the manifest and that `owner()` of that contract is the address of `LIFELINE_OWNER_KEY`. A chain with no vault in the manifest, an address that is not a vault, and a vault of another owner are refused with status 1. The function that sends the requests makes the same check for each burst: it accepts that vault and the recorded fixtures of that chain, and no other address. The command also refuses a vault that serves a target that is not a fixture, because the flood stops the protection of each target of that chain until the recovery; `--allow-other-targets` permits it.
+
+Limits of the deployed hub that the drivers respect. Self-care refills the fee float of the hub with at most `selfCareDailyCap` (0.4 lREACT) for each calendar day, and the hub emits `HubLow` only below `principalFloor`, not at it: under a heavy load the float can go to 0 and the hub into debt with no event. So `load`, `quarantine` and `junk` read the hub before each step and stop with status 1 if the hub is in debt or paused, if its float does not cover one full trigger of 900,000 gas, or if its principal above the floor does not cover one full trigger. `load` and `junk` also stop if the vault of the destination chain is in debt, down, paused or has pending targets. The message has the self-care that the hub used in the current calendar day.
+
+### Output files
+
+`evidence/experiment/` holds four files. None has a wall-clock time or an RPC URL.
+
+`scenarios.json`, written by the drivers: `{"load": {...}, "quarantine": {...}, "junk": {...}}`. Each record has `chain`, `addresses`, `startBlock`, `endBlock` and `steps`, a list of `{step, chain, block, tx}`.
+
+| Record | Steps | More fields |
+|---|---|---|
+| `load` | `start`, `poke <n> arm<X>`, `end`. A later run appends its steps; `startBlock` is the block of the first run and `endBlock` the block of the newest. | |
+| `quarantine` | `poke <n>`, `Rescued <i>`, `Quarantined`, `poke after Quarantined`. | `budget`: `maxRescues`, `rescues`, `paymentsAfterQuarantined`, `principalPaid`, `dailyCap`, `hubState`, `intact`. |
+| `junk` | `flood start`, `first junk request`, `BlacklistContract(vault)`, `VaultDown`, `flood end`, `pong request <i>`, `BlacklistContract(waiting.callback)`, `Pending`, `recovery deposit`, `VaultUp`, `Result(waiting.callback)`. | `junkRequests`, `lastJunkRequest`, `floodEndBlock`, `lasnaStartBlock`, `lasnaEndBlock`, `requestId`, `result`. `startBlock`, `floodEndBlock` and `endBlock` are blocks of the destination chain. |
+
+`data.json`, `table.md` and `heights.json`, written by `measure`:
+
+- `measure` reads the chain only through the reader and the snapshot of the network statistics. `from` of each chain is the lowest `deployBlock` of the fixtures on that chain. The first run pins `to` at the head and writes `heights.json`. `--heights <file>` gives the same `data.json`, `table.md` and `heights.json`, byte for byte. A state value that the node cannot serve at an old block comes from the snapshot, and standard output names it.
+- State reads are at `to`, at `from - 1`, at the two blocks of the junk flood, and at the block of each `WhitelistContract` log of a guardian and the block before it. The snapshot saves each value with its block.
+- The block range of the junk flood comes from `scenarios.json` in the first run and is saved in `params.junk` of `heights.json`. A run with `--heights` does not read `scenarios.json`.
+- `data.json`: `{"version": 1, "heights", "definitions", "arms": {"A", "B", "C"}, "junk"}`. Each arm has `downtimeBlocks` (by chain), `eventsMissed`, `callbacksDropped`, `guardianCost` (`principal` and `fees` by chain, `feeScope`, `feeDetail`), `capitalLocked` (one entry for each holder) and `capitalShared`, and also `guardian`, `contracts`, `pokes`, `ticks`, `pongs`, `debtIntervals` and `guardianDowntimeBlocks`. Amounts are decimal strings in wei of the chain that the key names. `principal` and `fees` are by chain because lREACT and the currency of the destination chain have no common unit.
+- `table.md` has the three arms, the metrics and the junk evidence. Each value comes from `data.json`. One sentence under the table defines each metric.
+
+| Metric | Definition |
+|---|---|
+| Blocks of downtime | Blocks inside the debt intervals of the reactive canary on Lasna and of the callback canary on the destination chain: from a `BlacklistContract` log of the ledger to the next `WhitelistContract` log, or to `to`. The `Gap` event of the hub is not the source: its start block is 0 for a rescue that no debt log started. |
+| Events missed | `Poke(n)` logs of the reactive canary with no `Tick(n)`. |
+| Callbacks dropped | `Tick(n)` logs of the reactive canary with no `Pong(n)` of its callback canary. |
+| Guardian cost | Principal: the sum that the guardian paid to the two contracts of the arm (arm B: `Paid`; arm C: `Rescued` and `ToppedUp` of the hub, `Result.paid` of the vault). Fees: what the ledger took from the guardian. No log has the amount of a fee, so the figure is the ledger identity: reserves minus debt at `from - 1`, minus the same at `to`, plus the `SelfCare` deposits of the range, plus each deposit that cleared a debt of the guardian. Arm B: the fee float of the poller at deployment minus what the ledger holds at `to`. Arm C: the hub and the vault serve each enrolled target, so the figure is their whole fee consumption in `from..to`. No share is estimated. A deposit of another account that clears no debt has no log and is not in the figure. |
+| Capital locked | At `to`: the reserves of the two contracts of the arm; for arm B the balance and the reserves of the poller; for arm C the balance and the reserves of the hub and of the vault, marked as shared with the fleet. |
+
+The junk evidence in `data.json`: the balance of the vault at the start block and at the end block of the flood, the sums of `Result.paid` and `SelfCare.added` of the vault after the start block up to the end block, and the balance change that these do not explain. The expected value is 0. It also has the reserves at both blocks, the debt at the end block and the number of `CallbackFailure` logs of the vault.
+
+### Order
+
+1. Fork dry run. The fixtures, the drivers, the operator commands and the reader run on local forks; `lifeline.forkrelay` is the node, and `--cron-tick` sends the cron ticks. Use a scratch manifest, `--scenarios`, and for `measure` also `--cache` and `--out`: a fork has the chain IDs of the live chains and other logs, so the commands refuse the default paths for a local node. The test module `lifeline/tests/test_experiment_forks.py` is this dry run.
+2. `fixtures`, then `load`, inside the 48-hour window of the fleet. The command does not enforce the window.
+3. `quarantine` and `junk` after the load has ended. Run `junk` on the vault of a chain that does not hold `FastfillExecutor`: Base Sepolia.
+4. `measure` after each step is possible. The final run, with `to` pinned after the 48 hours, is an operator step: keep its `heights.json`.
+
+The `Pong` callbacks of the load and the junk scenario need callback delivery on the destination chain. The Lasna part of the load and `quarantine` do not.
 
 ## Development
 

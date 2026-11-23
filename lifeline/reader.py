@@ -616,19 +616,28 @@ class Snapshot:
     def save(self, path) -> None:
         _write_atomic(Path(path), self.text())
 
-    def call(self, reader, to, data, name) -> str:
-        """`eth_call` at the pinned `to` of the reader's chain. `name` labels the value in reports."""
-        return self.calls(reader, [(to, data, name)])[0]
+    def call(self, reader, to, data, name, block=None) -> str:
+        """`eth_call` at the pinned `to` of the reader's chain, or at `block`. `name` labels the value in reports."""
+        return self.calls(reader, [(to, data, name)], block)[0]
 
-    def calls(self, reader, requests) -> list:
-        """`eth_call` for many (to, data, name) requests at the pinned `to`. Returns the hex results in order."""
-        return self._read_state(reader, "call", requests)
+    def calls(self, reader, requests, block=None) -> list:
+        """`eth_call` for many (to, data, name) requests at the pinned `to`, or at `block`. Returns the hex
+        results in order."""
+        return self._read_state(reader, "call", requests, block)
 
-    def balance(self, reader, address, name) -> int:
-        return int(self._read_state(reader, "balance", [(address, "0x", name)])[0], 16)
+    def balance(self, reader, address, name, block=None) -> int:
+        return int(self._read_state(reader, "balance", [(address, "0x", name)], block)[0], 16)
 
-    def _read_state(self, reader, kind, requests):
-        block = self.chains[reader.name]["to"]
+    def _read_state(self, reader, kind, requests, block=None):
+        """State values at one block: the pinned `to`, or a block of `from - 1..to` that the caller gives.
+        Each value is saved with its block, so a later run reproduces it."""
+        heights = self.chains[reader.name]
+        if block is None:
+            block = heights["to"]
+        elif not max(heights["from"] - 1, 0) <= block <= heights["to"]:
+            raise SnapshotError(
+                f"{reader.name}: block {block} is outside the heights {heights['from']}..{heights['to']}"
+            )
         keys = [(reader.name, block, kind, to.lower(), data.lower()) for to, data, _ in requests]
         missing = {key: name for key, (_, _, name) in zip(keys, requests) if key not in self._state}
         if missing:

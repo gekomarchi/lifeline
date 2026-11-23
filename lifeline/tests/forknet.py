@@ -110,24 +110,30 @@ class RecordingProxy:
             def do_POST(self):
                 chain = self.path.strip("/")
                 payload = json.loads(self.rfile.read(int(self.headers["content-length"])))
-                if payload["method"].startswith(tuple(proxy.refuse)):
-                    body = {"jsonrpc": "2.0", "id": payload.get("id"),
-                            "error": {"code": -32601, "message": "the method does not exist"}}
+                # One request, or a JSON-RPC batch: the reader of the measuring commands sends batches.
+                items = payload if isinstance(payload, list) else [payload]
+                if any(item["method"].startswith(tuple(proxy.refuse)) for item in items):
+                    answers = [{"jsonrpc": "2.0", "id": item.get("id"),
+                                "error": {"code": -32601, "message": "the method does not exist"}} for item in items]
                 else:
                     request = urllib.request.Request(
                         proxy.upstreams[chain], data=json.dumps(payload).encode(),
                         headers={"content-type": "application/json"},
                     )
                     with urllib.request.urlopen(request, timeout=120) as response:
-                        body = json.loads(response.read())
-                if proxy.tamper is not None and "result" in body:
-                    body["result"] = proxy.tamper(chain, payload["method"], payload.get("params"), body["result"])
-                with proxy._lock:
-                    proxy.records.append({
-                        "chain": chain, "method": payload["method"], "params": payload.get("params"),
-                        "result": body.get("result"),
-                    })
-                raw = json.dumps(body).encode()
+                        answers = json.loads(response.read())
+                    answers = answers if isinstance(answers, list) else [answers]
+                by_id = {answer.get("id"): answer for answer in answers if isinstance(answer, dict)}
+                for item in items:
+                    body = by_id.get(item.get("id"), {})
+                    if proxy.tamper is not None and "result" in body:
+                        body["result"] = proxy.tamper(chain, item["method"], item.get("params"), body["result"])
+                    with proxy._lock:
+                        proxy.records.append({
+                            "chain": chain, "method": item["method"], "params": item.get("params"),
+                            "result": body.get("result"),
+                        })
+                raw = json.dumps(answers if isinstance(payload, list) else answers[0]).encode()
                 self.send_response(200)
                 self.send_header("content-type", "application/json")
                 self.send_header("content-length", str(len(raw)))

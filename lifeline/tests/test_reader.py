@@ -199,6 +199,38 @@ def test_snapshot_pins_saves_and_loads(network):
         loaded.call(readers["lasna"], LASNA_LEDGER, ledger_call(DEBT, LASNA_LEDGER), "other")
 
 
+def test_snapshot_reads_and_saves_state_at_a_block_of_the_heights(network):
+    readers = {name: reader_for(network, name) for name in network.chains}
+    snapshot = Snapshot.pin(readers, lambda reader, to: first_block_at(reader, START, to), {})
+    lasna, data = readers["lasna"], ledger_call(DEBT, A1)
+    network.clear_requests()
+
+    # A block of `from - 1..to`: the request names that block, and the value is saved with it.
+    assert int(snapshot.call(lasna, LASNA_LEDGER, data, "debt of A1 at block 1500", 1500), 16) == 5
+    assert int(snapshot.call(lasna, LASNA_LEDGER, data, "debt of A1"), 16) == 5
+    assert snapshot.balance(lasna, A1, "balance of A1 at block 999", 999) == 0
+    assert [params[1] for params in network.lasna.methods("eth_call")] == [hex(1500), hex(21000)]
+    assert [params[1] for params in network.lasna.methods("eth_getBalance")] == [hex(999)]
+    for block in (998, 21001):
+        with pytest.raises(SnapshotError, match="outside the heights"):
+            snapshot.call(lasna, LASNA_LEDGER, data, "outside", block)
+
+    path = network.tmp_path / "heights.json"
+    snapshot.save(path)
+    saved = json.loads(path.read_text())["state"]
+    assert [(entry["block"], entry["kind"]) for entry in saved] == [(999, "balance"), (1500, "call"), (21000, "call")]
+
+    # A later run with no state at the node: each block has its own saved value.
+    network.lasna.refuse_state = True
+    readers = {name: reader_for(network, name) for name in network.chains}
+    loaded = Snapshot.load(path, readers)
+    assert int(loaded.call(readers["lasna"], LASNA_LEDGER, data, "debt of A1 at block 1500", 1500), 16) == 5
+    assert loaded.from_saved == ["debt of A1 at block 1500"]
+    with pytest.raises(StateUnavailable):  # the snapshot has no value of this call at this block
+        loaded.call(readers["lasna"], LASNA_LEDGER, data, "debt of A1 at block 1501", 1501)
+    assert loaded.text() == path.read_text()
+
+
 def test_rate_limits_keep_the_chunk_and_repeated_server_errors_make_it_smaller(network):
     network.lasna.faults = [("eth_getLogs", "rate")] * 3
     assert len(reader_for(network, retries=4).logs(LASNA_LEDGER, [BLACKLIST], 1000, 21000)) == 4
