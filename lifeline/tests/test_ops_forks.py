@@ -350,6 +350,15 @@ def test_the_float_checks_apply_to_a_deployment_that_never_reached_the_chain(net
     assert net.blocks() == before
     assert json.loads(manifest.read_text())["contracts"]["hub"]["pendingDeploy"] == journal
 
+    # The same holds for a recorded transaction that reverted; one that is in a block is a deployment.
+    rpc = net.rpcs[LASNA]
+    call = net.hub_abi.encode("vaultUp", 999)  # reverts: the hub has no vault for this chain
+    reverted = ops._wait_mined(rpc, [ops.send_transaction(rpc, net.account, net.hub, call, gas=200_000)])
+    assert int(reverted["status"], 16) == 0
+    assert not ops._deployment_started(rpc, {"pendingDeploy": {"txs": [reverted["transactionHash"]]}})
+    assert ops._deployment_started(rpc, {"pendingDeploy": {"txs": [net.data()["contracts"]["hub"]["deployTx"]]}})
+    assert not ops._deployment_started(rpc, {"pendingDeploy": {"txs": ["0x" + "44" * 32]}})
+
 
 def test_verify_refuses_a_local_development_node(net):
     result = net.ops("verify", "--sourcify", "http://127.0.0.1:9")
@@ -857,6 +866,34 @@ def test_recover_does_not_send_a_second_deposit_while_the_first_one_waits(net):
     assert net.read(name, net.ledger[name], net.ledger_abi, "reserves", vault) == reserve
     recovery = net.data()["contracts"]["vaults"][name]["recoveries"][-1]
     assert recovery["deposit"] == journal["txs"][0] and "pending" not in recovery and len(recovery["vaultUp"]) == 1
+
+
+def test_recover_keeps_the_journal_of_a_deposit_that_can_still_reach_the_chain(net):
+    """The vault has no debt, and the manifest has the journal of a deposit that the node does not know.
+    While the nonce of that deposit is free, the deposit can still get into a block: the journal stays, so a
+    later deposit uses the same nonce. When the nonce was used, the deposit can never run: the journal goes."""
+    name = UNICHAIN
+    recoveries = net.data()["contracts"]["vaults"][name]["recoveries"]
+    before = net.blocks()
+
+    def journal_with(nonce):
+        def change(manifest):
+            manifest["contracts"]["vaults"][name]["recoveries"] = [*recoveries, {
+                "deposit": None, "depositBlock": None, "vaultUp": [],
+                "pending": {"deposit": {"nonce": nonce, "txs": ["0x" + "55" * 32]}}}]
+        return change
+
+    net.edit_manifest(journal_with(net.nonce(name)))
+    result = net.ops("recover", "--chain", name)
+    assert result.returncode == 0 and "the journal stays" in result.stdout, result.stderr
+    kept = net.data()["contracts"]["vaults"][name]["recoveries"]
+    assert len(kept) == len(recoveries) + 1 and kept[-1]["pending"]["deposit"]["nonce"] == net.nonce(name)
+
+    net.edit_manifest(journal_with(net.nonce(name) - 1))
+    result = net.ops("recover", "--chain", name)
+    assert result.returncode == 0 and "the journal stays" not in result.stdout, result.stderr
+    assert net.data()["contracts"]["vaults"][name]["recoveries"] == recoveries
+    assert net.blocks() == before
 
 
 # ----------------------------------------------------------------------------------------------
