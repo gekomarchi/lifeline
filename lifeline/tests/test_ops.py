@@ -237,3 +237,17 @@ def test_create_address():
     # The first contract of the first default account of anvil.
     assert ops.create_address("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", 0) == \
         "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+
+
+def test_the_tip_of_a_transaction_is_one_wei_or_more():
+    class Node:
+        """Lasna answers 0 for `eth_maxPriorityFeePerGas` and refuses a transaction with a tip of 0."""
+
+        def block(self):
+            return {"baseFeePerGas": hex(100 * 10**9)}
+
+        def request(self, method, params=()):
+            assert method == "eth_maxPriorityFeePerGas"
+            return "0x0"
+
+    assert ops._fees(Node()) == {"maxPriorityFeePerGas": 1, "maxFeePerGas": 150 * 10**9 + 1}

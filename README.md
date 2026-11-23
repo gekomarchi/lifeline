@@ -274,6 +274,7 @@ python -m lifeline.ops loop-check --chain base-sepolia --canary-reserve 0.05 --m
 - Order of two chains. A Lasna log matches the subscriptions that were active at its place in the Lasna log order. A destination log matches the subscriptions that are active when the relay reads it; on the network, a subscription matches a log from the time of the log. The two rules agree if the relay reads between a destination log and a change of a subscription that matches it. So keep the relay running with `--watch`, or run it one time before an enrollment or a removal of a target that has a new debt. If both came between two reads, the relay prints `note: order not known` with the choice that it made, and a last line `order not known: <n>`.
 - On an anvil fork the base fee goes down with each empty block. The node transactions of `forkrelay` use one gas price for each chain: the largest of `eth_gasPrice` at the start of the command, the base fee of the fork block and the base fee of the block before it. The float checks of `deploy` and the default canary reserves of `loop-check` use the gas price of the fork, which is lower than the live price: give `--canary-reserve`.
 - `verify` needs the live chains.
+- A fork does not show each rule of a live node. Lasna answers 0 for `eth_maxPriorityFeePerGas` and refuses a transaction with a tip below 1 wei; anvil accepts a tip of 0. The commands send a tip of 1 wei or more.
 
 The fork dry run is also a test module. It starts the three forks itself and runs the real commands:
 

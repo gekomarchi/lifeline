@@ -439,7 +439,7 @@ class Abi:
     def decode_constructor(self, data: bytes) -> dict:
         inputs = self._constructor["inputs"]
         values = _abi_codec().decode([_type_of(i) for i in inputs], data)
-        return {i["name"]: v for i, v in zip(inputs, values)}
+        return {i["name"]: checksum(v) if i["type"] == "address" else v for i, v in zip(inputs, values)}
 
     def topic(self, name) -> str:
         """Topic 0 of an event."""
@@ -536,6 +536,8 @@ def _fees(rpc: Rpc) -> dict:
         tip = hex_int(rpc.request("eth_maxPriorityFeePerGas"))
     except (RpcError, TransportError):
         tip = 0
+    # Lasna answers 0 and refuses a transaction with a tip below 1 wei.
+    tip = max(tip, 1)
     return {"maxPriorityFeePerGas": tip, "maxFeePerGas": hex_int(base_fee) * 3 // 2 + tip}
 
 

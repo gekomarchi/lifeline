@@ -1,0 +1,178 @@
+{
+  "version": 1,
+  "cronTopic": "Cron10000",
+  "chains": {
+    "lasna": {
+      "chainId": 5318007,
+      "ledger": "0x8888888888888888888888888888888888888888",
+      "rpc": [
+        "https://lasna-rpc.rnk.dev/"
+      ]
+    },
+    "unichain-sepolia": {
+      "chainId": 1301,
+      "ledger": "0x775c9B990ADe401060B78D0e98684eEf8d2466C1",
+      "rpc": [
+        "https://sepolia.unichain.org"
+      ]
+    },
+    "base-sepolia": {
+      "chainId": 84532,
+      "ledger": "0x476F44b11F5C942c58f4c8E3d0300E5710743585",
+      "rpc": [
+        "https://base-sepolia-rpc.publicnode.com",
+        "https://base-sepolia.gateway.tenderly.co"
+      ]
+    }
+  },
+  "contracts": {
+    "hub": {
+      "chain": "lasna",
+      "chainId": 5318007,
+      "address": "0xbba61E507e7CC334e57A62c39A776272DA6b07Dd",
+      "deployBlock": 9039165,
+      "deployTx": "0xf7f34bb73e2eec698abc0668bf16208ca9a35ebe0c99d4bb986708c394236648",
+      "cron": {
+        "topic": "Cron10000",
+        "setCronTopicTx": null,
+        "resumeCronTx": "0x94f9b7d313d8775ef1221392d53d2f72dd8b36e6aa93206420d97e971a1ce010"
+      }
+    },
+    "vaults": {
+      "unichain-sepolia": {
+        "chainId": 1301,
+        "address": "0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26",
+        "deployBlock": 68567187,
+        "deployTx": "0xd4652bd24624ebc744ca0c09e7ce314d8727fb599ddddae34a3156ede446483c",
+        "setVaultTx": "0xa6822f7395944ada1ad76f772c7e99732cb0cc233d65c6fd95ad3b97265d8de3"
+      },
+      "base-sepolia": {
+        "chainId": 84532,
+        "address": "0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2",
+        "deployBlock": 62488753,
+        "deployTx": "0x43fa0f194e66827883979b983183964c5b43f6e2ea242d5c26be1a0b4ab9f05f",
+        "setVaultTx": "0x63c4bb5eafb8cc0dc423f9166b71c1ae6678f03cd24c5c5bfd7c5c75001c0839"
+      }
+    }
+  },
+  "enrollments": [
+    {
+      "label": "FastfillReactive",
+      "chain": "lasna",
+      "chainId": 5318007,
+      "target": "0x05a566959544A55c16012aeeF0a09067da1f204f",
+      "policy": {
+        "low": "50000000000000000",
+        "high": "250000000000000000",
+        "maxDebt": "250000000000000000",
+        "dailyCap": "500000000000000000",
+        "maxRescues": 2,
+        "window": 3600
+      },
+      "guest": false,
+      "consent": null,
+      "txs": {
+        "setPolicy": null,
+        "readBackBlock": null,
+        "enroll": "0x77b119294494b9d86b3b24f19e00787054aa13344203aeee5835ab6524a21cf8",
+        "enrollBlock": 9039243
+      },
+      "removed": null
+    },
+    {
+      "label": "FastfillExecutor",
+      "chain": "unichain-sepolia",
+      "chainId": 1301,
+      "target": "0x916D4d5f9E363CbdFA8C34fB41185a75A6a2E705",
+      "policy": {
+        "low": "500000000000000",
+        "high": "2000000000000000",
+        "maxDebt": "1000000000000000",
+        "dailyCap": "4000000000000000",
+        "maxRescues": 2,
+        "window": 3600
+      },
+      "guest": false,
+      "consent": null,
+      "txs": {
+        "setPolicy": "0xeddc1f5a5d9f9ace1caa51759c57ae0d13f9675e474b5a9057306b191aa7a3c0",
+        "readBackBlock": 68567272,
+        "enroll": "0x29df5c19147b1a94d5bbf843b2d3b3bd4a602da52db7afa9aa36452091ce2ce9",
+        "enrollBlock": 9039259
+      },
+      "removed": null
+    },
+    {
+      "label": "loop-check canary (base-sepolia)",
+      "chain": "base-sepolia",
+      "chainId": 84532,
+      "target": "0xa462B906917C0372872AD35C0321eB5Daa60692E",
+      "policy": {
+        "low": "0",
+        "high": "50000000000000",
+        "maxDebt": "200000000000000",
+        "dailyCap": "250000000000000",
+        "maxRescues": 2,
+        "window": 3600
+      },
+      "guest": false,
+      "consent": null,
+      "txs": {
+        "setPolicy": "0xd4d84e16adb7312d39b564934fa9f9673c2bc825ab5c0973f6adfc6889b5ce71",
+        "readBackBlock": 62489404,
+        "enroll": "0xa0811356257c2c6e6111d19a070bba62f9afb7d85e53eec2bce287d9766635b4",
+        "enrollBlock": 9039305
+      },
+      "removed": null
+    }
+  ],
+  "loopCheck": {
+    "chain": "base-sepolia",
+    "chainId": 84532,
+    "status": "passed",
+    "missing": null,
+    "steps": {
+      "debt": {
+        "tx": "0x9bb5e827d134906e1ec5f184cd2fecd4a0370974fb8711d2baaabedcb0c15727",
+        "block": 62489494
+      },
+      "relayed": {
+        "tx": "0x33cc6420f62ea2653c5fe28ae6b41d572a06405d10fdbc43fa2c9244fc35061e",
+        "block": 9039315,
+        "requestId": "340282366920938463463374607431768211457"
+      },
+      "result": {
+        "tx": "0xd19743a00790ed97d97e0a4d830759dbf1293d2257fd61eb0f56f47b25091adf",
+        "block": 62489499,
+        "outcome": "Rescued",
+        "paid": "50559145400000"
+      },
+      "debtZero": {
+        "block": 62489506
+      }
+    },
+    "canaryCallback": {
+      "address": "0xa462B906917C0372872AD35C0321eB5Daa60692E",
+      "deployBlock": 62489272,
+      "deployTx": "0x1af0608df54206901d76b4daf147c68d4b5a8c573440148efb84ac856c7f5bc8"
+    },
+    "canaryReactive": {
+      "address": "0x2F1154a2De20B7f57A868FAC2Fb29AD13D2007A6",
+      "deployBlock": 9039280,
+      "deployTx": "0x47c1e5fd13e79275131d3cdb33d283be2145dc5b3f6149595b42b71af35da6c7"
+    },
+    "reserve": "40000000000000000",
+    "fundTx": "0x267643605b4d3558f274e235d7ee763deab68b10fc870240c588b95c971f039a",
+    "policy": {
+      "low": "0",
+      "high": "50000000000000",
+      "maxDebt": "200000000000000",
+      "dailyCap": "250000000000000",
+      "maxRescues": 2,
+      "window": 3600
+    },
+    "pokeTx": "0x04f9abd8cff48ce91443dad8961bdaf69457108b66e2c39fae796e0a6b080ebe",
+    "pokeBlock": 9039313
+  },
+  "fixtures": {}
+}
