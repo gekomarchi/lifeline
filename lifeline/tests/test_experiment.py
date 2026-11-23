@@ -244,13 +244,14 @@ def test_measure_gives_each_metric_of_each_arm_from_the_chain_data(network, caps
                                  "feeScope": "no guardian", "feeDetail": {}}
     assert b["guardianCost"]["principal"] == {LASNA: "700", BASE: "0"}, "Paid of the ward only"
     assert b["guardianCost"]["fees"] == {LASNA: "600", BASE: "0"}, "fee float 1000 minus reserves 400"
+    assert b["guardianCost"]["feeDetail"][LASNA]["exact"] is True
     assert c["guardianCost"]["principal"] == {LASNA: "150", BASE: "55"}, "Rescued 110 + ToppedUp 40; Result 55"
     # Hub: reserves 200 at block 999 and 150 at `to`, self-care 30 + 20 in the range.
     assert c["guardianCost"]["feeDetail"][LASNA] == {
         "opening": "200", "closing": "150", "selfCare": "50", "deposits": "0", "fees": "100", "exact": True}
     # Vault: reserves 100 at both ends, self-care 5 + 3, and the deposit of 108 that cleared the debt of 8.
     assert c["guardianCost"]["feeDetail"][BASE] == {
-        "opening": "100", "closing": "100", "selfCare": "8", "deposits": "108", "fees": "116", "exact": True}
+        "opening": "100", "closing": "100", "selfCare": "8", "deposits": "108", "fees": "116", "exact": False}
     assert c["guardianCost"]["fees"] == {LASNA: "100", BASE: "116"}
     assert "no share is estimated" in c["guardianCost"]["feeScope"]
     assert (a["guardianDowntimeBlocks"], b["guardianDowntimeBlocks"], c["guardianDowntimeBlocks"]) == \
@@ -360,18 +361,44 @@ def test_measure_without_a_flood_and_with_a_flood_outside_the_heights(network):
 
 
 @needs_build
-def test_a_fee_in_the_block_of_a_recovery_deposit_makes_the_fee_figure_not_exact(network):
+def test_a_fee_figure_with_a_deposit_from_the_ledger_state_is_not_exact(network):
     """The ledger state gives the deposit that cleared a debt only if the ledger took no fee in that block.
-    A sweep in the block of the deposit: the deposit of 108 and a fee of 7 look like a deposit of 101."""
-    network.event(BASE, VAULT, "LifelineVault", "Result", 2000, [10, KC], [2, 0])
+    A reaction or a callback can end with no log, so no log proves that. Here the vault and the poller each
+    get a deposit of 108 and pay a fee of 7 in the same block, with no log of that work: each looks like a
+    deposit of 101."""
     network.ledger(BASE, VAULT, reserves=[(400, 100), (1400, 40), (1500, 0), (2000, 93)], debt=[(1500, 8), (2000, 0)])
+    network.ledger_event(LASNA, BLACKLIST, POLLER, 3000)
+    network.ledger_event(LASNA, WHITELIST, POLLER, 3100)
+    network.ledger(LASNA, POLLER, reserves=[(1050, 1000), (2300, 400), (3000, 0), (3100, 93)],
+                   debt=[(3000, 8), (3100, 0)])
     assert network.measure("out") == 0
-    cost = network.data("out")["arms"]["C"]["guardianCost"]
-    # 100 - 93 + self-care 8 + deposit 101: the fee of 7 in block 2000 is not in the figure.
-    assert cost["feeDetail"][BASE] == {"opening": "100", "closing": "93", "selfCare": "8", "deposits": "101",
-                                       "fees": "116", "exact": False}
-    assert cost["feeDetail"][LASNA]["exact"] is True
+    arms = network.data("out")["arms"]
+    # Vault: 100 - 93 + self-care 8 + deposit 101. The fee of 7 in block 2000 is not in the figure.
+    assert arms["C"]["guardianCost"]["feeDetail"][BASE] == {
+        "opening": "100", "closing": "93", "selfCare": "8", "deposits": "101", "fees": "116", "exact": False}
+    # Poller: 0 - 93 + fee float 1000 + deposit 101 = 1008. The ledger took 1015.
+    assert arms["B"]["guardianCost"]["feeDetail"][LASNA] == {
+        "opening": "0", "closing": "93", "selfCare": "0", "deposits": "1101", "fees": "1008", "exact": False}
+    assert arms["B"]["guardianDowntimeBlocks"] == {LASNA: 100}
+    # The hub got no such deposit: its figure is the ledger identity with no inferred part.
+    assert arms["C"]["guardianCost"]["feeDetail"][LASNA]["exact"] is True
     assert "`feeDetail.exact` is false" in network.data("out")["definitions"]["guardianCost"]
+
+
+def test_a_junk_payload_names_its_request_and_its_flood():
+    abi = ops.load_artifact("LifelineVault").abi
+    payload = experiment.junk_payload(abi, 9_050_000, 17)
+    assert len(payload) == 100 and payload[:4] == abi.selector("reconcile")
+    assert experiment.junk_number(abi, 9_050_000, payload) == 17
+    # The node writes the first argument: the number does not depend on it.
+    injected = payload[:4] + bytes(12) + bytes.fromhex("ab" * 20) + payload[36:]
+    assert experiment.junk_number(abi, 9_050_000, injected) == 17
+    # A payload of another flood, of another function, or of another length is not a request of this flood.
+    assert experiment.junk_number(abi, 9_050_001, payload) is None
+    assert experiment.junk_number(abi, 9_050_000, abi.encode("reconcile", experiment.ZERO_ADDRESS, VAULT, 1)) is None
+    assert experiment.junk_number(abi, 9_050_000, b"\x12\x34\x56\x78" + payload[4:]) is None
+    assert experiment.junk_number(abi, 9_050_000, payload + b"\x00") is None
+    assert experiment.junk_number(abi, 9_050_000, b"") is None
 
 
 def test_the_bursts_of_the_flood_get_smaller_when_the_float_is_near_its_end():

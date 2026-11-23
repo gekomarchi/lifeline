@@ -215,12 +215,13 @@ def _log_place(log: dict) -> tuple:
 
 def self_care_today(session: ops.Session) -> int:
     """The principal that the self-care of the hub moved to its float in the current calendar day (UTC), from
-    its `SelfCare` logs and the timestamps of their blocks."""
+    its `SelfCare` logs and the timestamps of their blocks. The log of the deployment block is the fee float
+    of the constructor: it does not count toward the daily cap."""
     lasna, hub = session.lasna, session.hub
     head = lasna.rpc.head()
     day_start = hex_int(lasna.rpc.block(head)["timestamp"]) // 86_400 * 86_400
     logs = lasna.rpc.logs(hub, [session.hub_abi.topic("SelfCare")],
-                          max(session.manifest.hub["deployBlock"], head - 100_000), head)
+                          max(session.manifest.hub["deployBlock"] + 1, head - 100_000), head)
     spent, stamps = 0, {}
     for log in reversed(logs):
         number = block_of(log)
@@ -738,14 +739,32 @@ def request_callbacks(session: ops.Session, account, owner_address: str, request
 def next_burst(largest: int, limit_left: int, delivered: int, float_at_start: int, float_now: int) -> int:
     """The number of junk requests of the next burst. Each request of a burst that arrives after the debt of
     the vault is rejected with `InDebt`: it must not arrive after the recovery. So a burst is at most half of
-    the requests that the float still covers, from the fee of the deliveries so far, and one request when
-    that fee is not known or the float is near its end. The last requests then go out one at a time, and the
-    request that makes the debt is the last one that the driver sent."""
+    the requests that the float still covers at the mean fee of the deliveries so far, and one request when
+    that fee is not known or the float is near its end.
+
+    This is an estimate, not a bound: a fee that goes up, or another charge of the float, can make the debt
+    before the last request of a burst arrives. The driver then counts the requests that were not delivered
+    and waits before the recovery (`--drain`)."""
     spent = float_at_start - float_now
     if delivered <= 0 or spent <= 0:
         return max(min(1, limit_left), 0)
     covered = float_now // max(spent // delivered, 1)
     return max(min(largest, limit_left, covered // 2), min(1, limit_left), 0)
+
+
+def junk_payload(abi: ops.Abi, tag: int, number: int) -> bytes:
+    """The payload of one junk request: `reconcile(0, 0, id)`. The vault refuses it, because its first
+    argument is not the hub. `id` names the request: the tag of the flood and the number of the request."""
+    return abi.encode("reconcile", ZERO_ADDRESS, ZERO_ADDRESS, (tag << 32) | number)
+
+
+def junk_number(abi: ops.Abi, tag: int, payload: bytes):
+    """The number of the junk request of a delivered payload, or None for a payload of another flood or of
+    another caller. The node writes the first argument, so it is not compared."""
+    if len(payload) != 100 or payload[:4] != abi.selector("reconcile"):
+        return None
+    request_id = int.from_bytes(payload[68:], "big")
+    return request_id & 0xFFFFFFFF if request_id >> 32 == tag else None
 
 
 def rescue_of(results: list, request_ids: set):
@@ -840,9 +859,15 @@ def cmd_junk(args) -> int:
         return lasna.rpc.logs(lasna.ledger, [request_topic, chain_topic, topic_of_address(requester),
                                              topic_of_address(recipient)], lasna_start)
 
-    def delivered() -> int:
-        """The junk callbacks that the proxy delivered: each one is a `CallbackFailure(vault)`."""
-        return len(chain.rpc.logs(chain.ledger, [ledger_abi.topic("CallbackFailure"), vault_topic], flood_start))
+    def delivered(from_block: int = None) -> set:
+        """The numbers of the junk requests of this flood that the proxy delivered. Each delivery is a
+        `CallbackFailure(vault)` log with the payload of the request: a failed callback of another caller
+        is not a delivery of this driver, and a request that the node delivers two times counts one time."""
+        logs = chain.rpc.logs(chain.ledger, [ledger_abi.topic("CallbackFailure"), vault_topic],
+                              flood_start if from_block is None else from_block)
+        numbers = (junk_number(vault_abi, lasna_start, ledger_abi.decode_event("CallbackFailure", log)["payload_"])
+                   for log in logs)
+        return {number for number in numbers if number is not None}
 
     def count_requests() -> int:
         sent = requests_to(vault)
@@ -858,14 +883,13 @@ def cmd_junk(args) -> int:
     #    `reconcile` and a wrong first argument: the vault refuses it, and the proxy charges the float. The
     #    next burst goes out only when the proxy delivered each request before it.
     if not find_step(record, "BlacklistContract(vault)"):
-        payload = vault_abi.encode("reconcile", ZERO_ADDRESS, ZERO_ADDRESS, 0)
         deadline = time.monotonic() + args.timeout
         log = wait_for_event(chain.rpc, chain.ledger, vault_debt_log, flood_start, 0)
         while log is None:
             if time.monotonic() >= deadline:
                 raise OpsError(f"no BlacklistContract(vault) in {args.timeout} s, after {record['junkRequests']} "
                                f"junk requests: run the command again to continue")
-            sent, arrived = count_requests(), delivered()
+            sent, arrived = count_requests(), len(delivered())
             debt, reserves = ledger(vault)
             if not debt and arrived >= sent:
                 if sent >= args.max_junk:
@@ -874,19 +898,25 @@ def cmd_junk(args) -> int:
                 # The flood needs a hub that can hear the debt event of the vault.
                 require_guardian(session, what="the junk scenario")
                 burst = next_burst(args.burst, args.max_junk - sent, arrived, int(record["floatAtStart"]), reserves)
-                request_callbacks(session, account, owner.address, requester, args.chain, vault,
-                                  [payload] * burst, JUNK_CALLBACK_GAS)
+                payloads = [junk_payload(vault_abi, lasna_start, sent + index + 1) for index in range(burst)]
+                request_callbacks(session, account, owner.address, requester, args.chain, vault, payloads,
+                                  JUNK_CALLBACK_GAS)
                 say(f"  junk requests: {sent} sent and delivered, float of the vault {amount(reserves)}; "
                     f"{burst} more sent")
             log = wait_for_event(chain.rpc, chain.ledger, vault_debt_log, flood_start, args.pause)
         sent = count_requests()
         # A request that the proxy did not deliver before the debt is rejected with `InDebt` when it arrives.
-        record["undeliveredAtDebt"] = max(sent - delivered(), 0)
+        record["undeliveredAtDebt"] = max(sent - len(delivered()), 0)
+        record["drained"] = not record["undeliveredAtDebt"]
         step("BlacklistContract(vault)", args.chain, log)
-        if record["undeliveredAtDebt"]:
-            say(f"  {record['undeliveredAtDebt']} junk request(s) were not delivered before the debt: wait "
-                f"{args.drain} s for the node to reject them")
-            time.sleep(args.drain)
+    if not record.get("drained", True):
+        # The wait is a step of the record: a run that stopped in it starts the wait again. It is the best
+        # that chain data permits: a delivery that the proxy rejects leaves no log.
+        say(f"  {record['undeliveredAtDebt']} junk request(s) were not delivered before the debt: wait "
+            f"{args.drain} s for the node to reject them")
+        time.sleep(args.drain)
+        record["drained"] = True
+        scenarios.save()
 
     # 3. The hub reports the vault as down. Then the flood has ended.
     if not find_step(record, "VaultDown"):
@@ -977,13 +1007,11 @@ def cmd_junk(args) -> int:
         raise OpsError(f"after the recovery: debt of waiting.callback {debt}, debt of the vault {vault_debt}")
     # A junk callback that arrives after the recovery takes its fee from the new float. The record has the
     # number, so that the owner knows it.
-    late = chain.rpc.logs(chain.ledger, [ledger_abi.topic("CallbackFailure"), vault_topic],
-                          find_step(record, "recovery deposit")["block"])
+    late = delivered(find_step(record, "recovery deposit")["block"])
     record["junkAfterRecovery"] = len(late)
     if late:
-        say(f"  WARN {len(late)} junk callback(s) reached the vault after the recovery deposit (first tx "
-            f"{late[0]['transactionHash']}): the new float paid them. Check the vault with "
-            f"`python -m lifeline.ops status`")
+        say(f"  WARN {len(late)} junk callback(s) of this flood reached the vault after the recovery deposit: "
+            f"the new float paid them. Check the vault with `python -m lifeline.ops status`")
     record["lasnaEndBlock"] = lasna.rpc.head()
     record["endBlock"] = chain.rpc.head()
     scenarios.save()
@@ -1017,7 +1045,7 @@ DEFINITIONS = {
         "`to`, plus its `SelfCare` deposits, plus each deposit that cleared a debt of it (the ledger state at "
         "the block of its `WhitelistContract` log against the block before), and for the poller plus its fee "
         "float of the deployment; a fee that the ledger took in the block of such a deposit is not in the "
-        "figure, and `feeDetail.exact` is false if a log shows work of the guardian in such a block."
+        "figure, so `feeDetail.exact` is false for a figure that holds such a deposit."
     ),
     "capitalLocked": (
         "At `to`: the reserves of the two contracts of the arm, and the funds of the guardian (arm B: the "
@@ -1124,8 +1152,8 @@ class Measurement:
         A deposit of another account emits no log with its amount. The one that clears a debt emits
         `WhitelistContract`: the ledger state at that block against the block before gives the amount, if
         the ledger took no fee from the guardian in that block. A fee of that block makes the deposit and
-        the figure too low by that fee. `exact` is false if a log shows work of the guardian in such a
-        block: a log of the guardian itself, or a `CallbackFailure` for it."""
+        the figure too low by that fee, and no log proves that there was none: a reaction or a callback can
+        end with no log. So `exact` is false for a figure that holds such a deposit."""
         start, _ = self.span(chain)
 
         def net(block=None) -> int:
@@ -1140,13 +1168,11 @@ class Measurement:
         for block in sorted(cleared):
             same_block = sum(event["added"] for number, event in self_care if number == block)
             deposits += max(net(block) - net(block - 1) - same_block, 0)
-        work = self.logs(chain, account, []) + self.logs(
-            chain, self.ledger(chain), [self.proxy_abi.topic("CallbackFailure"), word(account)])
         added = sum(event["added"] for _, event in self_care)
         return {
             "opening": str(opening), "closing": str(closing), "selfCare": str(added), "deposits": str(deposits),
             "fees": str(opening - closing + added + deposits),
-            "exact": not any(int(log["blockNumber"], 16) in cleared for log in work),
+            "exact": not cleared,
         }
 
     def arm(self, arm: str) -> dict:

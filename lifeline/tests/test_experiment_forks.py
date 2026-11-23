@@ -18,6 +18,7 @@ import secrets
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -427,6 +428,15 @@ def test_junk_refuses_a_recipient_that_is_not_a_manifest_vault_of_the_key(net):
     assert net.blocks() == blocks and net.proxy.sent(mark) == [], "a fork has a new transaction"
     assert "junk" not in json.loads(net.scenarios.read_text())
 
+    # The guardian check reads the self-care of the day from the logs: the fee float of the constructor
+    # is not in it, and the hub of the dry run can serve.
+    deploy_block = net.data()["contracts"]["hub"]["deployBlock"]
+    logs = net.rpcs[LASNA].logs(net.hub, [net.hub_abi.topic("SelfCare")], deploy_block)
+    assert int(logs[0]["blockNumber"], 16) == deploy_block and len(logs) > 1
+    assert experiment.self_care_today(session) == sum(
+        net.hub_abi.decode_event("SelfCare", log)["added"] for log in logs[1:]) > 0
+    assert experiment.guardian_problems(session, BASE) == []
+
 
 # ----------------------------------------------------------------------------------------------
 # Quarantine scenario
@@ -522,9 +532,9 @@ def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net):
         # Requests of a run that stopped before it wrote its record: 2 more are on the chain.
         arguments = type("Arguments", (), {"manifest": str(net.manifest), "rpc": [
             f"{name}={net.proxy.url(name)}" for name in net.anvils]})()
-        payload = net.vault_abi.encode("reconcile", experiment.ZERO_ADDRESS, experiment.ZERO_ADDRESS, 0)
+        payloads = [experiment.junk_payload(net.vault_abi, record["lasnaStartBlock"], number) for number in (4, 5)]
         experiment.request_callbacks(ops.Session(arguments, owner=False), net.fixture, net.account.address,
-                                     net.address("junkRequester"), BASE, net.vault(BASE), [payload] * 2,
+                                     net.address("junkRequester"), BASE, net.vault(BASE), payloads,
                                      experiment.JUNK_CALLBACK_GAS)
         assert junk_requests(net) == 5 and net.scenario("junk")["junkRequests"] == 3
         result = net.experiment("junk", "--chain", BASE, "--max-junk", "5", *short)
@@ -684,3 +694,109 @@ def test_measure_with_heights_gives_identical_files_and_needs_no_key(net):
     wrong.write_text(json.dumps(document))
     result = net.measure(net.dir / "out-wrong", "--heights", str(wrong))
     assert result.returncode == 2 and not (net.dir / "out-wrong").exists()
+
+
+# ----------------------------------------------------------------------------------------------
+# A junk scenario that stops after each step
+# ----------------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def lone(tmp_path_factory):
+    """A second dry run with its own fixtures: a junk scenario uses its vault and its waiting canary up."""
+    run = Experiment(tmp_path_factory.mktemp("experiment-stops"))
+    try:
+        result = run.experiment("fixtures", *amount_flags(run))
+        assert result.returncode == 0, result.stderr + result.stdout
+        yield run
+    finally:
+        run.close()
+
+
+def wait_until(condition, seconds: float, what: str) -> None:
+    deadline = time.monotonic() + seconds
+    while not condition():
+        assert time.monotonic() < deadline, f"timeout: {what}"
+        time.sleep(0.2)
+
+
+def test_junk_continues_after_each_stop_and_counts_only_its_own_deliveries(lone):
+    """The node of this test delivers nothing by itself: the test runs the relay between two runs of the
+    command. So each run stops at the step that waits for the node, and the next run continues there."""
+    net = lone
+    vault, waiting = net.vault(BASE), net.address("waiting.callback")
+    fast = ["--pause", "0.5", "--timeout", "6", "--max-pongs", "1"]
+
+    def junk(*flags) -> subprocess.CompletedProcess:
+        return net.experiment("junk", "--chain", BASE, *flags)
+
+    def record() -> dict:
+        return net.scenario("junk") if net.scenarios.exists() else {}
+
+    # 1. No delivery: the driver sends one request and waits for it.
+    command = [sys.executable, "-m", "lifeline.experiment", "junk", "--chain", BASE, "--manifest", str(net.manifest),
+               *net._rpc_arguments(), "--scenarios", str(net.scenarios), "--pause", "0.5", "--timeout", "300",
+               "--drain", "600"]
+    log = open(net.dir / "junk-first-run.log", "w")
+    process = subprocess.Popen(command, env=net.env, stdout=log, stderr=subprocess.STDOUT, cwd=ops.ROOT)
+    try:
+        wait_until(lambda: record().get("junkRequests") == 1, 120, "the first junk request")
+        # A failed callback of another caller is not a delivery of the driver: no second request goes out.
+        net.node.deliver(BASE, vault, net.vault_abi.encode("reconcile", experiment.ZERO_ADDRESS, vault, 1), 200_000,
+                         net.account.address)
+        time.sleep(4)
+        assert process.poll() is None and junk_requests(net) == 1, "a request went out before the first delivery"
+
+        # 2. Callbacks of that other caller empty the float. The request of the driver is still on its way at
+        #    the debt: the record has it, and the driver waits before it continues.
+        net.junk_until_vault_debt(BASE)
+        wait_until(lambda: "BlacklistContract(vault)" in step_names(record() or {"steps": []}), 60, "the debt step")
+        assert (record()["undeliveredAtDebt"], record()["drained"]) == (1, False)
+        wait_until(lambda: "wait 600.0 s" in (net.dir / "junk-first-run.log").read_text(), 30, "the drain wait")
+    finally:
+        process.kill()
+        process.wait()
+        log.close()
+
+    # 3. The run stopped in the drain wait: the next run starts the wait again before each other step.
+    started = time.monotonic()
+    result = junk(*fast, "--drain", "3")
+    assert result.returncode == 1 and "no VaultDown of the hub in 6.0 s" in result.stderr, result.stdout
+    assert "wait 3.0 s" in result.stdout and time.monotonic() - started >= 3
+    assert record()["drained"] is True and junk_requests(net) == 1
+
+    # The node: the hub hears the debt of the vault, and the proxy rejects the request of the driver.
+    assert relayed(net.relay()) == (1, 1)
+    result = junk(*fast)
+    assert result.returncode == 1 and "not in debt after 1 pong requests" in result.stderr, result.stdout
+    assert "wait 3.0 s" not in result.stdout, "the drain wait ran a second time"
+    assert step_names(record())[-2:] == ["VaultDown", "flood end"]
+    assert record()["floodEndBlock"] >= find(record(), "BlacklistContract(vault)")["block"]
+
+    # The node: the callback of the canary that waits, its debt, and `Pending` of the hub.
+    assert relayed(net.relay()) == (1, 1)
+    debt = net.debt(BASE, waiting)
+    assert debt > 0
+    # Another account clears that debt before the recovery: the sweep then finds nothing to rescue.
+    ops.transact(net.rpcs[BASE], net.account, net.ledger[BASE], net.ledger_abi.encode("depositTo", waiting),
+                 value=debt, abi=net.ledger_abi)
+    result = junk(*fast)
+    assert result.returncode == 1 and "no Result of the vault for waiting.callback" in result.stderr, result.stdout
+    assert step_names(record())[-5:] == ["pong request 1", "BlacklistContract(waiting.callback)", "Pending",
+                                         "recovery deposit", "VaultUp"]
+    assert net.debt(BASE, vault) == 0
+
+    # The node: the catch-up sweep. Its result for the canary is `NoNeed`. Each run refuses it: a result
+    # that is not a rescue never gives a complete record.
+    assert relayed(net.relay()) == (0, 1)
+    for _ in range(2):
+        blocks = net.blocks()
+        result = junk(*fast)
+        assert result.returncode == 1 and "has outcome NoNeed, not Rescued" in result.stderr, result.stdout
+        assert net.blocks() == blocks
+        assert record()["endBlock"] is None and "Result(waiting.callback)" not in step_names(record())
+    assert junk_requests(net) == 1 and record()["junkRequests"] == 1
+
+
+def find(record: dict, name: str) -> dict:
+    return next(entry for entry in record["steps"] if entry["step"] == name)
