@@ -150,6 +150,8 @@ class Network:
         logs["debt late"] = self.ledger_event(UNI, BLACKLIST, LATE, 700)
         logs["relayed late"] = hub("Relayed", 1400, [R3, 1301, LATE])
         logs["result late"] = uni("Result", 710, [R3, LATE], [OUTCOME["NoPolicy"], 0])
+        # A deposit of another account in the transaction of that result: not the whitelist of a rescue.
+        self.ledger_event(UNI, WHITELIST, LATE, 710, tx_of=logs["result late"])
 
         # The quarantine scenario: two rescues of the looping canary, then `Quarantined`.
         logs["enroll looping"] = hub("Enrolled", 1200, [5318007, LOOPING])
@@ -260,13 +262,14 @@ class Network:
         return {
             "quarantine": {
                 "chain": LASNA, "addresses": {"looping": LOOPING, "hub": HUB}, "startBlock": 1205, "endBlock": 1300,
+                "budget": {"maxRescues": 2, "dailyCap": "500"},
                 "steps": [{"step": "poke 1", "chain": LASNA, "block": 1208, "tx": "0x" + "01" * 32},
                           *steps(lambda name: LASNA, (("Rescued 1", "looping 1"), ("Rescued 2", "looping 2"),
                                                       ("Quarantined", "quarantined")))],
             },
             "junk": {
                 "chain": BASE, "addresses": {"vault": VAULT_BASE, "hub": HUB, "waiting.callback": WAITING},
-                "startBlock": 990, "endBlock": 1040,
+                "startBlock": 990, "floodEndBlock": 1005, "endBlock": 1040, "requestId": str(R4),
                 "steps": steps(lambda name: LASNA if name in ("VaultDown", "Pending", "VaultUp") else BASE, (
                     ("BlacklistContract(vault)", "vault debt"), ("VaultDown", "vault down"), ("Pending", "pending"),
                     ("recovery deposit", "vault deposit"), ("VaultUp", "vault up"),
@@ -316,11 +319,9 @@ def network(tmp_path):
 
 def section(document: str, title: str) -> str:
     """The text of one `##` section of `JUDGE.md`. A heading inside the included table is not a section."""
-    before, table, after = document.partition(judge.TABLE_BEGIN)
-    table, end, after = after.partition(judge.TABLE_END)
-    text = before + judge.TABLE_BEGIN + end + after if title != "Three-arm table" else document
+    text = document[:document.index(judge.TABLE_BEGIN)] + document[document.index(judge.TABLE_END):]
     start = text.index(f"\n## {title}\n")
-    following = text.find("\n## ", start + 1) if title != "Three-arm table" else text.index("\n## Quarantine\n")
+    following = text.find("\n## ", start + 1)
     return text[start:following if following != -1 else len(text)]
 
 
@@ -487,7 +488,7 @@ def test_judge_md_has_the_sections_in_order_and_the_open_request_in_the_open_lis
     assert f"| hub | {LASNA} | `{HUB}` | 900 | 173 | 230 | 80 | 9000 | 150 | 0 | 3000 |" in cost
     assert "A deposit to the float by another account is not visible in these events" in cost
     quarantine = section(document, "Quarantine")
-    assert "| Rescues before `Quarantined` | 2 |" in quarantine
+    assert "| Rescues from the enrollment to `Quarantined` | 2 |" in quarantine
     assert "| Principal paid after `Quarantined` | 0 | after the `Quarantined` log of block 1230, to block 3000 |" \
         in quarantine
     assert f"| `maxRescues` of the policy | 2 | `hub.enroll` `{logs['enroll looping']['transactionHash']}` |" \
@@ -720,6 +721,196 @@ def test_a_payment_after_the_quarantined_log_is_in_its_own_figure(network):
     assert len(quarantine["rescues"]) == 2
     assert "| Principal paid after `Quarantined` | 5 | after the `Quarantined` log of block 1230, to block 3000 |" \
         in section(network.document("out"), "Quarantine")
+
+
+def test_the_join_takes_the_first_result_and_keeps_a_request_of_a_chain_with_no_vault_open(network, capsys):
+    logs = network.logs
+    # A duplicate callback: a second `Result` with the id and the target of the first one.
+    network.event(BASE, VAULT_BASE, "Result", 820, [R1, EXECUTOR], [OUTCOME["NoNeed"], 0])
+    # A result with the id of the open request and another target is not its result.
+    network.event(BASE, VAULT_BASE, "Result", 910, [R2, WAITING], [OUTCOME["Rescued"], 3])
+    # A request for a target with no debt log, and one for a chain that the manifest has no vault for.
+    quiet = network.event(LASNA, HUB, "Relayed", 2300, [2**128 + 7, 1301, GUEST])
+    network.event(UNI, VAULT_UNI, "Result", 900, [2**128 + 7, GUEST], [OUTCOME["NoNeed"], 0])
+    far = network.event(LASNA, HUB, "Relayed", 2310, [2**128 + 8, 11155111, GUEST])
+    assert network.run("out") == 0
+    rescues = {entry["requestId"]: entry for entry in network.data("out")["rescues"]}
+    assert rescues[str(R1)]["result"] == {**ref(logs["result executor"]), "outcome": "Rescued", "paid": "55"}
+    assert rescues[str(R1)]["whitelist"] == ref(logs["whitelist executor"])
+    assert (rescues[str(R2)]["status"], rescues[str(R2)]["result"]) == ("open", None)
+    assert rescues[str(2**128 + 7)] == {
+        "requestId": str(2**128 + 7), "chain": UNI, "chainId": 1301, "target": GUEST, "status": "joined",
+        "debtEvent": None, "relayed": ref(quiet), "whitelist": None,
+        "result": {"block": 900, "tx": rescues[str(2**128 + 7)]["result"]["tx"], "outcome": "NoNeed", "paid": "0"},
+    }
+    assert rescues[str(2**128 + 8)] == {
+        "requestId": str(2**128 + 8), "chain": None, "chainId": 11155111, "target": GUEST, "status": "open",
+        "debtEvent": None, "relayed": ref(far), "result": None, "whitelist": None,
+    }
+    row = next(line for line in network.document("out").splitlines() if line.startswith(f"| {2**128 + 8} "))
+    assert "| not in the manifest | 11155111 |" in row and "| none |" in row
+    assert "the manifest has no vault for chain ID 11155111" in capsys.readouterr().out
+
+
+def test_two_rescues_of_one_transaction_have_each_the_gap_of_their_target(network):
+    first = network.event(LASNA, HUB, "Rescued", 2400, [REACTIVE], [1, 2])
+    second = network.event(LASNA, HUB, "Rescued", 2400, [LOOPING], [3, 4], tx_of=first)
+    # The gaps are in the other order in the transaction.
+    network.event(LASNA, HUB, "Gap", 2400, [LOOPING], [2390, 2400], tx_of=first)
+    network.event(LASNA, HUB, "Gap", 2400, [REACTIVE], [2380, 2400], tx_of=first)
+    assert network.run("out") == 0
+    pairs = {(entry["target"], entry["rescued"]["debt"]): entry["gap"]
+             for entry in network.data("out")["lasnaRescues"] if entry["rescued"]["tx"] == first["transactionHash"]}
+    assert second["transactionHash"] == first["transactionHash"]
+    assert pairs == {(REACTIVE, "1"): {"deadFromBlock": 2380, "aliveAtBlock": 2400},
+                     (LOOPING, "3"): {"deadFromBlock": 2390, "aliveAtBlock": 2400}}
+
+
+def test_a_gap_that_started_before_the_enrollment_counts_from_the_enrollment_block(network):
+    # The target is in debt from block 580, its guardian takes it at block 600, and block 610 clears the debt.
+    network.ledger_event(BASE, BLACKLIST, EXECUTOR, 580)
+    cleared = network.ledger_event(BASE, WHITELIST, EXECUTOR, 610)
+    # A Lasna target: the hub gives a dead-from block before the enrollment of block 1000.
+    rescued = network.event(LASNA, HUB, "Rescued", 1040, [REACTIVE], [1, 1])
+    network.event(LASNA, HUB, "Gap", 1040, [REACTIVE], [990, 1040], tx_of=rescued)
+    assert network.run("out") == 0
+    reactive, executor = network.data("out")["fleet"]
+    assert executor["enrollBlock"] == 600
+    assert executor["gaps"][0] == {"deadFromBlock": 580, "aliveAtBlock": 610, "blocks": 10,
+                                   "tx": cleared["transactionHash"]}
+    assert reactive["gaps"][0] == {"deadFromBlock": 990, "aliveAtBlock": 1040, "blocks": 40,
+                                   "tx": rescued["transactionHash"]}
+    fleet = section(network.document("out"), "Fleet report")
+    assert f"| 580 | 610 | 10 | `{cleared['transactionHash']}` |" in fleet
+    assert "The block count of a gap starts at the enrollment block if the debt started before it." in fleet
+
+
+def test_the_fill_count_of_a_target_enrolled_before_the_fill_chain_heights_reads_no_header_below_them(network):
+    # The vault of the fill chain is deployed at block 1200: after each enrollment of the fleet.
+    change = lambda data: data["contracts"]["vaults"][UNI].update(deployBlock=1200)  # noqa: E731
+    network.fill(1300)
+    assert network.run("out", manifest=network.manifest(change)) == 0
+    reactive, executor = network.data("out")["fleet"]
+    assert reactive["fillsFrom"] == executor["fillsFrom"] == {"chain": UNI, "address": FILLS, "block": 1200}
+    assert (reactive["fills"], executor["fills"]) == (1, 1)
+    headers = [int(query[0], 16) for query in network.uni.methods("eth_getBlockByNumber") if query[0] != "latest"]
+    assert headers and min(headers) >= 1200, headers
+    assert min(int(query[0]["fromBlock"], 16) for query in network.uni.methods("eth_getLogs")) == 1200
+
+
+def test_the_quarantine_has_the_policy_and_the_counts_of_the_enrollment_before_its_log(network, capsys):
+    # Before the enrollment of the record: a rescue of an earlier enrollment. After the quarantine: the
+    # target is enrolled again with another policy.
+    network.event(LASNA, HUB, "Rescued", 1190, [LOOPING], [6, 7])
+    again = network.event(LASNA, HUB, "Enrolled", 1600, [5318007, LOOPING])
+
+    def change(data):
+        record = network.enrollment("experiment looping, again", LASNA, LOOPING, None, again)
+        record["policy"].update(maxRescues=4, dailyCap="1000")
+        data["enrollments"].append(record)
+
+    assert network.run("out", manifest=network.manifest(change)) == 0
+    logs, quarantine = network.logs, network.data("out")["quarantine"]
+    assert (quarantine["maxRescues"], quarantine["dailyCap"]) == (2, "500")
+    assert quarantine["policyTx"] == logs["enroll looping"]["transactionHash"]
+    assert quarantine["rescues"] == [ref(logs["looping 1"]), ref(logs["looping 2"])]
+    assert quarantine["principalPaid"] == "23"
+
+    # A record with another budget than the policy of that enrollment stops the run.
+    scenarios = network.scenarios()
+    scenarios["quarantine"]["budget"]["maxRescues"] = 3
+    assert network.run("other", manifest=network.manifest(change),
+                       experiment=network.experiment(scenarios=scenarios)) == 2
+    assert "the quarantine record has maxRescues 3" in capsys.readouterr().err
+    assert not (network.tmp_path / "other").exists()
+
+
+def test_the_junk_recovery_needs_the_rescue_of_a_sweep_of_the_recovery_and_the_figures_of_its_flood(network, capsys):
+    # Two more results of the target that waited: the `Result` of a `setPolicy` with the id 0, and a
+    # `NoPolicy` with the id of the sweep. Neither is a rescue of a sweep of the recovery.
+    others = [network.event(BASE, VAULT_BASE, "Result", 1035 + number, [request, WAITING], [OUTCOME[outcome], 0])
+              for number, (request, outcome) in enumerate(((0, "Rescued"), (R4, "NoPolicy")))]
+
+    # The figures of another flood of the same vault are not the figures of this record.
+    for name, block in (("startBlock", 401), ("endBlock", 1004)):
+        stale = {**EXPERIMENT, "junk": {**JUNK_FIGURES, name: block}}
+        assert network.run(name, experiment=network.experiment(data=stale)) == 0
+        recovery = network.data(name)["junkRecovery"]
+        assert recovery["recorded"] and len(recovery["steps"]) == 6
+        assert (recovery["balanceStart"], recovery["balanceEnd"], recovery["unexplainedChange"]) == (None,) * 3
+        assert "has no balance figures of this junk flood" in capsys.readouterr().out
+    network.experiment()
+
+    # The record names another request ID than the result of its step.
+    scenarios = network.scenarios()
+    scenarios["junk"]["requestId"] = str(R5)
+    assert network.run("id", experiment=network.experiment(scenarios=scenarios)) == 2
+    assert f"the junk record has the request ID {R5}" in capsys.readouterr().err
+
+    # The step of the record is one of the two other results.
+    for other in others:
+        scenarios = network.scenarios()
+        scenarios["junk"]["steps"][-1].update(ref(other))
+        scenarios["junk"].pop("requestId")
+        assert network.run("other", experiment=network.experiment(scenarios=scenarios)) == 2
+        assert "is not a rescue of a sweep of the recovery" in capsys.readouterr().err
+    assert not any((network.tmp_path / name).exists() for name in ("id", "other"))
+
+
+def test_heights_of_another_contract_and_output_paths_that_collide_are_refused(network, capsys):
+    assert network.run("first") == 0
+    heights = network.tmp_path / "first" / "heights.json"
+    assert json.loads(heights.read_text())["params"] == {
+        "contracts": {LASNA: HUB, BASE: VAULT_BASE, UNI: VAULT_UNI}}
+    capsys.readouterr()
+
+    # Heights above the head of a chain: the block does not exist.
+    above = json.loads(heights.read_text())
+    above["chains"][UNI]["to"] = 999_999
+    (network.tmp_path / "above.json").write_text(json.dumps(above))
+    assert network.run("above", "--heights", str(network.tmp_path / "above.json")) == 2
+    assert f"{UNI} has no block 999999" in capsys.readouterr().err
+    assert not (network.tmp_path / "above").exists()
+
+    # A heights file that is not an object.
+    (network.tmp_path / "list.json").write_text("[]")
+    assert network.run("list", "--heights", str(network.tmp_path / "list.json")) == 2
+    assert "Traceback" not in capsys.readouterr().err and not (network.tmp_path / "list").exists()
+
+    # Another hub with the same deployment block is another deployment.
+    other = network.manifest(lambda data: data["contracts"]["hub"].update(address=address("f9")))
+    assert network.run("other", "--heights", str(heights), manifest=other) == 2
+    assert "the heights are of the contracts" in capsys.readouterr().err
+    assert not (network.tmp_path / "other").exists()
+
+    # The document must not be a file of the output directory.
+    before = network.requests()
+    for name in ("data.json", "heights.json"):
+        assert network.run("same", "--judge", str(network.tmp_path / "same" / name)) == 2
+        assert "is an output file of --out" in capsys.readouterr().err
+    assert network.requests() == before and not (network.tmp_path / "same").exists()
+
+    # A file that is the staging file of another one: refused before the first write.
+    kept = network.tmp_path / "first" / "data.json.tmp"
+    kept.write_text("kept")
+    data = (network.tmp_path / "first" / "data.json").read_bytes()
+    assert network.run("first", "--judge", str(kept)) == 1
+    assert "cannot write the output files" in capsys.readouterr().err
+    assert kept.read_text() == "kept" and (network.tmp_path / "first" / "data.json").read_bytes() == data
+
+
+@pytest.mark.parametrize("change, scenarios", [
+    (lambda data: data["contracts"]["hub"].update(deployBlock="soon"), None),
+    (lambda data: data["enrollments"][0].update(policy=None), None),
+    (lambda data: data["fixtures"].update(looping=None, extra=7), {"quarantine": {"chain": LASNA, "steps": None}}),
+    (None, {"junk": {"chain": BASE, "steps": [{"step": name} for _, name in judge.JUNK_STEPS]}}),
+])
+def test_an_input_file_with_another_shape_gives_status_2_and_no_file(network, capsys, change, scenarios):
+    code = network.run("out", manifest=network.manifest(change),
+                       experiment=network.experiment(scenarios=scenarios))
+    error = capsys.readouterr().err
+    assert code == 2 and error.startswith("error: ") and "Traceback" not in error, error
+    assert not (network.tmp_path / "out").exists()
 
 
 def test_a_step_of_a_scenario_record_that_the_chain_does_not_have_stops_the_run(network, capsys):

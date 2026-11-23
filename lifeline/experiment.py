@@ -1613,10 +1613,6 @@ def guard_local_outputs(urls: list, paths) -> None:
         raise OpsError(f"an RPC is a local node: a dry run needs its own {' and '.join(defaults)}")
 
 
-def _guard_local_outputs(args, urls: list) -> None:
-    guard_local_outputs(urls, (("--cache", args.cache, ".cache/chain"), ("--out", args.out, str(DEFAULT_OUT))))
-
-
 def cmd_measure(args) -> int:
     try:
         manifest = Manifest.load(args.manifest).data
@@ -1639,8 +1635,9 @@ def cmd_measure(args) -> int:
         # A chain of the manifest with no fixture is not read.
         rpc = {name: urls for name, urls in rpc.items() if name in names}
         # The URLs of the run: of `--rpc`, or of the manifest for a chain with no `--rpc`.
-        _guard_local_outputs(args, [url for name in names
-                                    for url in rpc.get(name) or manifest["chains"][name].get("rpc") or []])
+        guard_local_outputs(
+            [url for name in names for url in rpc.get(name) or manifest["chains"][name].get("rpc") or []],
+            (("--cache", args.cache, ".cache/chain"), ("--out", args.out, str(DEFAULT_OUT))))
         readers = open_readers(config, rpc, args.cache, retries=args.retries, backoff=args.backoff)
         lowest = {name: min(entry["deployBlock"] for entry in fixtures.values()
                             if isinstance(entry, dict) and entry.get("chain") == name and entry.get("deployBlock"))

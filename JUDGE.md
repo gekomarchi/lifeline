@@ -10,9 +10,9 @@ Lifeline restores future delivery, not zero loss. Work that arrives while a targ
 
 | Chain | Chain ID | From | To |
 |---|---|---|---|
-| lasna | 5318007 | 9039165 | 9068356 |
-| base-sepolia | 84532 | 62488753 | 62643435 |
-| unichain-sepolia | 1301 | 68567187 | 68598126 |
+| lasna | 5318007 | 9039165 | 9071008 |
+| base-sepolia | 84532 | 62488753 | 62657559 |
+| unichain-sepolia | 1301 | 68567187 | 68600951 |
 
 Each log query of this run is inside `from..to` of its chain. `from` is the deployment block of the Lifeline contract of that chain: the hub on lasna, the vault on a destination chain. Each state value is read at `to`.
 
@@ -59,7 +59,7 @@ The fleet is each enrollment of the manifest that is not a guest and not a fixtu
 | Principal paid | 0 | from block 9039243 |
 | Low mark of the policy | 50000000000000000 | the enrollment transaction |
 | High mark of the policy | 250000000000000000 | the enrollment transaction |
-| Reserves kept | 60373758200000000000 | at block 9068356 |
+| Reserves kept | 60373758200000000000 | at block 9071008 |
 
 Gaps: none.
 
@@ -77,7 +77,7 @@ Gaps: none.
 | Principal paid | 0 | from block 68567271 |
 | Low mark of the policy | 500000000000000 | the enrollment transaction |
 | High mark of the policy | 2000000000000000 | the enrollment transaction |
-| Reserves kept | 1985547990287874 | at block 68598126 |
+| Reserves kept | 1985547990287874 | at block 68600951 |
 
 Gaps: none.
 
@@ -95,13 +95,13 @@ Gaps: none.
 | Principal paid | 50559145400000 | from block 62489400 |
 | Low mark of the policy | 0 | the enrollment transaction |
 | High mark of the policy | 50000000000000 | the enrollment transaction |
-| Reserves kept | 50000000000000 | at block 62643435 |
+| Reserves kept | 50000000000000 | at block 62657559 |
 
 | Gap: dead from block | Alive at block | Blocks | Transaction that ended the gap |
 |---|---|---|---|
 | 62489494 | 62489499 | 5 | `0xd19743a00790ed97d97e0a4d830759dbf1293d2257fd61eb0f56f47b25091adf` |
 
-The specification does not define a fill. This report reads it as a fill event of the fleet itself, as `subjects.fastfill.fill` of `config/network.json` defines it: the count is the number of these logs from the first block of the fill chain at or after the enrollment, by the block timestamps, to `to`. A guardian top-up is a separate figure. For a lasna target a gap is a `Gap` log of the hub. For a target of a destination chain a gap is a debt interval at the callback proxy: from a `BlacklistContract` log to the next `WhitelistContract` log, or to `to`.
+The specification does not define a fill. This report reads it as a fill event of the fleet itself, as `subjects.fastfill.fill` of `config/network.json` defines it: the count is the number of these logs from the first block of the fill chain at or after the enrollment, by the block timestamps, to `to`. A guardian top-up is a separate figure. For a lasna target a gap is a `Gap` log of the hub. For a target of a destination chain a gap is a debt interval at the callback proxy: from a `BlacklistContract` log to the next `WhitelistContract` log, or to `to`. The block count of a gap starts at the enrollment block if the debt started before it.
 
 ## Guardian cost
 
@@ -109,9 +109,9 @@ Each figure counts from the deployment block of the contract to `to`.
 
 | Guardian | Chain | Address | Deployment block | Principal paid | `SelfCare` added | Fee float consumed | Balance | Reserves | Debt | State block |
 |---|---|---|---|---|---|---|---|---|---|---|
-| hub | lasna | `0xbba61E507e7CC334e57A62c39A776272DA6b07Dd` | 9039165 | 24960000000000000 | 330475800000000000 | 155028400000000000 | 4444564200000000000 | 175447400000000000 | 0 | 9068356 |
-| vault of base-sepolia | base-sepolia | `0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2` | 62488753 | 50559145400000 | 201040443800000 | 1909492200000 | 1948400410800000 | 199130951600000 | 0 | 62643435 |
-| vault of unichain-sepolia | unichain-sepolia | `0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26` | 68567187 | 0 | 200000000000000 | 185524350000 | 5000000000000000 | 199814475650000 | 0 | 68598126 |
+| hub | lasna | `0xbba61E507e7CC334e57A62c39A776272DA6b07Dd` | 9039165 | 24960000000000000 | 355028400000000000 | 179581000000000000 | 4420011600000000000 | 175447400000000000 | 0 | 9071008 |
+| vault of base-sepolia | base-sepolia | `0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2` | 62488753 | 50559145400000 | 201909492200000 | 2778540600000 | 1947531362400000 | 199130951600000 | 0 | 62657559 |
+| vault of unichain-sepolia | unichain-sepolia | `0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26` | 68567187 | 0 | 200185524350000 | 402786450000 | 4999814475650000 | 199782737900000 | 0 | 68600951 |
 
 The principal paid is the sum of the payment events: `Rescued` and `ToppedUp` of the hub, `Result` of a vault. The fee float consumed is the sum of `SelfCare.added`, minus the reserves at `to`, plus the debt at `to`. A deposit to the float by another account is not visible in these events: it makes the figure too low by its amount.
 
@@ -169,11 +169,11 @@ Status: not recorded.
 | `Rescued` |  | 9051444<br>`0xeb5f7b5f092550dc46bb9eee726ac6d0c9bcf0999510209cd32dafb48cb6b955` |
 | `Rescued` |  | 9051466<br>`0x0513ec1482d1df1aa9fa7a6376efd7656a3c320cfd7245a62cb37aed1a0acf2d` |
 | `Quarantined` |  | 9051488<br>`0xe5958954b40c20d3001134a31a5d3bd515f4c7b89f208940f2717e50cf95d0bd` |
-| Rescues before `Quarantined` | 2 | the `Rescued` rows |
+| Rescues from the enrollment to `Quarantined` | 2 | the `Rescued` rows |
 | `maxRescues` of the policy | 2 | `hub.enroll` `0xa4538529f12a96807cb7a780b40433fae769f615af0dc3e489151210b94b4f65` |
-| Principal paid before `Quarantined` | 24960000000000000 | before the `Quarantined` log of block 9051488 |
+| Principal paid from the enrollment to `Quarantined` | 24960000000000000 | before the `Quarantined` log of block 9051488 |
 | `dailyCap` of the policy | 260000000000000000 | `hub.enroll` `0xa4538529f12a96807cb7a780b40433fae769f615af0dc3e489151210b94b4f65` |
-| Principal paid after `Quarantined` | 0 | after the `Quarantined` log of block 9051488, to block 9068356 |
+| Principal paid after `Quarantined` | 0 | after the `Quarantined` log of block 9051488, to block 9071008 |
 
 ## Junk recovery
 

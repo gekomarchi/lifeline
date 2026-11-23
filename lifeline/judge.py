@@ -69,6 +69,14 @@ def _ref(log: dict) -> dict:
     return {"block": block_of(log), "tx": log["transactionHash"]}
 
 
+def deployment(manifest: dict, names) -> dict:
+    """The address of the Lifeline contract of each chain. The heights file keeps it in `params`: two
+    deployments can have one deployment block."""
+    contracts = manifest["contracts"]
+    return {name: checksum((contracts["hub"] if name == LASNA else contracts["vaults"][name])["address"])
+            for name in names}
+
+
 def deploy_blocks(manifest: dict) -> dict:
     """The deployment block of the Lifeline contract of each chain: the hub on Lasna, a vault on a
     destination chain. No log query of that chain starts before it."""
@@ -129,26 +137,24 @@ class Evidence:
             self._events[key] = events
         return self._events[key]
 
-    def hub_events(self, name: str) -> list:
-        return self._decoded(LASNA, self.hub, self.hub_abi, HUB_EVENTS)[name]
+    def hub_events(self, name: str, target: str = None) -> list:
+        """(log, parameters) of each log of one hub event: of each target, or of one."""
+        return self._of(self._decoded(LASNA, self.hub, self.hub_abi, HUB_EVENTS)[name], target)
 
-    def vault_events(self, chain: str, name: str) -> list:
-        return self._decoded(chain, self.vaults[chain], self.vault_abi, VAULT_EVENTS)[name]
+    def vault_events(self, chain: str, name: str, target: str = None) -> list:
+        return self._of(self._decoded(chain, self.vaults[chain], self.vault_abi, VAULT_EVENTS)[name], target)
+
+    @staticmethod
+    def _of(events: list, target) -> list:
+        return events if target is None else [entry for entry in events if same_address(entry[1]["target"], target)]
 
     def ledger_events(self, chain: str, account: str) -> list:
         """The `BlacklistContract` and `WhitelistContract` logs of the ledger of a chain for one account."""
         return self.logs(chain, self.ledger(chain), [[BLACKLIST, WHITELIST], word(account)])
 
-    def hub_payments(self, target: str) -> list:
-        """(log, paid) of each `Rescued` and each `ToppedUp` of the hub for one target, in log order."""
-        logs = [(log, event["paid"]) for name in ("Rescued", "ToppedUp") for log, event in self.hub_events(name)
-                if same_address(event["target"], target)]
-        return sorted(logs, key=lambda entry: _log_position(entry[0]))
-
     def results(self, chain: str, target: str) -> list:
         """(log, parameters) of each `Result` of the vault of a chain for one target."""
-        return [(log, event) for log, event in self.vault_events(chain, "Result")
-                if same_address(event["target"], target)]
+        return self.vault_events(chain, "Result", target)
 
     def state(self, chain: str, account: str, label: str) -> dict:
         """The reserves and the debt of an account at the ledger of its chain, at `to`."""
@@ -230,14 +236,12 @@ class Evidence:
         guardian of that chain. None if the heights do not have that transaction."""
         txs, chain, target = record.get("txs") or {}, record["chain"], record["target"]
         if chain == LASNA:
-            logs = [log for log, event in self.hub_events("Enrolled")
-                    if log["transactionHash"] == txs.get("enroll") and same_address(event["target"], target)]
+            events, tx = self.hub_events("Enrolled", target), txs.get("enroll")
         elif chain in self.vaults:
-            logs = [log for log, event in self.vault_events(chain, "PolicySet")
-                    if log["transactionHash"] == txs.get("setPolicy") and same_address(event["target"], target)]
+            events, tx = self.vault_events(chain, "PolicySet", target), txs.get("setPolicy")
         else:
-            logs = []
-        return logs[0] if logs else None
+            return None
+        return next((log for log, _ in events if log["transactionHash"] == tx), None)
 
     def fill_logs(self):
         """(chain, address, logs) of the fills of the fleet, as `config/network.json` defines them. None if
@@ -267,8 +271,13 @@ class Evidence:
         if chain != fill_chain:
             # The first block of the fill chain at or after the enrollment, by the block timestamps.
             time = self.readers[chain].timestamp(enroll_block)
-            reader, head = self.readers[fill_chain], self.to(fill_chain)
-            start = first_block_at(reader, time, head) if reader.timestamp(head) >= time else None
+            reader, heights = self.readers[fill_chain], self.snapshot.chains[fill_chain]
+            if reader.timestamp(heights["from"]) >= time:
+                start = heights["from"]  # enrolled before the first block of the heights: no search below it
+            elif reader.timestamp(heights["to"]) >= time:
+                start = first_block_at(reader, time, heights["to"])
+            else:
+                start = None
         if start is not None:
             start = max(start, self.snapshot.chains[fill_chain]["from"])
         count = sum(1 for log in logs if start is not None and block_of(log) >= start)
@@ -290,23 +299,20 @@ class Evidence:
                 continue
             start = block_of(enrolled)
             if chain == LASNA:
-                rescued = [(log, event) for log, event in self.hub_events("Rescued")
-                           if same_address(event["target"], target) and block_of(log) >= start]
-                topped_up = [log for log, event in self.hub_events("ToppedUp")
-                             if same_address(event["target"], target) and block_of(log) >= start]
-                paid = sum(amount for log, amount in self.hub_payments(target) if block_of(log) >= start)
+                rescued, topped_up, gap_events = (
+                    [(log, event) for log, event in self.hub_events(name, target) if block_of(log) >= start]
+                    for name in ("Rescued", "ToppedUp", "Gap"))
                 rescues, top_ups = len(rescued), len(topped_up)
+                paid = sum(event["paid"] for _, event in rescued + topped_up)
                 gaps = [self._gap(event["deadFromBlock"] or None, event["aliveAtBlock"], log["transactionHash"],
-                                  chain)
-                        for log, event in self.hub_events("Gap")
-                        if same_address(event["target"], target) and block_of(log) >= start]
+                                  chain, start) for log, event in gap_events]
             else:
                 results = [(log, event) for log, event in self.results(chain, target) if block_of(log) >= start]
                 rescues = sum(1 for _, event in results if OUTCOMES[event["outcome"]] == "Rescued")
                 top_ups = sum(1 for _, event in results if OUTCOMES[event["outcome"]] == "ToppedUp")
                 paid = sum(event["paid"] for _, event in results)
                 gaps = [self._gap(opened and block_of(opened), closed and block_of(closed),
-                                  closed and closed["transactionHash"], chain)
+                                  closed and closed["transactionHash"], chain, start)
                         for opened, closed in debt_intervals(self.ledger_events(chain, target))
                         if closed is None or block_of(closed) >= start]
             count, fills_from = self.fills(subject, chain, start)
@@ -326,10 +332,12 @@ class Evidence:
         removed = record.get("removed")
         return removed and {name: removed.get(name) for name in ("hubDisarm", "vaultDisarm")}
 
-    def _gap(self, dead, alive, tx, chain: str) -> dict:
+    def _gap(self, dead, alive, tx, chain: str, enrolled: int) -> dict:
         """One gap of a target. `dead` is None if no debt log of the heights started it, `alive` is None if
-        the target is in debt at `to`. `blocks` counts to `to` for a gap that is open."""
-        blocks = None if dead is None else (self.to(chain) if alive is None else alive) - dead
+        the target is in debt at `to`. `blocks` counts from the enrollment block for a debt that started
+        before it, and to `to` for a gap that is open."""
+        end = self.to(chain) if alive is None else alive
+        blocks = None if dead is None else max(0, end - max(dead, enrolled))
         return {"deadFromBlock": dead, "aliveAtBlock": alive, "blocks": blocks, "tx": tx}
 
     # Guardian ---------------------------------------------------------------------------------
@@ -381,26 +389,41 @@ class Evidence:
             raise OpsError(f"the quarantine record is of {record['chain']}: the hub quarantines a target of "
                            f"{LASNA} only")
         target = record["addresses"]["looping"]
-        quarantined = self._confirmed("quarantine", record, "Quarantined", [
-            log for log, event in self.hub_events("Quarantined") if same_address(event["target"], target)])
-        rescued = [log for log, event in self.hub_events("Rescued") if same_address(event["target"], target)]
+        quarantined = self._confirmed("quarantine", record, "Quarantined",
+                                      [log for log, _ in self.hub_events("Quarantined", target)])
+        rescued = [log for log, _ in self.hub_events("Rescued", target)]
         for entry in record["steps"]:
             if entry["step"].startswith("Rescued"):
                 self._confirmed("quarantine", record, entry["step"], rescued)
         cut = _log_position(quarantined)
-        payments = self.hub_payments(target)
-        enrollment = next((entry for entry in reversed(self.manifest["enrollments"])
-                           if entry["chain"] == LASNA and same_address(entry["target"], target)), None)
-        policy = enrollment["policy"] if enrollment else {}
-        enrolled = enrollment and self.enrollment_log(enrollment)
+        payments = [(log, event["paid"]) for name in ("Rescued", "ToppedUp")
+                    for log, event in self.hub_events(name, target)]
+        # The enrollment in force at the `Quarantined` log: the last one of the target before it. A later
+        # enrollment of the same target has another policy and another count.
+        enrollments = [(self.enrollment_log(entry), entry) for entry in self.manifest["enrollments"]
+                       if entry["chain"] == LASNA and same_address(entry["target"], target)]
+        enrollments = sorted(((_log_position(log), log, entry) for log, entry in enrollments
+                              if log is not None and _log_position(log) < cut), key=lambda item: item[0])
+        if enrollments:
+            since, enrolled, policy = enrollments[-1][0], enrollments[-1][1], enrollments[-1][2]["policy"]
+        else:
+            since, enrolled, policy = (0, 0), None, {}
+            self.notes.append(f"the chain data of the heights has no enrollment of the looping canary {target} "
+                              f"before its Quarantined log: the policy of the quarantine is not known")
+        max_rescues = policy.get("maxRescues")
+        daily_cap = None if policy.get("dailyCap") is None else str(policy["dailyCap"])
+        budget = record.get("budget") or {}
+        for name, value in (("maxRescues", max_rescues), ("dailyCap", daily_cap)):
+            if enrolled is not None and budget.get(name) is not None and str(budget[name]) != str(value):
+                raise OpsError(f"the quarantine record has {name} {budget[name]}, and the enrollment of the "
+                               f"manifest before the Quarantined log has {value}")
         return {
             "recorded": True, "chain": LASNA, "target": checksum(target),
-            "rescues": [_ref(log) for log in rescued if _log_position(log) < cut],
+            "rescues": [_ref(log) for log in rescued if since < _log_position(log) < cut],
             "quarantined": _ref(quarantined),
-            "maxRescues": policy.get("maxRescues"),
-            "dailyCap": None if policy.get("dailyCap") is None else str(policy["dailyCap"]),
+            "maxRescues": max_rescues, "dailyCap": daily_cap,
             "policyTx": enrolled and enrolled["transactionHash"],
-            "principalPaid": str(sum(paid for log, paid in payments if _log_position(log) < cut)),
+            "principalPaid": str(sum(paid for log, paid in payments if since < _log_position(log) < cut)),
             "paidAfterQuarantine": str(sum(paid for log, paid in payments if _log_position(log) > cut)),
         }
 
@@ -421,7 +444,7 @@ class Evidence:
         vault, waiting = addresses["vault"], addresses["waiting.callback"]
         if not same_address(self.vaults.get(chain, ""), vault):
             raise OpsError(f"the junk record names the vault {vault} of {chain}: the manifest does not have it")
-        chain_id = next(number for number, name in self.chain_of.items() if name == chain)
+        chain_id = int(self.manifest["contracts"]["vaults"][chain]["chainId"])
         ledger = self.ledger_events(chain, vault)
         sources = {
             "BlacklistContract(vault)": (chain, [log for log in ledger if log["topics"][0] == BLACKLIST]),
@@ -438,11 +461,30 @@ class Evidence:
             step_chain, logs = sources[name]
             found[name] = self._confirmed("junk", record, recorded, logs)
             steps.append({"step": name, "chain": step_chain, **_ref(found[name])})
-        result = next(event for log, event in self.results(chain, waiting)
-                      if log is found["Result(waiting.callback)"])
+        # The result of the target that waited is a rescue of a sweep of this recovery: its id is the request
+        # ID of a `VaultUp` of the chain after the `VaultDown` of the record. A recovery can have several.
+        down = _log_position(found["VaultDown"])
+        sweeps = {event["requestId"] for log, event in self.hub_events("VaultUp")
+                  if event["chainId"] == chain_id and _log_position(log) > down}
+        tx = found["Result(waiting.callback)"]["transactionHash"]
+        in_tx = [(log, event) for log, event in self.results(chain, waiting) if log["transactionHash"] == tx]
+        rescue = next(((log, event) for log, event in in_tx
+                       if event["id"] in sweeps and OUTCOMES[event["outcome"]] == "Rescued"), None)
+        if rescue is None:
+            seen = ", ".join(f"id {event['id']} outcome {OUTCOMES[event['outcome']]}" for _, event in in_tx)
+            raise OpsError(f"the step 'Result(waiting.callback)' of the junk record (tx {tx}) is not a rescue of a "
+                           f"sweep of the recovery: the transaction has {seen}")
+        found["Result(waiting.callback)"], result = rescue
+        steps[-1] = {"step": "Result(waiting.callback)", "chain": chain, **_ref(rescue[0])}
+        if record.get("requestId") is not None and str(record["requestId"]) != str(result["id"]):
+            raise OpsError(f"the junk record has the request ID {record['requestId']}, and the Result of its step "
+                           f"(tx {tx}) has {result['id']}")
+        # The balance figures of the experiment are of this flood only if they have its block range.
         figures = self.experiment.get("junk") or {}
         usable = (figures.get("status") == "ok" and figures.get("chain") == chain
-                  and same_address(figures.get("vault", ""), vault))
+                  and same_address(figures.get("vault", ""), vault)
+                  and figures.get("startBlock") == record.get("startBlock")
+                  and figures.get("endBlock") == record.get("floodEndBlock"))
         if not usable:
             self.notes.append("the data file of the experiment has no balance figures of this junk flood: run "
                               "`python -m lifeline.experiment measure` again")
@@ -463,7 +505,7 @@ class Evidence:
                 continue
             chain, target, txs = record["chain"], record["target"], record.get("txs") or {}
             if chain == LASNA:
-                rescues = [log for log, event in self.hub_events("Rescued") if same_address(event["target"], target)]
+                rescues = [log for log, _ in self.hub_events("Rescued", target)]
             elif chain in self.vaults:
                 rescues = [log for log, event in self.results(chain, target)
                            if OUTCOMES[event["outcome"]] == "Rescued"]
@@ -509,6 +551,8 @@ def _hash(tx) -> str:
 
 
 def _table(header: tuple, rows: list) -> list:
+    if not rows:
+        return ["None."]
     lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
     return lines + ["| " + " | ".join(str(value) for value in row) + " |" for row in rows]
 
@@ -540,38 +584,28 @@ def render_judge(data: dict, table: str) -> str:
               "event is the last `BlacklistContract` log of the callback proxy for the target before the "
               "result. For a rescue, the `WhitelistContract` log of the proxy is in the transaction of the "
               "result.", "", "### Joined", ""]
-    joined = [entry for entry in data["rescues"] if entry["status"] == "joined"]
-    if joined:
-        lines += _table(
-            ("Request ID", "Chain", "Target", "Debt event", "`Relayed`, lasna", "`Result`", "Outcome", "Paid",
-             "`WhitelistContract`"),
-            [(entry["requestId"], entry["chain"], f"`{entry['target']}`", _cell(entry["debtEvent"]),
-              _cell(entry["relayed"]), _cell(entry["result"]), entry["result"]["outcome"], entry["result"]["paid"],
-              _cell(entry["whitelist"])) for entry in joined])
-    else:
-        lines.append("None.")
+    lines += _table(
+        ("Request ID", "Chain", "Target", "Debt event", "`Relayed`, lasna", "`Result`", "Outcome", "Paid",
+         "`WhitelistContract`"),
+        [(entry["requestId"], entry["chain"], f"`{entry['target']}`", _cell(entry["debtEvent"]),
+          _cell(entry["relayed"]), _cell(entry["result"]), entry["result"]["outcome"], entry["result"]["paid"],
+          _cell(entry["whitelist"])) for entry in data["rescues"] if entry["status"] == "joined"])
     lines += ["", "### Open", "", "A relay request with no `Result` log in the heights of its destination chain.",
               ""]
-    opened = [entry for entry in data["rescues"] if entry["status"] == "open"]
-    if opened:
-        lines += _table(
-            ("Request ID", "Chain", "Chain ID", "Target", "Debt event", "`Relayed`, lasna"),
-            [(entry["requestId"], entry["chain"] or "not in the manifest", entry["chainId"], f"`{entry['target']}`",
-              _cell(entry["debtEvent"]), _cell(entry["relayed"])) for entry in opened])
-    else:
-        lines.append("None.")
+    lines += _table(
+        ("Request ID", "Chain", "Chain ID", "Target", "Debt event", "`Relayed`, lasna"),
+        [(entry["requestId"], entry["chain"] or "not in the manifest", entry["chainId"], f"`{entry['target']}`",
+          _cell(entry["debtEvent"]), _cell(entry["relayed"]))
+         for entry in data["rescues"] if entry["status"] == "open"])
 
     lines += ["", "## Lasna rescues and gaps", "",
               "Each row is one `Rescued` log of the hub with the `Gap` log of the same transaction. A dead-from "
               "block of zero means that no debt log started the rescue.", ""]
-    if data["lasnaRescues"]:
-        lines += _table(
-            ("Target", "`Rescued`", "Debt", "Paid", "Dead from block", "Alive at block"),
-            [(f"`{entry['target']}`", _cell(entry["rescued"]), entry["rescued"]["debt"], entry["rescued"]["paid"],
-              *((entry["gap"]["deadFromBlock"], entry["gap"]["aliveAtBlock"]) if entry["gap"] else ("none", "none")))
-             for entry in data["lasnaRescues"]])
-    else:
-        lines.append("None.")
+    lines += _table(
+        ("Target", "`Rescued`", "Debt", "Paid", "Dead from block", "Alive at block"),
+        [(f"`{entry['target']}`", _cell(entry["rescued"]), entry["rescued"]["debt"], entry["rescued"]["paid"],
+          *((entry["gap"]["deadFromBlock"], entry["gap"]["aliveAtBlock"]) if entry["gap"] else ("none", "none")))
+         for entry in data["lasnaRescues"]])
 
     lines += ["", "## Fleet report", "",
               "The fleet is each enrollment of the manifest that is not a guest and not a fixture of the "
@@ -617,7 +651,8 @@ def render_judge(data: dict, table: str) -> str:
                   "of these logs from the first block of the fill chain at or after the enrollment, by the block "
                   "timestamps, to `to`. A guardian top-up is a separate figure. For a lasna target a gap is a `Gap` "
                   "log of the hub. For a target of a destination chain a gap is a debt interval at the callback "
-                  "proxy: from a `BlacklistContract` log to the next `WhitelistContract` log, or to `to`."]
+                  "proxy: from a `BlacklistContract` log to the next `WhitelistContract` log, or to `to`. The "
+                  "block count of a gap starts at the enrollment block if the debt started before it."]
     else:
         lines.append("None.")
 
@@ -645,15 +680,15 @@ def render_judge(data: dict, table: str) -> str:
         lines.append(f"Status: {NOT_RECORDED}.")
     else:
         cut = quarantine["quarantined"]["block"]
-        policy = "the manifest" if quarantine["policyTx"] is None else f"`hub.enroll` {_hash(quarantine['policyTx'])}"
+        policy = "" if quarantine["policyTx"] is None else f"`hub.enroll` {_hash(quarantine['policyTx'])}"
         rows = [("Looping canary", f"`{quarantine['target']}`", quarantine["chain"])]
         rows += [("`Rescued`", "", _cell(ref)) for ref in quarantine["rescues"]]
         rows += [
             ("`Quarantined`", "", _cell(quarantine["quarantined"])),
-            ("Rescues before `Quarantined`", len(quarantine["rescues"]), "the `Rescued` rows"),
+            ("Rescues from the enrollment to `Quarantined`", len(quarantine["rescues"]), "the `Rescued` rows"),
             ("`maxRescues` of the policy", "not known" if quarantine["maxRescues"] is None
              else quarantine["maxRescues"], policy),
-            ("Principal paid before `Quarantined`", quarantine["principalPaid"],
+            ("Principal paid from the enrollment to `Quarantined`", quarantine["principalPaid"],
              f"before the `Quarantined` log of block {cut}"),
             ("`dailyCap` of the policy", quarantine["dailyCap"] or "not known", policy),
             ("Principal paid after `Quarantined`", quarantine["paidAfterQuarantine"],
@@ -741,13 +776,17 @@ def _experiment_files(directory: Path, scenarios=None) -> tuple:
 def main(argv=None) -> int:
     args = parse_arguments(argv)
     out, judge = Path(args.out), Path(args.judge)
+    files = (out / "data.json", out / "heights.json", judge)
     try:
+        if len({path.resolve() for path in files}) != len(files):
+            raise OpsError(f"--judge {judge} is an output file of --out {out}: give another path")
         # The files of the experiment come first: a run with no table sends no request.
         table, experiment_data, scenarios = _experiment_files(Path(args.experiment), args.scenarios)
         manifest = Manifest.load(args.manifest).data
         config = load_config(args.config)
         starts = deploy_blocks(manifest)
         names = list(starts)
+        contracts = deployment(manifest, names)
         rpc = parse_rpc(args.rpc)
         unknown = sorted(set(rpc) - set(manifest["chains"]))
         if unknown:
@@ -761,8 +800,12 @@ def main(argv=None) -> int:
         readers = open_readers(chains, rpc, args.cache, retries=args.retries, backoff=args.backoff)
         if args.heights:
             snapshot = Snapshot.load(args.heights, readers)
+            if snapshot.params.get("contracts") != contracts:
+                raise SnapshotError(f"{args.heights}: the heights are of the contracts "
+                                    f"{json.dumps(snapshot.params.get('contracts'), sort_keys=True)}, and the "
+                                    f"manifest has {json.dumps(contracts, sort_keys=True)}")
         else:
-            snapshot = Snapshot.pin(readers, lambda reader, to: starts[reader.name], {})
+            snapshot = Snapshot.pin(readers, lambda reader, to: starts[reader.name], {"contracts": contracts})
         for name in names:
             heights = snapshot.chains[name]
             if heights["from"] != starts[name]:
@@ -771,24 +814,28 @@ def main(argv=None) -> int:
             if heights["from"] > heights["to"]:
                 raise SnapshotError(f"{name}: the block {heights['to']} is before the deployment block "
                                     f"{heights['from']}")
+            if args.heights and heights["to"] > readers[name].head():
+                raise SnapshotError(f"{args.heights}: {name} has no block {heights['to']}: the heights are above "
+                                    f"the head of the chain")
         evidence = Evidence(manifest, config, scenarios, experiment_data, readers, snapshot)
-        data = evidence.run()
-    except (ConfigError, ChainMismatch, SnapshotError, OpsError, KeyError) as error:
+        text = json.dumps(evidence.run(), indent=1, sort_keys=True) + "\n"
+        data = json.loads(text)
+        # The document is made from the text of the data file: each figure of it is in that file.
+        document = render_judge(data, table)
+    except (ConfigError, ChainMismatch, SnapshotError, OpsError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     except (ReaderError, StateUnavailable, CallReverted) as error:
         # No file is written. The cache keeps the finished chunks.
         print(f"error: {error}", file=sys.stderr)
         return 1
+    except (KeyError, TypeError, ValueError, IndexError, AttributeError) as error:
+        # A value of the manifest, of the configuration or of a file of the experiment has another shape.
+        print(f"error: an input file is not usable: {type(error).__name__}: {error}", file=sys.stderr)
+        return 2
 
-    text = json.dumps(data, indent=1, sort_keys=True) + "\n"
     try:
-        publish_paths({
-            out / "data.json": text,
-            out / "heights.json": snapshot.text(),
-            # The document is made from the text of the data file: each figure of it is in that file.
-            judge: render_judge(json.loads(text), table),
-        })
+        publish_paths(dict(zip(files, (text, snapshot.text(), document))))
     except OSError as error:
         print(f"error: cannot write the output files: {error}", file=sys.stderr)
         return 1

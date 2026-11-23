@@ -211,7 +211,7 @@
    "removed": null,
    "rescues": 0,
    "reserves": {
-    "block": 9068356,
+    "block": 9071008,
     "value": "60373758200000000000"
    },
    "target": "0x05a566959544A55c16012aeeF0a09067da1f204f",
@@ -238,7 +238,7 @@
    "removed": null,
    "rescues": 0,
    "reserves": {
-    "block": 68598126,
+    "block": 68600951,
     "value": "1985547990287874"
    },
    "target": "0x916D4d5f9E363CbdFA8C34fB41185a75A6a2E705",
@@ -275,7 +275,7 @@
    },
    "rescues": 1,
    "reserves": {
-    "block": 62643435,
+    "block": 62657559,
     "value": "50000000000000"
    },
    "target": "0xa462B906917C0372872AD35C0321eB5Daa60692E",
@@ -286,63 +286,63 @@
   "hub": {
    "address": "0xbba61E507e7CC334e57A62c39A776272DA6b07Dd",
    "balance": {
-    "block": 9068356,
-    "value": "4444564200000000000"
+    "block": 9071008,
+    "value": "4420011600000000000"
    },
    "chain": "lasna",
    "debt": {
-    "block": 9068356,
+    "block": 9071008,
     "value": "0"
    },
    "deployBlock": 9039165,
-   "floatConsumed": "155028400000000000",
+   "floatConsumed": "179581000000000000",
    "principalPaid": "24960000000000000",
    "reserves": {
-    "block": 9068356,
+    "block": 9071008,
     "value": "175447400000000000"
    },
-   "selfCareAdded": "330475800000000000"
+   "selfCareAdded": "355028400000000000"
   },
   "vaults": {
    "base-sepolia": {
     "address": "0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2",
     "balance": {
-     "block": 62643435,
-     "value": "1948400410800000"
+     "block": 62657559,
+     "value": "1947531362400000"
     },
     "chain": "base-sepolia",
     "debt": {
-     "block": 62643435,
+     "block": 62657559,
      "value": "0"
     },
     "deployBlock": 62488753,
-    "floatConsumed": "1909492200000",
+    "floatConsumed": "2778540600000",
     "principalPaid": "50559145400000",
     "reserves": {
-     "block": 62643435,
+     "block": 62657559,
      "value": "199130951600000"
     },
-    "selfCareAdded": "201040443800000"
+    "selfCareAdded": "201909492200000"
    },
    "unichain-sepolia": {
     "address": "0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26",
     "balance": {
-     "block": 68598126,
-     "value": "5000000000000000"
+     "block": 68600951,
+     "value": "4999814475650000"
     },
     "chain": "unichain-sepolia",
     "debt": {
-     "block": 68598126,
+     "block": 68600951,
      "value": "0"
     },
     "deployBlock": 68567187,
-    "floatConsumed": "185524350000",
+    "floatConsumed": "402786450000",
     "principalPaid": "0",
     "reserves": {
-     "block": 68598126,
-     "value": "199814475650000"
+     "block": 68600951,
+     "value": "199782737900000"
     },
-    "selfCareAdded": "200000000000000"
+    "selfCareAdded": "200185524350000"
    }
   }
  },
@@ -351,20 +351,20 @@
   "base-sepolia": {
    "chainId": 84532,
    "from": 62488753,
-   "to": 62643435,
-   "toTimestamp": 1795450555
+   "to": 62657559,
+   "toTimestamp": 1795453380
   },
   "lasna": {
    "chainId": 5318007,
    "from": 9039165,
-   "to": 9068356,
-   "toTimestamp": 1795450553
+   "to": 9071008,
+   "toTimestamp": 1795453377
   },
   "unichain-sepolia": {
    "chainId": 1301,
    "from": 68567187,
-   "to": 68598126,
-   "toTimestamp": 1795450554
+   "to": 68600951,
+   "toTimestamp": 1795453379
   }
  },
  "junkRecovery": {

@@ -134,6 +134,10 @@ def publish_paths(files: dict) -> None:
     """Write each file of {path: text}, or leave each directory as it was before the run."""
     staged = {path: path.with_name(path.name + ".tmp") for path in files}
     previous = {path: path.with_name(path.name + ".previous") for path in files}
+    used = [name.resolve() for name in (*files, *staged.values(), *previous.values())]
+    if len(set(used)) != len(used):
+        # Before the first write: a file must not be the staging file or the backup of another one.
+        raise FileExistsError("two output files, or a file and a staging file of another one, have one path")
     kept, published = [], []
     try:
         for path in files:

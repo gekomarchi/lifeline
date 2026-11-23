@@ -234,7 +234,7 @@ def test_the_quarantine_and_the_junk_recovery_are_the_scenario_records_confirmed
         {name: net.hub_abi.decode_event("Gap", log)[name] for name in ("deadFromBlock", "aliveAtBlock")}
         for log in gaps]
     text = section(document, "Quarantine")
-    assert f"| Rescues before `Quarantined` | {len(rescued)} |" in text
+    assert f"| Rescues from the enrollment to `Quarantined` | {len(rescued)} |" in text
     assert "| Principal paid after `Quarantined` | 0 |" in text and quarantined["transactionHash"] in text
 
     # Junk recovery: each step of the record is the transaction of its event on its chain.
