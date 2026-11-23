@@ -69,7 +69,8 @@
       "exact": true,
       "fees": "0",
       "opening": "0",
-      "selfCare": "0"
+      "selfCare": "0",
+      "unloggedDeposits": "0"
      }
     },
     "feeScope": "the poller serves the reactive canary of this arm only; the figure is from its deployment to `to`",
@@ -127,7 +128,8 @@
       "exact": true,
       "fees": "0",
       "opening": "199130951600000",
-      "selfCare": "0"
+      "selfCare": "0",
+      "unloggedDeposits": "0"
      },
      "lasna": {
       "closing": "178891600000000000",
@@ -135,7 +137,8 @@
       "exact": true,
       "fees": "67036500000000000",
       "opening": "179647800000000000",
-      "selfCare": "66280300000000000"
+      "selfCare": "66280300000000000",
+      "unloggedDeposits": "0"
      }
     },
     "feeScope": "the hub and the vault serve each enrolled target of the deployment and each scenario; the figures are their whole fee consumption in `from..to`, and no share is estimated",
@@ -162,7 +165,7 @@
   "capitalLocked": "At `to`: the reserves of the two contracts of the arm, and the funds of the guardian (arm B: the balance and the reserves of the poller; arm C: the balance and the reserves of the hub and of the vault, which are shared with each other enrolled target).",
   "downtimeBlocks": "Blocks inside the debt intervals of the reactive canary on Lasna and of the callback canary on the destination chain, for each chain: from a `BlacklistContract` log of the ledger to the next `WhitelistContract` log, or to `to`; the `Gap` event of the hub is not used, because its start block is 0 for a rescue that no debt log started.",
   "eventsMissed": "`Poke(n)` logs of the reactive canary in `from..to` with no `Tick(n)` log of that canary.",
-  "guardianCost": "Principal is the sum that the guardian paid to the two contracts of the arm (arm B: `Paid` of the poller; arm C: `Rescued` and `ToppedUp` of the hub and `Result.paid` of the vault); fees are what the ledger took from the guardian: its reserves minus its debt at block `from - 1`, minus the same value at `to`, plus its `SelfCare` deposits, plus each deposit that cleared a debt of it (the ledger state at the block of its `WhitelistContract` log against the block before), and for the poller plus its fee float of the deployment; a fee that the ledger took in the block of such a deposit is not in the figure, so `feeDetail.exact` is false for a figure that holds such a deposit.",
+  "guardianCost": "Principal is the sum that the guardian paid to the two contracts of the arm (arm B: `Paid` of the poller; arm C: `Rescued` and `ToppedUp` of the hub and `Result.paid` of the vault); fees are what the ledger took from the guardian: its reserves minus its debt at block `from - 1`, minus the same value at `to`, plus its `SelfCare` deposits, plus each deposit that cleared a debt of it (the ledger state at the block of its `WhitelistContract` log against the block before), and for the poller plus its fee float of the deployment; each fee figure is a lower bound, because a deposit of another account to a guardian with no debt has no log and is not in the figure, and a fee that the ledger took in the block of a deposit that cleared a debt is not in it; `feeDetail.exact` is false for a figure that holds a deposit that cleared a debt, and for a figure of 0 with `feeDetail.unloggedDeposits` above 0, which is the least sum of deposits with no log that the ledger state proves.",
   "guardianDowntimeBlocks": "Blocks inside the debt intervals of the guardian itself (arm B: the poller; arm C: the hub on Lasna and the vault on the destination chain), from the ledger logs: a hub at its principal floor goes into debt with no `HubLow` event, so that event is not the source.",
   "junk": "The balance of the vault at the start block and at the end block of the junk flood, the sums of `Result.paid` and `SelfCare.added` of the vault after the start block up to the end block, and the balance change that these payments do not explain; the expected value is 0."
  },
