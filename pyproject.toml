@@ -12,7 +12,9 @@ license = { text = "Apache-2.0" }
 dependencies = []
 
 [project.optional-dependencies]
-test = ["pytest>=7"]
+# The operator commands (`lifeline.ops`, `lifeline.forkrelay`) sign transactions and encode ABI data.
+ops = ["eth-account>=0.13,<0.14"]
+test = ["pytest>=7", "eth-account>=0.13,<0.14"]
 
 [tool.setuptools]
 packages = ["lifeline"]

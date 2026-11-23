@@ -1,0 +1,44 @@
+{
+  "chains": {
+    "lasna": {
+      "chainId": 5318007,
+      "ledger": "0x8888888888888888888888888888888888888888",
+      "rpc": ["https://lasna-rpc.rnk.dev/"]
+    },
+    "unichain-sepolia": {
+      "chainId": 1301,
+      "ledger": "0x775c9B990ADe401060B78D0e98684eEf8d2466C1",
+      "rpc": ["https://sepolia.unichain.org"],
+      "sweepBase": 220000,
+      "measuredSweepGas": 619221
+    },
+    "base-sepolia": {
+      "chainId": 84532,
+      "ledger": "0x476F44b11F5C942c58f4c8E3d0300E5710743585",
+      "rpc": ["https://base-sepolia-rpc.publicnode.com", "https://base-sepolia.gateway.tenderly.co"],
+      "sweepBase": 220000,
+      "measuredSweepGas": 619221
+    }
+  },
+  "hub": { "principal": "0", "feeFloat": "0", "selfReserveTarget": "0", "selfCareDailyCap": "0", "principalFloor": "0" },
+  "vaults": {
+    "unichain-sepolia": { "principal": "0", "feeFloat": "0", "selfReserveTarget": "0", "selfCareDailyCap": "0", "principalFloor": "0" },
+    "base-sepolia": { "principal": "0", "feeFloat": "0", "selfReserveTarget": "0", "selfCareDailyCap": "0", "principalFloor": "0" }
+  },
+  "callbackSender": "hub",
+  "cronTopic": "Cron10000",
+  "fleet": [
+    {
+      "label": "FastfillReactive",
+      "chain": "lasna",
+      "address": "0x05a566959544A55c16012aeeF0a09067da1f204f",
+      "policy": { "low": "50000000000000000", "high": "250000000000000000", "maxDebt": "0", "dailyCap": "0", "maxRescues": 0, "window": 0 }
+    },
+    {
+      "label": "FastfillExecutor",
+      "chain": "unichain-sepolia",
+      "address": "0x916D4d5f9E363CbdFA8C34fB41185a75A6a2E705",
+      "policy": { "low": "0", "high": "0", "maxDebt": "0", "dailyCap": "0", "maxRescues": 0, "window": 0 }
+    }
+  ]
+}

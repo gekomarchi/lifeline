@@ -75,6 +75,191 @@ python -m pytest
 
 The tests run the real command and the real reader against a local JSON-RPC server.
 
+## Operations
+
+The operator commands deploy the hub and the vaults, verify them on Sourcify, and onboard, remove and recover targets. One configuration file is the input. One manifest file is the output, and each later command reads it.
+
+```
+python -m lifeline.ops deploy     [--config <file>] [--manifest <file>]
+python -m lifeline.ops verify     [--manifest <file>]
+python -m lifeline.ops enroll     --chain <name> --target <address> --label <text>
+                                  --low <amount> --high <amount> --max-debt <amount> --daily-cap <amount>
+                                  --max-rescues <n> --window <seconds> [--guest --consent <reference>]
+python -m lifeline.ops fleet      [--config <file>]
+python -m lifeline.ops remove     --chain <name> --target <address>
+python -m lifeline.ops recover    --chain <name>
+python -m lifeline.ops loop-check --chain <name> [--timeout <seconds>]
+python -m lifeline.forkrelay      --rpc <chain>=<url> ... [--manifest <file>] [--cron-tick]
+```
+
+### Setup
+
+```
+pip install -e ".[ops]"
+git submodule update --init
+forge build
+export LIFELINE_OWNER_KEY=<private key of the owner account>
+```
+
+- The commands read each ABI and each bytecode from the Foundry build output in `out/`. Run `forge build` before the first command and after each change of a contract.
+- `LIFELINE_OWNER_KEY` is the private key of the owner: `0x` and 64 hexadecimal characters. The account deploys the contracts and becomes the `owner` of the hub and of each vault. No command prints or stores the key. `verify` does not need it.
+- The extra `ops` installs `eth-account`, which signs the transactions and encodes ABI data.
+
+### Arguments of each command
+
+| Argument | Meaning |
+|---|---|
+| `--manifest <file>` | The manifest. Default: `deployments/manifest.json`. Each command accepts it. |
+| `--rpc <chain>=<url>` | RPC URL for one chain. Repeat the flag for more chains. More than one URL for a chain makes an ordered list. The URLs replace the `rpc` list of the configuration (`deploy`) or of the manifest (all other commands) for that chain. Each command accepts it. |
+| `--config <file>` | The configuration. Default: `deployments/config.json`. For `deploy` and `fleet`. |
+
+Chain names: `lasna`, `unichain-sepolia`, `base-sepolia`. An amount on the command line is a decimal number in the native unit of the chain (lREACT on Lasna, ETH on a destination chain). The command converts it to wei and prints both values. Each command exits with status 0 after success and with status 1 after a refusal or a failure; the reason is on standard error.
+
+| Command | Arguments | What it does |
+|---|---|---|
+| `deploy` | | Runs the checks, then deploys the hub on Lasna and one vault for each entry of `vaults`, registers each vault at the hub (`hub.setVault`), and subscribes the cron tick (`hub.setCronTopic` if the topic is not `Cron10000`, then `hub.resumeCron`). It writes the manifest after each step. A second run does not deploy a contract that the manifest holds, and sends no transaction for a step that is done. |
+| `verify` | `--sourcify <url>` (default `https://sourcify.dev/server`) | Verifies the hub and each vault on Sourcify with the metadata and the sources of the build, and prints the constructor arguments and the result for each contract. It reports a chain that Sourcify does not support as `BLOCKED`. |
+| `enroll` | `--chain`, `--target`, `--label`; the policy: `--low`, `--high`, `--max-debt`, `--daily-cap` (amounts), `--max-rescues` (1 to 4), `--window` (seconds); `--guest --consent <reference>` | Onboards one target. See "Onboarding order". `--guest` marks a contract of another participant; it needs `--consent`, a reference to the written consent of the target owner. Without the reference the command refuses before any request. A guest uses the same path as each other target. |
+| `fleet` | | Onboards each entry of `fleet` of the configuration through the path of `enroll`, and prints the Lasna block of each `hub.enroll`. An entry that the hub has already is skipped. The first run starts the 48-hour window. |
+| `remove` | `--chain`, `--target` | Removes one target. See "Removal order". |
+| `recover` | `--chain` | Restores a vault that is in debt. See "Recovery". |
+| `loop-check` | `--chain`, `--timeout <seconds>` (default 600), `--new`, `--canary-reserve <amount>`, `--high <amount>`, `--max-debt <amount>` | Shows the destination loop with a canary pair. See "Loop check". |
+
+### `deployments/config.json`
+
+The one input of `deploy` and `fleet`. Amounts are decimal strings in wei.
+
+| Entry | Meaning |
+|---|---|
+| `chains.<name>.chainId` | Chain ID. `deploy` compares it with `eth_chainId` of the RPC. |
+| `chains.<name>.ledger` | The system contract on Lasna, the callback proxy on a destination chain. |
+| `chains.<name>.rpc` | RPC URLs, in order. |
+| `chains.<name>.sweepBase` | Destination chains only. The base gas of a sweep callback: `90,000 + _extraGas + _maxChargeGas` of that proxy. `deploy` gives it to `hub.setVault`. |
+| `chains.<name>.measuredSweepGas` | Destination chains only. The gas of one full sweep of 8 targets (`SWEEP_MAX`): the line `SWEEP_GAS n=8 base=<sweepBase> used=<gas>` of `forge test --match-test test_sweepFitsItsGasLimit_eachCountOnEachConfiguration -vv`. |
+| `chains.<name>.extraGas`, `gasPriceCoeffPer1000`, `ledgerNote` | Optional. Used only if the ledger has no getter `_extraGas()` or `_gasPriceCoeffPer1000()`. `ledgerNote` says how the value was read; without the note the value is not used. |
+| `hub`, `vaults.<name>` | `principal`, `feeFloat`, `selfReserveTarget`, `selfCareDailyCap`, `principalFloor`. The deployment sends `principal + feeFloat`; `feeFloat` goes to the reserves of the contract at its ledger. |
+| `callbackSender` | `"hub"` (the address of the deployed hub) or an address. It is the immutable `callbackSender` of each vault: the value that the node writes into the first argument of a callback that the hub requests. |
+| `cronTopic` | `Cron10000` or `Cron1000`. |
+| `fleet` | The targets of `fleet`: `label`, `chain`, `address`, `policy` (`low`, `high`, `maxDebt`, `dailyCap` in wei, `maxRescues`, `window` in seconds). |
+
+Values of the file and their sources:
+
+- Ledgers: Lasna `0x8888888888888888888888888888888888888888`, Base Sepolia `0x476F44b11F5C942c58f4c8E3d0300E5710743585`, Unichain Sepolia `0x775c9B990ADe401060B78D0e98684eEf8d2466C1` (chain ID 1301). Source: the Reactive Network documentation, "Origins & Destinations"; they are the ledgers of `config/network.json`.
+- `sweepBase` 220,000: both proxies answer `_extraGas()` 80,000 and `_maxChargeGas()` 50,000.
+- `measuredSweepGas` 619,221: the `SWEEP_GAS n=8 base=220000` line of the test, on the Base Sepolia fork. The Unichain Sepolia proxy has the same three fee values, so the file uses the same number for it.
+- The fleet addresses are the Fastfill contracts of the builder.
+
+### `deployments/manifest.json`
+
+The output of `deploy`. The commands after `deploy` read it and add their records.
+
+| Entry | Meaning |
+|---|---|
+| `version` | 1. |
+| `cronTopic` | The cron topic of the hub. |
+| `chains.<name>` | `chainId`, `ledger` and the `rpc` list of the configuration. |
+| `contracts.hub` | `chain`, `chainId`, `address`, `deployBlock`, `deployTx`, and `cron` (`topic`, `setCronTopicTx`, `resumeCronTx`). |
+| `contracts.vaults.<name>` | `chainId`, `address`, `deployBlock`, `deployTx`, `setVaultTx`. |
+| `enrollments[]` | One record for each enrollment: `label`, `chain`, `chainId`, `target`, `policy`, `guest`, `consent`, `txs` (`setPolicy`, `readBackBlock`, `enroll`, `enrollBlock`) and `removed`. For a Lasna target `setPolicy` and `readBackBlock` are null. `removed` is null, or `{ "hubDisarm", "vaultDisarm" }` after `remove`. |
+| `loopCheck` | The newest loop check: `chain`, `chainId`, `status` (`setup`, `waiting`, `timeout`, `failed` or `passed`), `missing`, the two canaries, and `steps` with the hash and the block of each step. |
+| `fixtures` | An empty object. The experiment fixtures fill it. |
+
+A command changes only its own entries and keeps each other entry of the file. The file holds no key. An `--rpc` URL is not written to it.
+
+### Checks before deployment
+
+`deploy` sends no transaction and exits with status 1 if one of these checks fails. It prints each check and the numbers that it used.
+
+- Each `chainId` equals `eth_chainId` of the RPC, and each ledger has code.
+- For each vault: `selfReserveTarget >= 4 x` the fee of one full sweep. The fee is `(_extraGas + measuredSweepGas) x gas price x _gasPriceCoeffPer1000 / 1000`. `_extraGas` and the coefficient come from the deployed proxy.
+- For the hub: `feeFloat` and `selfReserveTarget` each cover one full trigger of 900,000 gas: `900,000 x gas price x _gasPriceCoeffPer1000 / 1000`, about 0.09 lREACT at 100 gwei.
+- `measuredSweepGas` and `sweepBase` are above 0, and each policy of `fleet` is valid: `high > 0`, `low <= high`, `maxDebt > 0`, `dailyCap > 0`, `1 <= maxRescues <= 4`, `window > 0`.
+- The owner balance on each chain is above the value of the deployments on that chain.
+
+The gas price is the largest of `eth_gasPrice` and the base fees of the newest blocks. The float checks apply to a contract that is not deployed yet.
+
+### Onboarding order
+
+For a target on a destination chain, `enroll` does three steps and prints them in this order:
+
+1. `vault.setPolicy(target, policy)` on the destination chain. The output has the transaction hash.
+2. Read-back: `vault.policyOf(target)` over RPC. The output has the block of the read. If one field differs from the input, the command stops with status 1 and sends nothing to Lasna.
+3. `hub.enroll(chainId, target, policy)` on Lasna, with the destination chain ID and the same policy value. The output has the transaction hash.
+
+The vault policy comes first for two reasons. `vault.setPolicy` reconciles the target at once, so a debt that the target has already is paid; a subscription of the hub does not replay an old debt event, and `hub.enroll` sends no callback. And when the hub starts to relay debt events of the target, the vault has the policy already, so no relay ends with `NoPolicy`.
+
+For a target on Lasna, `enroll` sends one transaction: `hub.enroll(5318007, target, policy)`. The hub holds the policy and reconciles the target at once.
+
+Before the first transaction, `enroll` checks the policy rule, the consent of a guest, the code of the target, the owner of the hub and of the vault, and that the hub does not have the target already.
+
+### Removal order
+
+`remove` uses the reverse order:
+
+1. `hub.disarm(chainId, target)` on Lasna. The command confirms that the receipt holds the `Unsubscribe` log of the debt tuple of the target, or that the tuple was unsubscribed before, and that `hub.targetInfo` reports the state `Disarmed`.
+2. For a destination target: `vault.disarm(target)` on the destination chain.
+
+The hub stops to listen first, so no relay goes to a vault that has no policy for the target. The command writes the two hashes to `removed` of the enrollment record. A second run sends nothing.
+
+### Recovery
+
+A vault in debt runs no callback. The hub then marks the vault as down and keeps the debt events of its targets as pending. `recover` restores the vault:
+
+1. Read `debt(vault)` at the callback proxy.
+2. If the debt is above 0: one transaction on the destination chain, `proxy.depositTo{value: debt + float}(vault)`. The float is `selfReserveTarget()` of the vault.
+3. Read `debt(vault)` again.
+4. `hub.vaultUp(chainId)` on Lasna, and again until the `VaultUp` event reports `remaining == 0`. Each call sends one catch-up sweep for at most 8 pending targets. The command prints each hash with `sent` and `remaining`.
+
+Rule: `hub.vaultUp` runs only when the vault debt is 0. The hub cannot read the destination ledger, so the command makes the check: if the debt is above 0 after step 3, or if the deposit cannot be sent, the command exits with status 1 and sends nothing to Lasna. A sweep request to a vault in debt is not delivered, and its targets are not pending any more.
+
+### Loop check
+
+`loop-check` deploys a `CanaryCallback` on the destination chain and a `CanaryReactive` on Lasna that calls it, deposits reserves for the Lasna canary, and enrolls the callback canary through the path of `enroll` with `low` 0. So `setPolicy` pays nothing, and the first callback puts the canary into debt. Then the command calls `poke()` and waits for four steps. It prints the hash and the block of each step and writes them to `loopCheck`:
+
+1. `BlacklistContract(canary)` of the callback proxy: the debt event.
+2. `Relayed(requestId, chainId, canary)` of the hub: the reaction on Lasna.
+3. `Result(requestId, canary, Rescued, paid)` of the vault, with the same `requestId`.
+4. `debt(canary) == 0` at the callback proxy.
+
+At the timeout the command exits with status 1 and names the step that did not occur. The next run continues the same check; `--new` starts a new one. The defaults of the canary policy are `high = selfReserveTarget / 4` and `maxDebt = selfReserveTarget` of the vault. The default reserves of the Lasna canary are the fee of 400,000 gas at the current gas price.
+
+### Fork dry run
+
+Run the commands on local forks before the live run. The system contract and the callback proxies of a fork are the real deployed code. `lifeline.forkrelay` emulates only the node: it sends each log to its subscribers through the real `trigger` from the injected address of the node, with 900,000 gas, and each callback request to the real `deliverCallback` from the authorized delivery account of the proxy. The emulation does not prove real delivery or latency.
+
+```
+anvil --fork-url <Lasna RPC>            --port 8545 --disable-min-priority-fee
+anvil --fork-url <Unichain Sepolia RPC> --port 8546 --disable-min-priority-fee
+anvil --fork-url <Base Sepolia RPC>     --port 8547 --disable-min-priority-fee
+cast rpc anvil_mine 0x1 --rpc-url http://127.0.0.1:8545
+
+export LIFELINE_OWNER_KEY=<a throwaway key>
+cast rpc anvil_setBalance <its address> 0x56BC75E2D63100000 --rpc-url http://127.0.0.1:8545   # and ports 8546, 8547
+
+FORKS="--rpc lasna=http://127.0.0.1:8545 --rpc unichain-sepolia=http://127.0.0.1:8546 --rpc base-sepolia=http://127.0.0.1:8547"
+python -m lifeline.ops deploy --config <a copy of the configuration with amounts> --manifest /var/tmp/dry/manifest.json $FORKS
+python -m lifeline.forkrelay --manifest /var/tmp/dry/manifest.json $FORKS --watch &
+python -m lifeline.ops loop-check --chain base-sepolia --canary-reserve 0.05 --manifest /var/tmp/dry/manifest.json $FORKS
+```
+
+- Use a throwaway key and a scratch manifest. A command refuses to write `deployments/manifest.json` when an RPC is a local development node.
+- Give `--rpc` for each chain to each command. The manifest holds the RPC list of the configuration, not the fork URLs.
+- Mine one block on the Lasna fork first: anvil refuses a call at the fork block of Lasna.
+- `forkrelay` refuses an RPC that is not a local development node. One run relays until no new log remains, and prints the number of triggers and deliveries. `--watch` keeps it running, for `loop-check`. `--cron-tick` first sends one cron log record to each cron subscriber. `--state <file>` holds the blocks that earlier runs relayed (default `.cache/forkrelay/state.json`): use a new file for new forks. `--operator <chain>=<address>` and `--gas-price <chain>=<wei>` replace the delivery account and the gas price of the node transactions.
+- On an anvil fork the base fee goes down with each empty block. The node transactions of `forkrelay` use the base fee of the fork point. The float checks of `deploy` and the default canary reserves of `loop-check` use the gas price of the fork, which is lower than the live price: give `--canary-reserve`.
+- `verify` needs the live chains.
+
+The fork dry run is also a test module. It starts the three forks itself and runs the real commands:
+
+```
+pip install -e ".[test]"
+forge build
+export LASNA_RPC_URL=<url> UNICHAIN_SEPOLIA_RPC_URL=<url> BASE_SEPOLIA_RPC_URL=<url>
+python -m pytest lifeline/tests/test_ops_forks.py
+```
+
+Without `anvil`, the build output or one of the three variables, the module is skipped.
+
 ## Development
 
 The contracts are one Foundry project at the repository root: `src/`, `test/`, `lib/`.
