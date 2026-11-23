@@ -32,7 +32,7 @@ from pathlib import Path
 from . import ops
 from .config import ConfigError, open_readers
 from .config import parse_rpc as parse_reader_rpc
-from .events import BLACKLIST, DEBT, RESERVES, WHITELIST, ledger_call, word
+from .events import BLACKLIST, CALLBACK_REQUEST, DEBT, RESERVES, WHITELIST, ledger_call, word
 from .ops import (
     LASNA,
     OUTCOMES,
@@ -58,6 +58,8 @@ from .reader import (
     Snapshot,
     SnapshotError,
     StateUnavailable,
+    _log_position,
+    _write_atomic,
 )
 from .stats import publish
 
@@ -146,10 +148,7 @@ class Scenarios:
         self.data = ops._read_json(self.path, "scenario file") if self.path.exists() else {}
 
     def save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(self.path.name + ".tmp")
-        temporary.write_text(json.dumps(self.data, indent=2) + "\n")
-        os.replace(temporary, self.path)
+        _write_atomic(self.path, json.dumps(self.data, indent=2) + "\n")
 
     def section(self, name: str, chain: str, addresses: dict) -> dict:
         record = self.data.get(name)
@@ -175,11 +174,9 @@ def find_step(record: dict, step: str):
     return next((entry for entry in record["steps"] if entry["step"] == step), None)
 
 
-def add_step(record: dict, step: str, chain: str, block, tx=None) -> dict:
+def add_step(record: dict, step: str, chain: str, block, tx=None) -> None:
     """Adds one step to a scenario record: the name, the chain, the block and the transaction hash."""
-    entry = {"step": step, "chain": chain, "block": block, "tx": tx}
-    record["steps"].append(entry)
-    return entry
+    record["steps"].append({"step": step, "chain": chain, "block": block, "tx": tx})
 
 
 # ----------------------------------------------------------------------------------------------
@@ -204,13 +201,16 @@ def wait_for_event(rpc: ops.Rpc, address: str, topics: list, from_block: int, ti
     return ops.wait_for_log(rpc, address, topics, from_block, time.monotonic() + timeout)
 
 
-def _log_place(log: dict) -> tuple:
-    return block_of(log), hex_int(log["logIndex"])
-
-
 # ----------------------------------------------------------------------------------------------
 # The guardian check: limits of the deployed hub and vault that a load must respect
 # ----------------------------------------------------------------------------------------------
+
+
+def _fee_coeff(session: ops.Session, chain: ops.Chain) -> int:
+    """`_gasPriceCoeffPer1000` of the ledger of a chain, or of the manifest; 1000 if none has it."""
+    coeff, _ = ops.ledger_parameter(chain, session.ledger_abi, "_gasPriceCoeffPer1000",
+                                    session.manifest.data["chains"][chain.name], "gasPriceCoeffPer1000")
+    return coeff or 1000
 
 
 def self_care_today(session: ops.Session) -> int:
@@ -249,9 +249,7 @@ def guardian_problems(session: ops.Session, dest: str = None) -> list:
     _, debt = session.read_ledger(lasna, "debt", hub)
     _, reserves = session.read_ledger(lasna, "reserves", hub)
     balance, floor = lasna.rpc.balance(hub), session.read_hub("principalFloor")
-    coeff, _ = ops.ledger_parameter(lasna, session.ledger_abi, "_gasPriceCoeffPer1000",
-                                    session.manifest.data["chains"][LASNA], "gasPriceCoeffPer1000")
-    fee = ops.trigger_fee(lasna.rpc.gas_price(), coeff or 1000)
+    fee = ops.trigger_fee(lasna.rpc.gas_price(), _fee_coeff(session, lasna))
     if debt:
         problems.append(f"the hub is in debt ({amount(debt)}) and gets no reaction")
     elif reserves < fee:
@@ -338,14 +336,11 @@ def _flag(args, name: str, default: int) -> int:
 
 def _fixture_amounts(args, session: ops.Session, dest: ops.Chain) -> dict:
     """The amounts of the fixtures, in wei. Each default comes from the current gas price of its chain."""
-    lasna, chains = session.lasna, session.manifest.data["chains"]
-    coeff, _ = ops.ledger_parameter(lasna, session.ledger_abi, "_gasPriceCoeffPer1000", chains[LASNA],
-                                    "gasPriceCoeffPer1000")
-    reaction_fee = ops.trigger_fee(lasna.rpc.gas_price(), coeff or 1000, REACTION_GAS)
-    extra, _ = ops.ledger_parameter(dest, session.ledger_abi, "_extraGas", chains[dest.name], "extraGas")
-    coeff, _ = ops.ledger_parameter(dest, session.ledger_abi, "_gasPriceCoeffPer1000", chains[dest.name],
-                                    "gasPriceCoeffPer1000")
-    callback_fee = ops.sweep_fee(extra or 0, CALLBACK_GAS_USED, dest.rpc.gas_price(), coeff or 1000)
+    lasna = session.lasna
+    reaction_fee = ops.trigger_fee(lasna.rpc.gas_price(), _fee_coeff(session, lasna), REACTION_GAS)
+    extra, _ = ops.ledger_parameter(dest, session.ledger_abi, "_extraGas", session.manifest.data["chains"][dest.name],
+                                    "extraGas")
+    callback_fee = ops.sweep_fee(extra or 0, CALLBACK_GAS_USED, dest.rpc.gas_price(), _fee_coeff(session, dest))
     values = {"reactionFee": reaction_fee, "callbackFee": callback_fee}
     # The callback canary uses its start reserves up before the reactive canary does: an arm with no guardian
     # then shows dropped callbacks first and missed events later.
@@ -534,27 +529,68 @@ def cmd_load(args) -> int:
     record = scenarios.section("load", LASNA, {f"arm{arm}.reactive": reactives[arm] for arm in ARMS})
     require_guardian(session, dest)
 
+    def send(arm: str, text: str) -> None:
+        result = poke(lasna.rpc, account, reactives[arm])
+        add_step(record, f"poke {result['n']} arm{arm}", LASNA, result["block"], result["tx"])
+        scenarios.save()
+        say(f"  {text} arm {arm}: Poke({result['n']}) tx {result['tx']} block {result['block']}")
+
+    # The chain is the journal of the load. A run that stopped inside a step left the arms with different
+    # numbers of pokes, and a poke that is in a block can be absent from the record.
+    lasna.rpc.require_idle(account.address)
     start = lasna.rpc.head()
     if record["startBlock"] is None:
         record["startBlock"] = start
+    topic = ops.load_artifact("CanaryReactive").abi.topic("Poke")
+    sent = {arm: lasna.rpc.logs(reactives[arm], [topic], store.entry(f"arm{arm}.reactive")["deployBlock"], start)
+            for arm in ARMS}
+    recorded = {entry["tx"] for entry in record["steps"]}
+    for arm in ARMS:
+        hashes = {log["transactionHash"] for log in sent[arm]}
+        lost = [entry["step"] for entry in record["steps"]
+                if entry["step"].startswith("poke ") and entry["step"].endswith(f" arm{arm}")
+                and entry["tx"] not in hashes]
+        if lost:
+            # A node that is behind would make an arm look behind, and the command would poke it again.
+            raise OpsError(f"the node of {LASNA} at block {start} does not have the log of {lost[0]} of "
+                           f"{scenarios.path}: the node is behind, or the record is of another chain. No "
+                           f"transaction was sent")
+        for log in sent[arm]:
+            if log["transactionHash"] not in recorded:
+                number = hex_int(log["topics"][1])
+                add_step(record, f"poke {number} arm{arm}", LASNA, block_of(log), log["transactionHash"])
+                say(f"  arm {arm}: Poke({number}) tx {log['transactionHash']} block {block_of(log)} is on the "
+                    f"chain and was not in the record: an earlier run stopped before it wrote the step")
+    scenarios.save()
+    most = max(len(logs) for logs in sent.values())
+    for arm in ARMS:
+        for _ in range(most - len(sent[arm])):
+            # The pokes that the stopped step did not send: then each arm has the same number of pokes.
+            require_guardian(session, dest)
+            send(arm, "step of an earlier run that stopped,")
+
+    start = lasna.rpc.head()
     add_step(record, "start", LASNA, start)
     scenarios.save()
     say(f"load: {args.pokes} steps, {args.interval} s apart, from block {start} of {LASNA}")
+    complete = False
     try:
         for step in range(1, args.pokes + 1):
             # Arm C is the experiment only while its guardian works. The check also keeps the fleet safe.
             require_guardian(session, dest)
             for arm in ARMS:
-                result = poke(lasna.rpc, account, reactives[arm])
-                add_step(record, f"poke {result['n']} arm{arm}", LASNA, result["block"], result["tx"])
-                scenarios.save()
-                say(f"  step {step} arm {arm}: Poke({result['n']}) tx {result['tx']} block {result['block']}")
+                send(arm, f"step {step}")
             if step < args.pokes:
                 time.sleep(args.interval)
+        complete = True
     finally:
-        end = lasna.rpc.head()
+        # A run that stops leaves `stopped`, not `end`: the next run sends the pokes that are absent first.
+        try:
+            end = lasna.rpc.head()
+        except (OpsError, RpcError, TransportError):
+            end = max(entry["block"] for entry in record["steps"])  # the node gave no answer
         record["endBlock"] = end
-        add_step(record, "end", LASNA, end)
+        add_step(record, "end" if complete else "stopped", LASNA, end)
         scenarios.save()
     say(f"load: end at block {end} of {LASNA}; blocks and hashes in {scenarios.path}")
     return 0
@@ -596,7 +632,9 @@ def cmd_quarantine(args) -> int:
         f"high {amount(policy.high)}, dailyCap {amount(policy.dailyCap)}")
 
     def hub_logs(*names) -> list:
-        return lasna.rpc.logs(hub, [[hub_abi.topic(name) for name in names], target], enroll_block)
+        # Up to `head()`: not below the block of the newest receipt of this run, also at a node that is behind.
+        return lasna.rpc.logs(hub, [[hub_abi.topic(name) for name in names], target], enroll_block,
+                              lasna.rpc.head())
 
     def record_new() -> dict:
         """Writes each `Rescued` and the `Quarantined` log of the canary to the record. Returns the
@@ -609,13 +647,13 @@ def cmd_quarantine(args) -> int:
                 count = sum(1 for e in record["steps"] if e["step"].startswith("Rescued")) + 1
                 event = hub_abi.decode_event("Rescued", log)
                 add_step(record, f"Rescued {count}", LASNA, block_of(log), log["transactionHash"])
-                say(f"  Rescued {count}: tx {log['transactionHash']} block {hex_int(log['blockNumber'])}, debt "
+                say(f"  Rescued {count}: tx {log['transactionHash']} block {block_of(log)}, debt "
                     f"{amount(event['debt'])}, paid {amount(event['paid'])}")
             elif not is_rescue:
                 quarantined = log
                 if not find_step(record, "Quarantined"):
                     add_step(record, "Quarantined", LASNA, block_of(log), log["transactionHash"])
-                    say(f"  Quarantined: tx {log['transactionHash']} block {hex_int(log['blockNumber'])}")
+                    say(f"  Quarantined: tx {log['transactionHash']} block {block_of(log)}")
         scenarios.save()
         return quarantined
 
@@ -632,20 +670,23 @@ def cmd_quarantine(args) -> int:
         scenarios.save()
         say(f"  poke {result['n']}: tx {result['tx']} block {result['block']}")
         deadline = time.monotonic() + args.timeout
-        while len(hub_logs("Rescued", "Quarantined")) == seen:
+        # `<=`: a node that is behind can give fewer logs than the read before the poke.
+        while len(hub_logs("Rescued", "Quarantined")) <= seen:
             if time.monotonic() >= deadline:
                 raise OpsError(f"no Rescued and no Quarantined of the hub in {args.timeout} s after poke "
                                f"{result['n']}: run the command again to continue")
             time.sleep(ops.POLL_SECONDS)
         quarantined = record_new()
 
-    # One more poke after the quarantine: the canary must get no payment.
+    # One more poke after the quarantine: the canary must get no payment. The record is not complete before
+    # the wait has ended, so a run that stopped in the wait starts the wait again.
     if not find_step(record, "poke after Quarantined"):
         result = poke(lasna.rpc, account, looping)
         add_step(record, "poke after Quarantined", LASNA, result["block"], result["tx"])
         scenarios.save()
-        say(f"  poke after Quarantined: tx {result['tx']} block {result['block']}; wait {args.settle} s")
-        time.sleep(args.settle)
+        say(f"  poke after Quarantined: tx {result['tx']} block {result['block']}")
+    say(f"  wait {args.settle} s for a payment that must not come")
+    time.sleep(args.settle)
 
     # Budget intact: `maxRescues` rescues, no payment after `Quarantined`, principal inside `dailyCap`.
     end = lasna.rpc.head()
@@ -653,7 +694,7 @@ def cmd_quarantine(args) -> int:
     paid = sum(hub_abi.decode_event("Rescued", log)["paid"] for log in rescues)
     top_ups = hub_logs("ToppedUp")
     paid += sum(hub_abi.decode_event("ToppedUp", log)["paid"] for log in top_ups)
-    after = [log for log in rescues + top_ups if _log_place(log) > _log_place(quarantined)]
+    after = [log for log in rescues + top_ups if _log_position(log) > _log_position(quarantined)]
     _, state = target_state(session, lasna, looping)
     say(f"  end block {end}: {len(rescues)} Rescued (maxRescues {policy.maxRescues}), {len(after)} payment(s) after "
         f"Quarantined, principal paid {amount(paid)} of dailyCap {amount(policy.dailyCap)}, hub state {state}")
@@ -801,7 +842,6 @@ def cmd_junk(args) -> int:
     lasna, chain = session.lasna, session.chain(args.chain)
     hub, hub_abi, vault_abi, ledger_abi = session.hub, session.hub_abi, session.vault_abi, session.ledger_abi
     callback_abi = ops.load_artifact("CanaryCallback").abi
-    request_topic = ops.load_artifact("ISystemContractCallbacks").abi.topic("CallbackRequest")
     requester = _owned_fixture(store, lasna.rpc, "junkRequester", account)
 
     # The flood takes the vault offline: each other target of that chain has no guardian in that time.
@@ -844,7 +884,7 @@ def cmd_junk(args) -> int:
 
     vault_topic, waiting_topic = topic_of_address(vault), topic_of_address(waiting)
     chain_topic = topic_of_int(chain.chain_id)
-    vault_debt_log = [ledger_abi.topic("BlacklistContract"), vault_topic]
+    vault_debt_log = [BLACKLIST, vault_topic]
 
     # 1. The canary that waits: `low` 0, so `setPolicy` does not fund it and its first callback is a debt.
     if record["startBlock"] is None:
@@ -868,7 +908,7 @@ def cmd_junk(args) -> int:
         the journal: a request of a run that stopped is in this list."""
         if not lasna.rpc.wait_idle(account.address):
             raise lasna.rpc.not_idle(account.address)
-        return lasna.rpc.logs(lasna.ledger, [request_topic, chain_topic, topic_of_address(requester),
+        return lasna.rpc.logs(lasna.ledger, [CALLBACK_REQUEST, chain_topic, topic_of_address(requester),
                                              topic_of_address(recipient)], lasna_start)
 
     def delivered(from_block: int = None) -> set:
@@ -949,7 +989,7 @@ def cmd_junk(args) -> int:
 
     # 4. A callback to the canary that waits: its debt event comes while the vault is down.
     if not find_step(record, "Pending"):
-        waiting_debt_log = [ledger_abi.topic("BlacklistContract"), waiting_topic]
+        waiting_debt_log = [BLACKLIST, waiting_topic]
         log = wait_for_event(chain.rpc, chain.ledger, waiting_debt_log, flood_start, 0)
         waited = False
         while log is None:
@@ -1062,8 +1102,11 @@ DEFINITIONS = {
         "ledger took from the guardian: its reserves minus its debt at block `from - 1`, minus the same value at "
         "`to`, plus its `SelfCare` deposits, plus each deposit that cleared a debt of it (the ledger state at "
         "the block of its `WhitelistContract` log against the block before), and for the poller plus its fee "
-        "float of the deployment; a fee that the ledger took in the block of such a deposit is not in the "
-        "figure, so `feeDetail.exact` is false for a figure that holds such a deposit."
+        "float of the deployment; each fee figure is a lower bound, because a deposit of another account to a "
+        "guardian with no debt has no log and is not in the figure, and a fee that the ledger took in the block "
+        "of a deposit that cleared a debt is not in it; `feeDetail.exact` is false for a figure that holds a "
+        "deposit that cleared a debt, and for a figure of 0 with `feeDetail.unloggedDeposits` above 0, which is "
+        "the least sum of deposits with no log that the ledger state proves."
     ),
     "capitalLocked": (
         "At `to`: the reserves of the two contracts of the arm, and the funds of the guardian (arm B: the "
@@ -1129,7 +1172,7 @@ class Measurement:
     def decoded(self, chain: str, address: str, abi: ops.Abi, event: str, *indexed) -> list:
         """(block, parameters) of each log of one event, with the given values of its indexed parameters."""
         logs = self.logs(chain, address, [abi.topic(event), *indexed])
-        return [(int(log["blockNumber"], 16), abi.decode_event(event, log)) for log in logs]
+        return [(block_of(log), abi.decode_event(event, log)) for log in logs]
 
     def ledger_state(self, chain: str, account: str, label: str, block=None) -> tuple:
         """(reserves, debt) of an account at the ledger of a chain, at `to` or at one block."""
@@ -1152,8 +1195,8 @@ class Measurement:
         start, end = self.span(chain)
         events = self.logs(chain, self.ledger(chain), [[BLACKLIST, WHITELIST], word(account)])
         intervals = debt_intervals(events)
-        blocks = sum((int(closed["blockNumber"], 16) if closed else end)
-                     - (int(opened["blockNumber"], 16) if opened else start) for opened, closed in intervals)
+        blocks = sum((block_of(closed) if closed else end)
+                     - (block_of(opened) if opened else start) for opened, closed in intervals)
         return blocks, len(intervals)
 
     def numbers(self, chain: str, address: str, abi: ops.Abi, event: str) -> set:
@@ -1171,7 +1214,13 @@ class Measurement:
         `WhitelistContract`: the ledger state at that block against the block before gives the amount, if
         the ledger took no fee from the guardian in that block. A fee of that block makes the deposit and
         the figure too low by that fee, and no log proves that there was none: a reaction or a callback can
-        end with no log. So `exact` is false for a figure that holds such a deposit."""
+        end with no log. So `exact` is false for a figure that holds such a deposit.
+
+        A deposit of another account to a guardian with no debt emits no log at all, so the figure is a lower
+        bound of the fees: `exact` true says that the chain data shows no deposit with an inferred amount, not
+        that there was none. The ledger state proves such a deposit when the identity gives a value below 0.
+        A fee is never below 0: the figure is then 0, `unloggedDeposits` is the least sum of those deposits,
+        and `exact` is false."""
         start, _ = self.span(chain)
 
         def net(block=None) -> int:
@@ -1180,17 +1229,18 @@ class Measurement:
 
         opening, closing = net(start - 1), net()
         self_care = self.decoded(chain, account, abi, "SelfCare") if abi is not None else []
-        cleared = {int(log["blockNumber"], 16)
+        cleared = {block_of(log)
                    for log in self.logs(chain, self.ledger(chain), [WHITELIST, word(account)])}
         deposits = first_deposit
         for block in sorted(cleared):
             same_block = sum(event["added"] for number, event in self_care if number == block)
             deposits += max(net(block) - net(block - 1) - same_block, 0)
         added = sum(event["added"] for _, event in self_care)
+        fees = opening - closing + added + deposits
         return {
             "opening": str(opening), "closing": str(closing), "selfCare": str(added), "deposits": str(deposits),
-            "fees": str(opening - closing + added + deposits),
-            "exact": not cleared,
+            "fees": str(max(fees, 0)), "unloggedDeposits": str(max(-fees, 0)),
+            "exact": not cleared and fees >= 0,
         }
 
     def arm(self, arm: str) -> dict:
@@ -1280,7 +1330,7 @@ class Measurement:
             "resultPaid": str(paid), "selfCareAdded": str(added),
             "unexplainedBalanceChange": str(after - before + paid + added),
             "reservesStart": str(reserves_start), "reservesEnd": str(reserves_end), "debtEnd": str(debt_end),
-            "callbackFailures": len([log for log in failures if start < int(log["blockNumber"], 16) <= end]),
+            "callbackFailures": len([log for log in failures if start < block_of(log) <= end]),
         }
 
     def run(self) -> dict:
@@ -1320,7 +1370,11 @@ def render_table(data: dict) -> str:
     for chain in chains:
         row(f"Guardian cost: principal, {chain}", lambda arm, chain=chain: arm["guardianCost"]["principal"][chain])
     for chain in chains:
-        row(f"Guardian cost: fees, {chain}", lambda arm, chain=chain: arm["guardianCost"]["fees"][chain])
+        row(f"Guardian cost: fees (lower bound), {chain}",
+            lambda arm, chain=chain: arm["guardianCost"]["fees"][chain])
+    row("Guardian cost: fee figures that are not exact",
+        lambda arm: ", ".join(chain for chain in chains
+                              if not arm["guardianCost"]["feeDetail"].get(chain, {"exact": True})["exact"]) or "none")
     row("Guardian cost: fee scope", lambda arm: arm["guardianCost"]["feeScope"])
     row("Blocks of guardian downtime", lambda arm: listing(arm["guardianDowntimeBlocks"]))
     row("Capital locked", lambda arm: listing(arm["capitalLocked"]))

@@ -248,10 +248,12 @@ def test_measure_gives_each_metric_of_each_arm_from_the_chain_data(network, caps
     assert c["guardianCost"]["principal"] == {LASNA: "150", BASE: "55"}, "Rescued 110 + ToppedUp 40; Result 55"
     # Hub: reserves 200 at block 999 and 150 at `to`, self-care 30 + 20 in the range.
     assert c["guardianCost"]["feeDetail"][LASNA] == {
-        "opening": "200", "closing": "150", "selfCare": "50", "deposits": "0", "fees": "100", "exact": True}
+        "opening": "200", "closing": "150", "selfCare": "50", "deposits": "0", "fees": "100", "unloggedDeposits": "0",
+        "exact": True}
     # Vault: reserves 100 at both ends, self-care 5 + 3, and the deposit of 108 that cleared the debt of 8.
     assert c["guardianCost"]["feeDetail"][BASE] == {
-        "opening": "100", "closing": "100", "selfCare": "8", "deposits": "108", "fees": "116", "exact": False}
+        "opening": "100", "closing": "100", "selfCare": "8", "deposits": "108", "fees": "116", "unloggedDeposits": "0",
+        "exact": False}
     assert c["guardianCost"]["fees"] == {LASNA: "100", BASE: "116"}
     assert "no share is estimated" in c["guardianCost"]["feeScope"]
     assert (a["guardianDowntimeBlocks"], b["guardianDowntimeBlocks"], c["guardianDowntimeBlocks"]) == \
@@ -284,8 +286,9 @@ def test_measure_gives_each_metric_of_each_arm_from_the_chain_data(network, caps
         "| Callbacks dropped | 1 | 2 | 0 |",
         "| Guardian cost: principal, lasna | 0 | 700 | 150 |",
         "| Guardian cost: principal, base-sepolia | 0 | 0 | 55 |",
-        "| Guardian cost: fees, lasna | 0 | 600 | 100 |",
-        "| Guardian cost: fees, base-sepolia | 0 | 0 | 116 |",
+        "| Guardian cost: fees (lower bound), lasna | 0 | 600 | 100 |",
+        "| Guardian cost: fees (lower bound), base-sepolia | 0 | 0 | 116 |",
+        "| Guardian cost: fee figures that are not exact | none | none | base-sepolia |",
         "| Balance change that the payments do not explain | 0 |",
     ):
         assert row in table, row
@@ -375,14 +378,47 @@ def test_a_fee_figure_with_a_deposit_from_the_ledger_state_is_not_exact(network)
     arms = network.data("out")["arms"]
     # Vault: 100 - 93 + self-care 8 + deposit 101. The fee of 7 in block 2000 is not in the figure.
     assert arms["C"]["guardianCost"]["feeDetail"][BASE] == {
-        "opening": "100", "closing": "93", "selfCare": "8", "deposits": "101", "fees": "116", "exact": False}
+        "opening": "100", "closing": "93", "selfCare": "8", "deposits": "101", "fees": "116", "unloggedDeposits": "0",
+        "exact": False}
     # Poller: 0 - 93 + fee float 1000 + deposit 101 = 1008. The ledger took 1015.
     assert arms["B"]["guardianCost"]["feeDetail"][LASNA] == {
-        "opening": "0", "closing": "93", "selfCare": "0", "deposits": "1101", "fees": "1008", "exact": False}
+        "opening": "0", "closing": "93", "selfCare": "0", "deposits": "1101", "fees": "1008", "unloggedDeposits": "0",
+        "exact": False}
     assert arms["B"]["guardianDowntimeBlocks"] == {LASNA: 100}
     # The hub got no such deposit: its figure is the ledger identity with no inferred part.
     assert arms["C"]["guardianCost"]["feeDetail"][LASNA]["exact"] is True
     assert "`feeDetail.exact` is false" in network.data("out")["definitions"]["guardianCost"]
+
+
+@needs_build
+def test_a_deposit_with_no_log_never_gives_a_fee_below_zero_and_each_fee_figure_is_a_lower_bound(network):
+    """A deposit of another account to a guardian with no debt emits no log. The hub paid fees of 100 in the
+    range (reserves 200 to 150, self-care 50). Then the owner deposits to its float with `depositTo`."""
+    # A deposit of 250 at block 2500: the reserves at `to` are 400. The identity gives 200 - 400 + 50 = -150.
+    # A fee is never below 0: the figure is 0, and the ledger state proves a deposit of 150 or more.
+    network.ledger(LASNA, HUB, reserves=[(900, 200), (1302, 190), (2000, 150), (2500, 400)])
+    assert network.measure("large") == 0
+    hub = network.data("large")["arms"]["C"]["guardianCost"]
+    assert hub["feeDetail"][LASNA] == {
+        "opening": "200", "closing": "400", "selfCare": "50", "deposits": "0", "fees": "0", "unloggedDeposits": "150",
+        "exact": False}
+    assert hub["fees"][LASNA] == "0"
+    table = (network.tmp_path / "large" / "table.md").read_text()
+    assert "| Guardian cost: fees (lower bound), lasna | 0 | 600 | 0 |" in table
+    assert "| Guardian cost: fee figures that are not exact | none | none | lasna, base-sepolia |" in table
+
+    # A deposit of 70 at block 2500: the reserves at `to` are 220. The identity gives 200 - 220 + 50 = 30, and
+    # the ledger took 100. No chain data shows this deposit, so the figure is a lower bound and the files say so.
+    network.ledger(LASNA, HUB, reserves=[(900, 200), (1302, 190), (2000, 150), (2500, 220)])
+    assert network.measure("small") == 0
+    data = network.data("small")
+    assert data["arms"]["C"]["guardianCost"]["feeDetail"][LASNA] == {
+        "opening": "200", "closing": "220", "selfCare": "50", "deposits": "0", "fees": "30", "unloggedDeposits": "0",
+        "exact": True}
+    definition = data["definitions"]["guardianCost"]
+    assert "each fee figure is a lower bound" in definition and "has no log and is not in the figure" in definition
+    table = (network.tmp_path / "small" / "table.md").read_text()
+    assert "| Guardian cost: fees (lower bound), lasna | 0 | 600 | 30 |" in table and definition in table
 
 
 def test_a_junk_payload_names_its_request_its_flood_and_its_requester():

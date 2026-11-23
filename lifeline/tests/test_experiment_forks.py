@@ -249,7 +249,75 @@ def test_the_drivers_take_their_targets_from_the_fixtures_section_only(net):
 # Load and table
 # ----------------------------------------------------------------------------------------------
 
-ROUNDS_BEFORE_THE_TICK, ROUNDS_AFTER_THE_TICK = 9, 3
+# The test of the run that stops leaves 2 steps: the one that stopped and the one of the run after it.
+ROUNDS_OF_THE_STOPPED_RUN, ROUNDS_BEFORE_THE_TICK, ROUNDS_AFTER_THE_TICK = 2, 7, 3
+
+
+def test_load_completes_the_step_of_a_run_that_stopped_and_gives_each_arm_the_same_pokes(net):
+    """A run that stops after the poke of arm A must not leave arm A with one poke more than the other arms:
+    the three arms get the same scripted load. The chain is the journal: the next run writes the poke that
+    the record does not have, sends the pokes of the step that stopped, and then runs its own steps."""
+    reactives = {arm: net.address(f"arm{arm}.reactive") for arm in experiment.ARMS}
+    load = ["load", "--pokes", "1", "--interval", "0"]
+
+    def pokes() -> dict:
+        return {arm: net.numbers(LASNA, reactives[arm], net.canary_abi, "Poke") for arm in experiment.ARMS}
+
+    # The node takes the first transaction of the command and gives no answer after it: the poke of arm A is
+    # in a block, the command did not see its receipt, and it sent no poke for arm B and arm C.
+    def stop_after_the_first_transaction(chain, method, params, result):
+        if method == "eth_sendRawTransaction":
+            net.proxy.refuse = ("eth_",)
+        return result
+
+    mark = net.proxy.mark()
+    net.proxy.tamper = stop_after_the_first_transaction
+    try:
+        result = net.experiment(*load)
+    finally:
+        net.proxy.tamper, net.proxy.refuse = None, ()
+    assert result.returncode == 1, result.stdout
+    (first,) = net.proxy.sent(mark)
+    assert pokes() == {"A": {1}, "B": set(), "C": set()}
+    record = net.scenario("load")
+    assert step_names(record) == ["start", "stopped"], "the run that stopped does not leave `end`"
+    assert record["startBlock"] <= record["endBlock"]
+
+    # A node that is behind does not have the poke of the record: the command must not poke that arm again.
+    # Here the record gets the poke of arm A, and the node gives no `Poke` log.
+    saved = net.scenarios.read_text()
+    with_poke = json.loads(saved)
+    experiment.add_step(with_poke["load"], "poke 1 armA", LASNA, int(net.rpcs[LASNA].receipt(first[1])["blockNumber"], 16),
+                        first[1])
+    net.scenarios.write_text(json.dumps(with_poke))
+    topic = net.canary_abi.topic("Poke")
+    net.proxy.tamper = lambda chain, method, params, result: (
+        [] if method == "eth_getLogs" and params[0]["topics"][0] == topic else result)
+    blocks, mark = net.blocks(), net.proxy.mark()
+    try:
+        result = net.experiment(*load)
+    finally:
+        net.proxy.tamper = None
+    assert result.returncode == 1 and "does not have the log of poke 1 armA" in result.stderr, result.stdout
+    assert "No transaction was sent" in result.stderr and net.proxy.sent(mark) == [] and net.blocks() == blocks
+    net.scenarios.write_text(saved)
+
+    # The next run: the poke of arm A gets its step, arm B and arm C get the poke of the step that stopped,
+    # and then the one step of this run goes to each arm.
+    mark = net.proxy.mark()
+    result = net.experiment(*load)
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "arm A: Poke(1)" in result.stdout and "was not in the record" in result.stdout
+    assert result.stdout.count("step of an earlier run that stopped,") == 2
+    assert pokes() == {arm: {1, 2} for arm in experiment.ARMS}, "the same number of pokes for each arm"
+    assert len(net.proxy.sent(mark)) == 5, "2 pokes of the step that stopped and 3 of the new step"
+    record = net.scenario("load")
+    names = step_names(record)
+    assert sorted(name for name in names if name.startswith("poke")) == sorted(
+        f"poke {n} arm{arm}" for n in (1, 2) for arm in experiment.ARMS)
+    assert names.count("start") == 2 and names.count("stopped") == 1 and names[-1] == "end"
+    assert next(entry for entry in record["steps"] if entry["step"] == "poke 1 armA")["tx"] == first[1]
+    relayed(net.relay())
 
 
 def test_load_uses_up_the_start_reserves_and_measure_builds_the_table(net):
@@ -260,22 +328,23 @@ def test_load_uses_up_the_start_reserves_and_measure_builds_the_table(net):
         assert result.returncode == 0, result.stderr + result.stdout
         relayed(net.relay())
 
-    start = net.blocks()[LASNA]
     for _ in range(ROUNDS_BEFORE_THE_TICK):
         load_round()
     # One cron tick: the poller of arm B and the gauge of the hub run.
     relayed(net.relay("--cron-tick"))
     for _ in range(ROUNDS_AFTER_THE_TICK):
         load_round()
-    rounds = ROUNDS_BEFORE_THE_TICK + ROUNDS_AFTER_THE_TICK
+    rounds = ROUNDS_OF_THE_STOPPED_RUN + ROUNDS_BEFORE_THE_TICK + ROUNDS_AFTER_THE_TICK
 
     # The scenario file has the blocks and the hashes of the load, and no time.
     load = net.scenario("load")
-    assert load["chain"] == LASNA and start <= load["startBlock"] < load["endBlock"] <= net.blocks()[LASNA]
+    assert load["chain"] == LASNA and net.origin[LASNA] <= load["startBlock"] < load["endBlock"] <= net.blocks()[LASNA]
     assert load["addresses"] == {f"arm{arm}.reactive": entries[f"arm{arm}.reactive"]["address"]
                                  for arm in experiment.ARMS}
     pokes = [entry for entry in load["steps"] if entry["step"].startswith("poke")]
     assert len(pokes) == 3 * rounds and step_names(load).count("start") == rounds
+    # Each run but the one that stopped sent each of its steps.
+    assert step_names(load).count("end") == rounds - 1 and step_names(load).count("stopped") == 1
     for entry in pokes:
         receipt = net.rpcs[LASNA].receipt(entry["tx"])
         assert int(receipt["blockNumber"], 16) == entry["block"] and set(entry) == {"step", "chain", "block", "tx"}
