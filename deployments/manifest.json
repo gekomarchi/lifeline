@@ -123,7 +123,10 @@
         "enroll": "0xa0811356257c2c6e6111d19a070bba62f9afb7d85e53eec2bce287d9766635b4",
         "enrollBlock": 9039305
       },
-      "removed": null
+      "removed": {
+        "hubDisarm": "0x8452aa6825b4eabe87a6c5b5a4a74b2b364e36745afdea8934b7b1ad3537e307",
+        "vaultDisarm": "0xc3313c96bea2d9c5c3b512309bb857337fd415157953fda47d79a4af79e40df1"
+      }
     }
   ],
   "loopCheck": {
