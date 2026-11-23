@@ -1,0 +1,64 @@
+{
+  "quarantine": {
+    "chain": "lasna",
+    "addresses": {
+      "looping": "0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9",
+      "hub": "0xbba61E507e7CC334e57A62c39A776272DA6b07Dd"
+    },
+    "startBlock": 9051424,
+    "endBlock": 9051557,
+    "steps": [
+      {
+        "step": "poke 1",
+        "chain": "lasna",
+        "block": 9051442,
+        "tx": "0xe08edfb43f3fe2362bce2b0b7cc4c6632d782c21350fbe518b27c0fcbf0e81a2"
+      },
+      {
+        "step": "Rescued 1",
+        "chain": "lasna",
+        "block": 9051444,
+        "tx": "0xeb5f7b5f092550dc46bb9eee726ac6d0c9bcf0999510209cd32dafb48cb6b955"
+      },
+      {
+        "step": "poke 2",
+        "chain": "lasna",
+        "block": 9051464,
+        "tx": "0x22fbe2a58f6f5280a8a8ce93cc69e38d937c9ae0d05c062dd9e94b678331be75"
+      },
+      {
+        "step": "Rescued 2",
+        "chain": "lasna",
+        "block": 9051466,
+        "tx": "0x0513ec1482d1df1aa9fa7a6376efd7656a3c320cfd7245a62cb37aed1a0acf2d"
+      },
+      {
+        "step": "poke 3",
+        "chain": "lasna",
+        "block": 9051486,
+        "tx": "0x446dd691d49df772ff468999334f52a06ecba34c5b44d8639c355358bc2b9f0f"
+      },
+      {
+        "step": "Quarantined",
+        "chain": "lasna",
+        "block": 9051488,
+        "tx": "0xe5958954b40c20d3001134a31a5d3bd515f4c7b89f208940f2717e50cf95d0bd"
+      },
+      {
+        "step": "poke after Quarantined",
+        "chain": "lasna",
+        "block": 9051500,
+        "tx": "0x0094f600dcf0f54cbe2f4e19a8d7cffce95ac5c8683f8b17af97c0639fbd6966"
+      }
+    ],
+    "budget": {
+      "maxRescues": 2,
+      "rescues": 2,
+      "paymentsAfterQuarantined": 0,
+      "principalPaid": "24960000000000000",
+      "dailyCap": "260000000000000000",
+      "hubState": "Quarantined",
+      "intact": true
+    }
+  }
+}

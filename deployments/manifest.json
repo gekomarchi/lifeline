@@ -127,6 +127,75 @@
         "hubDisarm": "0x8452aa6825b4eabe87a6c5b5a4a74b2b364e36745afdea8934b7b1ad3537e307",
         "vaultDisarm": "0xc3313c96bea2d9c5c3b512309bb857337fd415157953fda47d79a4af79e40df1"
       }
+    },
+    {
+      "label": "experiment armC.reactive",
+      "chain": "lasna",
+      "chainId": 5318007,
+      "target": "0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948",
+      "policy": {
+        "low": "16000000000000000",
+        "high": "64000000000000000",
+        "maxDebt": "64000000000000000",
+        "dailyCap": "1280000000000000000",
+        "maxRescues": 4,
+        "window": 3600
+      },
+      "guest": false,
+      "consent": null,
+      "txs": {
+        "setPolicy": null,
+        "readBackBlock": null,
+        "enroll": "0x93f57768528738af8146ef14bb2c39e98b1c8441b33cdf9891811f255aed8f38",
+        "enrollBlock": 9051371
+      },
+      "removed": null
+    },
+    {
+      "label": "experiment armC.callback",
+      "chain": "base-sepolia",
+      "chainId": 84532,
+      "target": "0x313496642Ce898F7dD723B6AB6CF4A5891A456ed",
+      "policy": {
+        "low": "726000000000",
+        "high": "2904000000000",
+        "maxDebt": "2904000000000",
+        "dailyCap": "58080000000000",
+        "maxRescues": 4,
+        "window": 3600
+      },
+      "guest": false,
+      "consent": null,
+      "txs": {
+        "setPolicy": "0xad326a956ad9d7a731fc25c7c9992e597e955a447c3d12fb72b4fc1de568fd98",
+        "readBackBlock": 62553282,
+        "enroll": "0xa69bfad93831f13ad28172c817b950a0c48e7bab5b87771fdc0c023a7779c129",
+        "enrollBlock": 9051389
+      },
+      "removed": null
+    },
+    {
+      "label": "experiment looping",
+      "chain": "lasna",
+      "chainId": 5318007,
+      "target": "0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9",
+      "policy": {
+        "low": "0",
+        "high": "1000000000000000",
+        "maxDebt": "64000000000000000",
+        "dailyCap": "260000000000000000",
+        "maxRescues": 2,
+        "window": 3600
+      },
+      "guest": false,
+      "consent": null,
+      "txs": {
+        "setPolicy": null,
+        "readBackBlock": null,
+        "enroll": "0xa4538529f12a96807cb7a780b40433fae769f615af0dc3e489151210b94b4f65",
+        "enrollBlock": 9051404
+      },
+      "removed": null
     }
   ],
   "loopCheck": {
@@ -181,5 +250,131 @@
     "pokeTx": "0x04f9abd8cff48ce91443dad8961bdaf69457108b66e2c39fae796e0a6b080ebe",
     "pokeBlock": 9039313
   },
-  "fixtures": {}
+  "fixtures": {
+    "armA.reactive": {
+      "contract": "CanaryReactive",
+      "chain": "lasna",
+      "chainId": 5318007,
+      "address": "0xacF7a5E9B0e986863579f4E1bA0bd2c54FF7a427",
+      "deployBlock": 9051258,
+      "deployTx": "0xef5e9026b9063bcaf532c6ab6fdb5b2455a6b2079a4de875f12f9ff5143fa8d1",
+      "reserve": "80000000000000000",
+      "fundTx": "0x7116604e8f1c029d0162a5ae6109256dcb82625e9aeaac1279c9646513b6e08c",
+      "callbackGas": 300000
+    },
+    "armA.callback": {
+      "contract": "CanaryCallback",
+      "chain": "base-sepolia",
+      "chainId": 84532,
+      "address": "0x0084fd7F5CEE4ae63ED78CCE7Aa2704D8ec03899",
+      "deployBlock": 62552591,
+      "deployTx": "0x9113db75a6a29ce287427d9ffa11fbd76430d1a0f108b6e06488a4ff301e00e4",
+      "reserve": "1452000000000",
+      "fundTx": "0xddd5cb6082f1a5766aa154a8d6fe908e13e6bd2c5a4b8b5ca0d6fc171202cbb1"
+    },
+    "armB.reactive": {
+      "contract": "CanaryReactive",
+      "chain": "lasna",
+      "chainId": 5318007,
+      "address": "0x052BfF110A8d2e36310A23BF2D03CffcA82Ad3F0",
+      "deployBlock": 9051282,
+      "deployTx": "0xf9f53b469ced9327bb311009e8b71ef0b58465a530b407a68402f49615758014",
+      "reserve": "80000000000000000",
+      "fundTx": "0x58a01d836fb37e5fc1c28f754e76424f1ef9609ee05d76c5d300a398fc28a521",
+      "callbackGas": 300000
+    },
+    "armB.callback": {
+      "contract": "CanaryCallback",
+      "chain": "base-sepolia",
+      "chainId": 84532,
+      "address": "0x65Dd2D77e59b3249FE58402e95a3Cc90dC269a22",
+      "deployBlock": 62552721,
+      "deployTx": "0xad6a41932188eb5fc729e30df8811fe512cddbdaa066cdccbc42638ae376e721",
+      "reserve": "1452000000000",
+      "fundTx": "0x66625e90c1844369b75473495124ce849ba7dd4a92ab01128b3698e0b4768c3b"
+    },
+    "armB.poller": {
+      "contract": "CronPoller",
+      "chain": "lasna",
+      "chainId": 5318007,
+      "address": "0xA98f8356E8CFC131c0B74FfBACDC91Fb658B9D1B",
+      "deployBlock": 9051329,
+      "deployTx": "0x1fd10b7dbfb30c3abc71e17743a25523a88784956fb79a1af92b80e136f0a534",
+      "cronTopic": "Cron10000",
+      "low": "16000000000000000",
+      "high": "64000000000000000",
+      "feeFloat": "320000000000000000",
+      "principal": "192000000000000000",
+      "ward": "0x052BfF110A8d2e36310A23BF2D03CffcA82Ad3F0"
+    },
+    "armC.reactive": {
+      "contract": "CanaryReactive",
+      "chain": "lasna",
+      "chainId": 5318007,
+      "address": "0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948",
+      "deployBlock": 9051306,
+      "deployTx": "0x7c6e69996eadbfba6d77abb0eeadf7cb2b8be7c4ba0dcca14805eba4b34cbb82",
+      "reserve": "80000000000000000",
+      "fundTx": "0xc69382fc1f367b4dcc73fa3a199283f2bd6ac2cc41865a981a0c0e711cba13d3",
+      "callbackGas": 300000,
+      "policy": {
+        "low": "16000000000000000",
+        "high": "64000000000000000",
+        "maxDebt": "64000000000000000",
+        "dailyCap": "1280000000000000000",
+        "maxRescues": 4,
+        "window": 3600
+      }
+    },
+    "armC.callback": {
+      "contract": "CanaryCallback",
+      "chain": "base-sepolia",
+      "chainId": 84532,
+      "address": "0x313496642Ce898F7dD723B6AB6CF4A5891A456ed",
+      "deployBlock": 62552854,
+      "deployTx": "0xfd185ce8abd0157c5302b2f51bf7a7650700c45fe6e510859ae59314847f88a8",
+      "reserve": "1452000000000",
+      "fundTx": "0x20c310f955e53fcc8f89c32931551d9beb7090d451d29299decd25d23e3a3a96",
+      "policy": {
+        "low": "726000000000",
+        "high": "2904000000000",
+        "maxDebt": "2904000000000",
+        "dailyCap": "58080000000000",
+        "maxRescues": 4,
+        "window": 3600
+      }
+    },
+    "looping": {
+      "contract": "LoopingCanary",
+      "chain": "lasna",
+      "chainId": 5318007,
+      "address": "0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9",
+      "deployBlock": 9051340,
+      "deployTx": "0x2b9e175c21b4d176b9f47b44617b9a34d3f40a49e90fdf4c2ea720e93c6fd1c7",
+      "policy": {
+        "low": "0",
+        "high": "1000000000000000",
+        "maxDebt": "64000000000000000",
+        "dailyCap": "260000000000000000",
+        "maxRescues": 2,
+        "window": 3600
+      }
+    },
+    "waiting.callback": {
+      "contract": "CanaryCallback",
+      "chain": "base-sepolia",
+      "chainId": 84532,
+      "address": "0xC67C2BDE920E75378eB71c9011abd3F4C1775289",
+      "deployBlock": 62553097,
+      "deployTx": "0xf42168a5f35d33f6f3ba674cc6e7fa35d67934b1f53aaa5db0183977cc9018be"
+    },
+    "junkRequester": {
+      "contract": "JunkRequester",
+      "chain": "lasna",
+      "chainId": 5318007,
+      "address": "0xA3EB4E18398ECf26e71604B2D8b39983A08EED5C",
+      "deployBlock": 9051354,
+      "deployTx": "0x4d2de1cd765d29d5f17f2e5c523a0867a3da8164088f64e5e850f1e4aa086e2b"
+    }
+  }
 }
