@@ -952,8 +952,11 @@ def cmd_junk(args) -> int:
         the journal: a request of a run that stopped is in this list."""
         if not lasna.rpc.wait_idle(account.address):
             raise lasna.rpc.not_idle(account.address)
+        # Up to `head()`: not below the block of the newest request of this run, also at a node that is
+        # behind. A list with a request too few would permit a request above the limit, a burst before the
+        # delivery of the burst before it, and a number that a request has already.
         return lasna.rpc.logs(lasna.ledger, [CALLBACK_REQUEST, chain_topic, topic_of_address(requester),
-                                             topic_of_address(recipient)], lasna_start)
+                                             topic_of_address(recipient)], lasna_start, lasna.rpc.head())
 
     def delivered(from_block: int = None) -> set:
         """The numbers of the junk requests of this flood that the proxy delivered. Each delivery is a

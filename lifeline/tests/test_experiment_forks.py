@@ -659,11 +659,36 @@ def junk_numbers(net, tag: int) -> list:
 def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net):
     """The limit of the junk requests holds over runs that stop: the chain is the journal of the requests."""
     short = ["--burst", "8", "--pause", "1", "--timeout", "60"]
+    # A node of Lasna that goes back: from the first request on the chain, after each read that shows the
+    # account as idle, it gives a block that is 3 blocks old as its newest block one time. The count of the
+    # requests must not come from that block.
+    request_topic = ops.load_artifact("ISystemContractCallbacks").abi.topic("CallbackRequest")
+    node = {"requests": False, "idle": False, "old": 0}
+
+    def goes_back(chain, method, params, result):
+        if chain != LASNA:
+            return result
+        if method == "eth_getLogs" and params[0]["topics"][0] == request_topic and result:
+            node["requests"] = True
+        elif method == "eth_getTransactionCount" and params[1] == "pending":
+            node["idle"] = node["requests"]
+        elif method == "eth_blockNumber" and node["idle"]:
+            node["idle"] = False
+            node["old"] += 1
+            return hex(int(result, 16) - 3)
+        return result
+
     with net.watch():
-        result = net.experiment("junk", "--chain", BASE, "--max-junk", "3", *short)
+        net.proxy.tamper = goes_back
+        try:
+            result = net.experiment("junk", "--chain", BASE, "--max-junk", "3", *short)
+        finally:
+            net.proxy.tamper = None
         assert result.returncode == 1 and "not in debt after 3 junk requests" in result.stderr, result.stdout
+        assert node["old"] >= 2, "the node went back before a count of the requests"
         record = net.scenario("junk")
-        assert record["junkRequests"] == 3 == junk_requests(net)
+        assert record["junkRequests"] == 3 == junk_requests(net), "a request above the limit"
+        assert junk_numbers(net, record["lasnaStartBlock"]) == [1, 2, 3], "a number for each request"
         assert step_names(record) == ["flood start", "first junk request"] and record["endBlock"] is None
         # The first request goes out alone: the fee of one delivery is not known before it.
         assert "; 1 more sent" in result.stdout
