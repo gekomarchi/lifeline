@@ -88,6 +88,7 @@ python -m lifeline.ops enroll     --chain <name> --target <address> --label <tex
 python -m lifeline.ops fleet      [--config <file>]
 python -m lifeline.ops remove     --chain <name> --target <address>
 python -m lifeline.ops recover    --chain <name>
+python -m lifeline.ops status
 python -m lifeline.ops loop-check --chain <name> [--timeout <seconds>]
 python -m lifeline.forkrelay      --rpc <chain>=<url> ... [--manifest <file>] [--cron-tick]
 ```
@@ -127,6 +128,7 @@ Each URL of a chain must answer `eth_chainId` with the chain ID of the configura
 | `fleet` | | Onboards each entry of `fleet` of the configuration through the path of `enroll`, and prints the Lasna block of each `hub.enroll`. An entry that the hub has already is skipped. The first run starts the 48-hour window. |
 | `remove` | `--chain`, `--target` | Removes one target. See "Removal order". |
 | `recover` | `--chain` | Restores a vault that is in debt. See "Recovery". |
+| `status` | | Reads the funds and the state of the hub, of each vault and of each enrolled target, and prints a `WARN` line for each item that needs an action of the owner. It needs no key and sends nothing. Exit status 1 if there is a warning. See "Funds and status". |
 | `loop-check` | `--chain`, `--timeout <seconds>` (default 600), `--new`, `--canary-reserve <amount>`, `--high <amount>`, `--max-debt <amount>` | Shows the destination loop with a canary pair. See "Loop check". |
 
 ### `deployments/config.json`
@@ -150,7 +152,7 @@ Values of the file and their sources:
 
 - Ledgers: Lasna `0x8888888888888888888888888888888888888888`, Base Sepolia `0x476F44b11F5C942c58f4c8E3d0300E5710743585`, Unichain Sepolia `0x775c9B990ADe401060B78D0e98684eEf8d2466C1` (chain ID 1301). Source: the Reactive Network documentation, "Origins & Destinations"; they are the ledgers of `config/network.json`.
 - `sweepBase` 220,000: both proxies answer `_extraGas()` 80,000 and `_maxChargeGas()` 50,000.
-- `measuredSweepGas` 619,221: the `SWEEP_GAS n=8 base=220000` line of the test, on the Base Sepolia fork. The Unichain Sepolia proxy answers the same three fee values, and the file uses the same number for it. This is an assumption: the test does not run on a Unichain Sepolia fork.
+- `measuredSweepGas` 619,221: the `SWEEP_GAS n=8 base=220000` line of the contract test, on the Base Sepolia fork. It is the gas of the delivery transaction, which is more than the gas that the proxy charges. The contract test does not run on a Unichain Sepolia fork, so the fork dry run measures both chains: a full sweep of 8 rescued targets through the real proxy was charged 524,784 gas on a Unichain Sepolia fork and 524,774 gas on a Base Sepolia fork, each plus `_extraGas`. The fee that `deploy` computes from 619,221 is about 16 % above the fee that the proxy charged. The test `test_measured_sweep_gas_of_the_configuration_holds_on_each_proxy` repeats the measurement.
 - The amounts of `hub` and `vaults` and the policies of `fleet` are operator inputs. The source gives only the marks of FastfillReactive: `low` 0.05 and `high` 0.25 lREACT.
 - The fleet addresses are the Fastfill contracts of the builder.
 
@@ -164,28 +166,34 @@ The output of `deploy`. The commands after `deploy` read it and add their record
 | `cronTopic` | The cron topic of the hub. |
 | `chains.<name>` | `chainId`, `ledger` and the `rpc` list of the configuration. |
 | `contracts.hub` | `chain`, `chainId`, `address`, `deployBlock`, `deployTx`, and `cron` (`topic`, `setCronTopicTx`, `resumeCronTx`). |
-| `contracts.vaults.<name>` | `chainId`, `address`, `deployBlock`, `deployTx`, `setVaultTx`. |
+| `contracts.vaults.<name>` | `chainId`, `address`, `deployBlock`, `deployTx`, `setVaultTx`, and after a recovery `recoveries[]`: for each run of `recover` that sent a transaction, `deposit`, `depositBlock` and `vaultUp[]` (`tx`, `block`, `requestId`, `sent`, `remaining`). |
 | `enrollments[]` | One record for each enrollment: `label`, `chain`, `chainId`, `target`, `policy`, `guest`, `consent`, `txs` (`setPolicy`, `readBackBlock`, `enroll`, `enrollBlock`) and `removed`. For a Lasna target `setPolicy` and `readBackBlock` are null. A record with `enrollBlock` null is an enrollment that did not finish. `removed` is null, or `{ "hubDisarm", "vaultDisarm" }` after `remove`; a hash is null if that step needed no transaction. |
-| `loopCheck` | The newest loop check: `chain`, `chainId`, `status` (`setup`, `waiting`, `timeout`, `failed` or `passed`), `missing`, the two canaries (`canaryCallback`, `canaryReactive`), `reserve`, `fundTx`, `policy`, `pokeTx`, `pokeBlock`, and `steps` with the hash and the block of each step. |
+| `loopCheck` | The newest loop check: `chain`, `chainId`, `status` (`setup`, `waiting`, `timeout`, `failed` or `passed`), `missing`, the two canaries (`canaryCallback`, `canaryReactive`, each with `chain`, `chainId`, `address`, `deployBlock`, `deployTx`), `reserve`, `fundTx`, `policy`, `pokeTx`, `pokeBlock`, and `steps` with the hash and the block of each step. |
 | `fixtures` | An empty object. The experiment fixtures fill it. |
 
 A command changes only its own entries and keeps each other entry of the file. The file holds no key. An `--rpc` URL is not written to it.
 
 ### A run that stops
 
-A command writes the manifest before each transaction goes to the node, with the nonce and the hash of that transaction (a journal). The hash moves to its place in the file when the transaction has a receipt. So the same command, run again, continues after a failure or a lost answer of a node. The rule for a journal:
+A command writes the manifest before each transaction goes to the node, with the nonce, the hash and the fee fields of that transaction (a journal). The hash moves to its place in the file when the transaction has a receipt. So the same command, run again, continues after a failure or a lost answer of a node. The rules:
 
-- The chain has the transaction, in a block or not: the command waits for it and sends nothing.
-- The node does not know the transaction and the nonce is free: the command sends the transaction again with the same nonce. One of the two at most can get into a block.
-- The node does not know the transaction and the nonce was used: the result is not known. The command stops and sends nothing. It does not use a new nonce. Run the command again later. If the result is the same, find the transaction of that nonce in a block explorer and correct the manifest.
+- New transaction. A command sends a transaction with a new nonce only when each earlier transaction of the owner account on that chain has a receipt. It waits for that state for a limited time, then it stops. So two commands with the same key do not run well at the same time on one chain.
+- Journal, and the chain has the transaction, in a block or not: the command waits for it and sends nothing.
+- Journal, and the node does not know the transaction, and the nonce is free: the command sends the transaction again with the same nonce and with fee fields that are 12.5 % higher, so a node accepts it as a replacement. One of the two at most can get into a block.
+- Journal, and the node does not know the transaction, and the nonce was used: the result is not known. The command stops and sends nothing. It does not use a new nonce. Run the command again later. If the result is the same, find the transaction of that nonce in a block explorer and correct the manifest.
+- Journal with other inputs than the inputs of this run (for example another amount in the configuration): the command stops. Give the inputs of the earlier run again.
+- A step that the state of the chain shows as done needs no transaction. The command first closes the journal of that step: it waits for a recorded transaction that the chain has and writes its hash to its place.
 
 Where the journal is:
 
-- `deploy` and `loop-check`: `pendingDeploy` of the entry of a contract. No contract is deployed two times. A contract entry with `address` null is a deployment that did not finish.
+- `deploy` and `loop-check`: `pendingDeploy` of the entry of a contract. No contract is deployed two times. A contract entry with `address` null is a deployment that did not finish. The float checks of `deploy` apply again to a deployment whose recorded transaction the node does not know.
 - `enroll`, `fleet` and each other transaction: `pending` next to the hash. `enroll` writes the enrollment record before `setPolicy`. The next run with the same policy sends only the steps that are missing.
 - `remove` writes its hashes to `removing` of the record, and moves them to `removed` at the end. It does not start while a transaction of the enrollment has no receipt: finish the enrollment with `enroll` first.
+- `recover` writes the deposit to the newest entry of `recoveries` of the vault. A deposit that waits for its receipt is not sent a second time. `hub.vaultUp` has no journal: the command reads `vaultInfo` and the vault debt before each call, and a call with no pending target changes nothing.
 
-If the hub has a target and the manifest has no record of that enrollment, `enroll` and `fleet` refuse the target. `remove` removes it.
+If the hub has a target and the manifest has no record of that enrollment, `enroll` and `fleet` refuse the target. `remove` removes it; that removal has no record in the manifest.
+
+The timeouts come from the environment: `LIFELINE_RECEIPT_TIMEOUT` (seconds to wait for a receipt, default 180) and `LIFELINE_POLL_SECONDS` (default 2).
 
 ### Checks before deployment
 
@@ -233,9 +241,25 @@ A vault in debt runs no callback. The hub then marks the vault as down and keeps
 1. Read `debt(vault)` at the callback proxy.
 2. If the debt is above 0: one transaction on the destination chain, `proxy.depositTo{value: debt + float}(vault)`. The float is `selfReserveTarget()` of the vault.
 3. Read `debt(vault)` again.
-4. `hub.vaultUp(chainId)` on Lasna, and again until the `VaultUp` event reports `remaining == 0`. Each call sends one catch-up sweep for at most 8 pending targets. The command prints each hash with `sent` and `remaining`.
+4. While `hub.vaultInfo` reports the vault as down or reports pending targets: read `debt(vault)`, then `hub.vaultUp(chainId)` on Lasna. Each call sends one catch-up sweep for at most 8 pending targets. The command prints each hash with `sent` and `remaining`, and stops when 0 remain.
 
-Rule: `hub.vaultUp` runs only when the vault debt is 0. The hub cannot read the destination ledger, so the command makes the check: if the debt is above 0 after step 3, or if the deposit cannot be sent, the command exits with status 1 and sends nothing to Lasna. A sweep request to a vault in debt is not delivered, and its targets are not pending any more.
+Rule: `hub.vaultUp` runs only when the vault debt is 0. The hub cannot read the destination ledger, so the command makes the check before each call: if the debt is above 0, or if the deposit cannot be sent, the command exits with status 1 and sends nothing to Lasna. A sweep request to a vault in debt is not delivered, and its targets are not pending any more.
+
+If the vault has no debt, is up and has no pending target, `recover` sends nothing. A deposit goes to the reserves of the vault, and reserves cannot be withdrawn: see "A run that stops" for the rule that prevents a second deposit.
+
+### Funds and status
+
+Each contract has two kinds of funds. Principal is the balance of the contract: it pays the targets, and the owner can withdraw it. The fee float is the reserves of the contract at its ledger: the ledger takes each fee from it, and nobody can withdraw it. Self-care moves principal into the float up to `selfReserveTarget`, at most `selfCareDailyCap` for each day, and never below `principalFloor`.
+
+- Add principal: send the native currency to the address of the hub or of the vault (a plain transfer).
+- Add to a float: `depositTo(contract)` at the ledger, with a value. `recover` does this for a vault in debt.
+- `python -m lifeline.ops status` shows both for each contract, the number of full triggers that the funds of the hub cover, the state of each vault at the hub, and the debt and the reserves of each enrolled target.
+
+Limits of the deployed contracts that the owner must know:
+
+- The hub emits `HubLow` and stops its cron subscription only when its balance is below `principalFloor`. Self-care stops at the floor and does not take the balance below it. So a hub at its floor keeps its cron subscription, pays each tick from the float, and goes into debt when the float is empty, with no event. A hub in debt gets no reaction. `status` warns before that state: when the principal above the floor does not cover one full trigger, and when the float does not cover one.
+- The same holds for a vault and `VaultLow`. The hub reports a vault in debt with `VaultDown`.
+- One gauge tick of the live hub cost 0.0259 lREACT (tick 9,040,000: one Lasna target, two sweep requests, with self-care). With `Cron10000` and blocks of about 1 second that is about 0.22 lREACT for each day, with no rescue.
 
 ### Loop check
 
@@ -274,6 +298,7 @@ python -m lifeline.ops loop-check --chain base-sepolia --canary-reserve 0.05 --m
 - Order of two chains. A Lasna log matches the subscriptions that were active at its place in the Lasna log order. A destination log matches the subscriptions that are active when the relay reads it; on the network, a subscription matches a log from the time of the log. The two rules agree if the relay reads between a destination log and a change of a subscription that matches it. So keep the relay running with `--watch`, or run it one time before an enrollment or a removal of a target that has a new debt. If both came between two reads, the relay prints `note: order not known` with the choice that it made, and a last line `order not known: <n>`.
 - On an anvil fork the base fee goes down with each empty block. The node transactions of `forkrelay` use one gas price for each chain: the largest of `eth_gasPrice` at the start of the command, the base fee of the fork block and the base fee of the block before it. The float checks of `deploy` and the default canary reserves of `loop-check` use the gas price of the fork, which is lower than the live price: give `--canary-reserve`.
 - `verify` needs the live chains.
+- The measured gas of a full sweep on each proxy comes from this dry run: see `measuredSweepGas` above.
 - A fork does not show each rule of a live node. Lasna answers 0 for `eth_maxPriorityFeePerGas` and refuses a transaction with a tip below 1 wei; anvil accepts a tip of 0. The commands send a tip of 1 wei or more.
 
 The fork dry run is also a test module. It starts the three forks itself and runs the real commands:

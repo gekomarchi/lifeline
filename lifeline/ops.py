@@ -1,6 +1,6 @@
 """Operator commands: deployment, Sourcify verification, onboarding, removal, vault recovery, loop check.
 
-    python -m lifeline.ops deploy | verify | enroll | fleet | remove | recover | loop-check
+    python -m lifeline.ops deploy | verify | enroll | fleet | remove | recover | status | loop-check
 
 One configuration (`deployments/config.json`) is the input. The manifest
 (`deployments/manifest.json`) is the output and the input of each later command.
@@ -322,13 +322,28 @@ class Rpc:
     def call(self, to, data: bytes, block=None) -> bytes:
         return self.call_at(to, data, block)[1]
 
-    def next_nonce(self, sender) -> int:
-        """The nonce of the next transaction of a sender: not below the nonces that this session used."""
-        pending = hex_int(self.request("eth_getTransactionCount", [sender, "pending"]))
-        return max(pending, self._nonces.get(sender.lower(), 0))
+    def fresh_nonce(self, sender) -> int:
+        """The nonce of a new transaction of a sender. A command sends a new transaction only when each
+        earlier transaction of the sender has a receipt: the count of the newest block (not below the block
+        of the newest receipt of this session) equals the count with the waiting transactions, and is not
+        below the nonces that this session knows as used. It waits for that state; then it is an error."""
+        deadline = time.monotonic() + RECEIPT_TIMEOUT
+        while True:
+            _, count = self._read_at("eth_getTransactionCount", [sender])
+            mined = hex_int(count)
+            waiting = hex_int(self.request("eth_getTransactionCount", [sender, "pending"]))
+            if waiting <= mined and self._nonces.get(sender.lower(), 0) <= mined:
+                return mined
+            if time.monotonic() >= deadline:
+                raise OpsError(f"{sender} has a transaction with no receipt on {self.name} (nonce {mined}): no "
+                               f"new transaction was sent. Run the command again when that transaction has a "
+                               f"receipt")
+            time.sleep(min(POLL_SECONDS, 1.0))
 
     def used_nonce(self, sender, nonce) -> None:
-        self._nonces[sender.lower()] = nonce + 1
+        """Records that a transaction with this nonce went to the node or has a receipt."""
+        key = sender.lower()
+        self._nonces[key] = max(self._nonces.get(key, 0), nonce + 1)
 
     def transaction(self, tx_hash):
         return self.request("eth_getTransactionByHash", [tx_hash])
@@ -555,13 +570,15 @@ def _revert_reason(error: RpcError, abi: Abi = None) -> str:
 
 
 def send_transaction(rpc: Rpc, account, to=None, data=b"", value=0, gas=None, abi: Abi = None, what="",
-                     nonce=None, before_send=None) -> str:
+                     nonce=None, before_send=None, min_fees=None) -> str:
     """Signs and sends one transaction. Returns its hash. It sends nothing if the call would revert or if
     the balance does not cover the value and the largest fee.
 
-    `before_send(hash, nonce)` runs after the signature and before the transaction goes to the node: a
+    `before_send(hash, nonce, fees)` runs after the signature and before the transaction goes to the node: a
     caller that writes the hash to a file there can find the transaction again after a lost answer.
-    `nonce` gives the nonce; without it the transaction gets the next nonce of the sender."""
+    `nonce` gives the nonce of a transaction that replaces one with the same nonce; `min_fees` then gives the
+    smallest fee fields that a node accepts for the replacement. Without `nonce` the transaction is a new
+    one: see `Rpc.fresh_nonce`."""
     sender = account.address
     what = what or "transaction"
     balance = rpc.balance(sender)
@@ -583,6 +600,9 @@ def send_transaction(rpc: Rpc, account, to=None, data=b"", value=0, gas=None, ab
             ) from None
         gas = estimate * 6 // 5 + 10_000
     fees = _fees(rpc)
+    for field, least in (min_fees or {}).items():
+        if field in fees:
+            fees[field] = max(fees[field], int(least))
     price = fees.get("maxFeePerGas", fees.get("gasPrice"))
     if balance < value + gas * price:
         raise OpsError(
@@ -590,7 +610,7 @@ def send_transaction(rpc: Rpc, account, to=None, data=b"", value=0, gas=None, ab
             f"needs {amount(value)} of value and at most {amount(gas * price)} of fee"
         )
     if nonce is None:
-        nonce = rpc.next_nonce(sender)
+        nonce = rpc.fresh_nonce(sender)
     signed = account.sign_transaction({
         # The chain ID of the configuration or of the manifest: each URL was checked against it.
         "chainId": rpc.chain_id(),
@@ -605,7 +625,7 @@ def send_transaction(rpc: Rpc, account, to=None, data=b"", value=0, gas=None, ab
     raw = "0x" + bytes(signed.raw_transaction).hex()
     tx_hash = "0x" + bytes(signed.hash).hex()
     if before_send is not None:
-        before_send(tx_hash, nonce)
+        before_send(tx_hash, nonce, fees)
     try:
         rpc.request("eth_sendRawTransaction", [raw])
     except RpcError as error:
@@ -625,18 +645,18 @@ def _receipt(rpc: Rpc, tx_hash: str):
     return receipt
 
 
-def wait_receipt(rpc: Rpc, tx_hash, timeout: float = None) -> dict:
-    """Waits for the receipt of a transaction: one hash, or a list of hashes of which one at most can be in
-    a block. A reverted transaction is an error."""
-    hashes = [tx_hash] if isinstance(tx_hash, str) else list(tx_hash)
+def _known(rpc: Rpc, hashes) -> bool:
+    """True if the chain has one of the transactions, in a block or not."""
+    return any(_receipt(rpc, h) is not None or rpc.transaction(h) is not None for h in hashes)
+
+
+def _wait_mined(rpc: Rpc, hashes, timeout: float = None) -> dict:
+    """Waits for the receipt of one of the transactions, reverted or not."""
     deadline = time.monotonic() + (RECEIPT_TIMEOUT if timeout is None else timeout)
     while True:
         for candidate in hashes:
             receipt = _receipt(rpc, candidate)
             if receipt is not None:
-                if hex_int(receipt["status"]) != 1:
-                    raise OpsError(f"transaction {candidate} on {rpc.name} reverted in block "
-                                   f"{hex_int(receipt['blockNumber'])}")
                 return receipt
         if time.monotonic() >= deadline:
             raise OpsError(f"no receipt for transaction {', '.join(hashes)} on {rpc.name}: run the command "
@@ -644,100 +664,151 @@ def wait_receipt(rpc: Rpc, tx_hash, timeout: float = None) -> dict:
         time.sleep(min(POLL_SECONDS, 1.0))
 
 
+def wait_receipt(rpc: Rpc, tx_hash, timeout: float = None) -> dict:
+    """Waits for the receipt of a transaction: one hash, or a list of hashes of which one at most can be in
+    a block. A reverted transaction is an error."""
+    receipt = _wait_mined(rpc, [tx_hash] if isinstance(tx_hash, str) else list(tx_hash), timeout)
+    if hex_int(receipt["status"]) != 1:
+        raise OpsError(f"transaction {receipt['transactionHash']} on {rpc.name} reverted in block "
+                       f"{hex_int(receipt['blockNumber'])}")
+    return receipt
+
+
 def transact(rpc: Rpc, account, to, data=b"", value=0, abi: Abi = None, what="") -> dict:
     """Sends one transaction and waits for its receipt."""
     return wait_receipt(rpc, send_transaction(rpc, account, to, data, value, abi=abi, what=what))
 
 
-def _settle(rpc: Rpc, account, pending: dict, save, send, what) -> dict:
+def _replacement_fees(fees) -> dict:
+    """The smallest fee fields of a transaction that replaces one with the same nonce: 12.5 % more."""
+    return {field: int(value) * 9 // 8 + 1 for field, value in (fees or {}).items()}
+
+
+def _settle(rpc: Rpc, account, pending: dict, save, send, what, intent=None) -> dict:
     """Sends one transaction with a journal and waits for its receipt.
 
-    `pending` is a dict in a file that `save()` writes: `{"nonce": n, "txs": [hash, ...]}`, or empty for a
-    transaction that no run sent. The nonce and the hash are in the file before the transaction goes to the
-    node. `send(nonce, before_send)` signs and sends the transaction.
+    `pending` is a dict in a file that `save()` writes: `{"nonce": n, "txs": [hash, ...], "fees": {...},
+    "intent": ...}`, or empty for a transaction that no run sent. The journal is in the file before the
+    transaction goes to the node. `send(nonce, before_send, min_fees)` signs and sends the transaction.
+    `intent` is a digest of the inputs of the transaction.
 
     An earlier run can have stopped at any point. The rule for a journal with hashes:
-    - the chain has one of them, in a block or not: wait for it, send nothing;
-    - the node knows none of them and the nonce is free: send again with the same nonce, so one of them at
-      most can be in a block;
+    - the inputs are not the inputs of the journal: the command stops;
+    - the chain has one of the hashes, in a block or not: wait for it, send nothing;
+    - the node knows none of them and the nonce is free: send again with the same nonce and higher fees, so
+      one of them at most can get into a block;
     - the node knows none of them and the nonce was used: the result is not known. The command stops. It
-      does not send the transaction with a new nonce."""
+      does not send the transaction with a new nonce.
+    A recorded transaction that reverted changed nothing: the step starts again."""
 
-    def journal(tx_hash, nonce):
+    def journal(tx_hash, nonce, fees):
         pending["nonce"] = nonce
         pending["txs"] = list(dict.fromkeys([*pending.get("txs", []), tx_hash]))
+        pending["fees"] = {field: str(value) for field, value in fees.items()}
+        if intent is not None:
+            pending["intent"] = intent
         save()
 
     hashes = pending.get("txs") or []
-    if hashes:
+    if not hashes:
+        send(None, journal, None)
+    else:
         say(f"{what}: an earlier run stopped at this transaction (nonce {pending['nonce']}); it continues")
+        if intent is not None and pending.get("intent") not in (None, intent):
+            raise OpsError(
+                f"{what} on {rpc.name}: an earlier run recorded this transaction with other inputs "
+                f"({', '.join(hashes)}). Nothing was sent. Give the inputs of that run again. If that "
+                f"transaction can never reach the chain, delete its journal entry from the manifest"
+            )
         rpc.head()
         reverted = [h for h in hashes if (r := _receipt(rpc, h)) is not None and hex_int(r["status"]) != 1]
         if reverted:
-            # A reverted transaction changed nothing: the step starts again.
             say(f"{what}: the transaction {reverted[0]} of the earlier run reverted; a new one follows")
+            rpc.used_nonce(account.address, pending["nonce"])
             pending.clear()
             save()
-            send(None, journal)
-        elif not any(_receipt(rpc, h) is not None or rpc.transaction(h) is not None for h in hashes):
+            send(None, journal, None)
+        elif not _known(rpc, hashes):
             # One block for the nonce and for the second look at the hashes.
             block, count = rpc._read_at("eth_getTransactionCount", [account.address])
             rpc.floor = max(rpc.floor, block)
-            if hex_int(count) > pending["nonce"]:
-                if not any(_receipt(rpc, h) is not None for h in hashes):
-                    raise OpsError(
-                        f"{what} on {rpc.name}: the result of an earlier run is not known. The nonce "
-                        f"{pending['nonce']} of {account.address} was used, and the node knows none of the "
-                        f"recorded transactions ({', '.join(hashes)}). Nothing was sent. Run the command "
-                        f"again; if the result is the same, find the transaction of that nonce in a block "
-                        f"explorer and correct the manifest"
-                    )
-            else:
-                send(pending["nonce"], journal)
-    else:
-        send(None, journal)
-    return wait_receipt(rpc, pending["txs"])
+            if hex_int(count) <= pending["nonce"]:
+                send(pending["nonce"], journal, _replacement_fees(pending.get("fees")))
+            elif not any(_receipt(rpc, h) is not None for h in hashes):
+                raise OpsError(
+                    f"{what} on {rpc.name}: the result of an earlier run is not known. The nonce "
+                    f"{pending['nonce']} of {account.address} was used, and the node knows none of the "
+                    f"recorded transactions ({', '.join(hashes)}). Nothing was sent. Run the command "
+                    f"again; if the result is the same, find the transaction of that nonce in a block "
+                    f"explorer and correct the manifest"
+                )
+    receipt = wait_receipt(rpc, pending["txs"])
+    rpc.used_nonce(account.address, pending["nonce"])
+    return receipt
+
+
+def _journal(record: dict, key: str) -> dict:
+    """The journal of `record[key]`: empty if no transaction of that step waits for a receipt."""
+    return (record.get("pending") or {}).get(key) or {}
+
+
+def _close_journal(record: dict, key: str) -> None:
+    pending = record.get("pending") or {}
+    pending.pop(key, None)
+    if not pending:
+        record.pop("pending", None)
 
 
 def transact_recorded(rpc: Rpc, account, to, data, record: dict, key: str, save, value=0, abi: Abi = None,
-                      what="") -> dict:
+                      what="", bind=True) -> dict:
     """Sends one transaction, waits for its receipt, and writes its hash to `record[key]`. `save()` writes
     the file of the record. While the transaction has no receipt, its journal is in
     `record["pending"][key]`: see `_settle`. A `record[key]` with a hash is a transaction with a receipt:
-    it is not sent again."""
+    it is not sent again. With `bind`, the journal holds a digest of the recipient, the data and the value,
+    and a later run with other inputs stops."""
     if record.get(key):
         return wait_receipt(rpc, record[key])
     pending = record.setdefault("pending", {}).setdefault(key, {})
+    intent = "0x" + keccak256(bytes.fromhex(to[2:]) + value.to_bytes(32, "big") + data).hex() if bind else None
 
-    def send(nonce, before_send):
-        send_transaction(rpc, account, to, data, value, abi=abi, what=what, nonce=nonce, before_send=before_send)
+    def send(nonce, before_send, min_fees):
+        send_transaction(rpc, account, to, data, value, abi=abi, what=what, nonce=nonce, before_send=before_send,
+                         min_fees=min_fees)
 
-    receipt = _settle(rpc, account, pending, save, send, what or "transaction")
+    receipt = _settle(rpc, account, pending, save, send, what or "transaction", intent)
     record[key] = receipt["transactionHash"]
-    del record["pending"][key]
-    if not record["pending"]:
-        del record["pending"]
+    _close_journal(record, key)
     save()
     return receipt
 
 
-def finish_recorded(rpc: Rpc, record: dict, key: str, save, what):
-    """Waits for a journaled transaction of `record[key]` that an earlier run sent, and writes its hash.
-    Returns the receipt, or None if there is no journal. It sends nothing. A journal with hashes that the
-    node does not know is an error: the transaction can still get into a block."""
-    pending = (record.get("pending") or {}).get(key) or {}
-    hashes = pending.get("txs") or []
+def reconcile_recorded(rpc: Rpc, record: dict, key: str, save, what, drop_unknown=False):
+    """Closes the journal of `record[key]` and sends nothing. A command calls it before it decides from the
+    state of the chain that a step needs no transaction, so no journal of an earlier run stays open.
+
+    The chain has a recorded transaction: wait for it and write its hash to `record[key]`; return the
+    receipt. A reverted one changed nothing: return None. The node knows none of them: an error, because the
+    transaction can still get into a block. With `drop_unknown` the journal is deleted in that case: for a
+    step that is done already and gives the same state if its transaction runs a second time."""
+    hashes = _journal(record, key).get("txs") or []
     if not hashes:
+        _close_journal(record, key)
         return None
     rpc.head()
-    if not any(_receipt(rpc, h) is not None or rpc.transaction(h) is not None for h in hashes):
-        raise OpsError(f"{what} on {rpc.name}: an earlier run recorded the transaction {', '.join(hashes)}, "
-                       f"and the node does not know it. Its result is not known")
-    receipt = wait_receipt(rpc, hashes)
-    record[key] = receipt["transactionHash"]
-    del record["pending"][key]
-    if not record["pending"]:
-        del record["pending"]
+    if not _known(rpc, hashes):
+        if not drop_unknown:
+            raise OpsError(f"{what} on {rpc.name}: an earlier run recorded the transaction {', '.join(hashes)}, "
+                           f"and the node does not know it. Its result is not known")
+        say(f"{what}: the step is done, and the node does not know the transaction {', '.join(hashes)} of an "
+            f"earlier run; its journal is closed")
+        receipt = None
+    else:
+        receipt = _wait_mined(rpc, hashes)
+        if hex_int(receipt["status"]) != 1:
+            receipt = None
+        else:
+            record[key] = receipt["transactionHash"]
+    _close_journal(record, key)
     save()
     return receipt
 
@@ -761,11 +832,12 @@ def deploy_recorded(rpc: Rpc, account, artifact: Artifact, args, value, entry: d
     entry.setdefault("address", None)
     pending = entry.setdefault("pendingDeploy", {})
 
-    def send(nonce, before_send):
+    def send(nonce, before_send, min_fees):
         send_transaction(rpc, account, None, data, value, abi=artifact.abi, what=f"the deployment of the {what}",
-                         nonce=nonce, before_send=before_send)
+                         nonce=nonce, before_send=before_send, min_fees=min_fees)
 
-    receipt = _settle(rpc, account, pending, save, send, f"the deployment of the {what}")
+    intent = "0x" + keccak256(value.to_bytes(32, "big") + data).hex()
+    receipt = _settle(rpc, account, pending, save, send, f"the deployment of the {what}", intent)
     address = checksum(receipt["contractAddress"]) if receipt.get("contractAddress") else None
     if not address or not rpc.code(address):
         raise OpsError(f"the deployment of the {what} on {rpc.name} left no code: {receipt['transactionHash']}")
@@ -1242,7 +1314,7 @@ def _deploy_checks(config, chains, manifest: Manifest, ledger_abi: Abi, owner_ad
 
     lasna = chains[LASNA]
     hub = config["hub"]
-    if _deployment_started(manifest.hub):
+    if _deployment_started(lasna.rpc, manifest.hub):
         say("  ok   hub: in the manifest; the float checks apply to a new deployment only")
     else:
         price = lasna.rpc.gas_price()
@@ -1264,7 +1336,7 @@ def _deploy_checks(config, chains, manifest: Manifest, ledger_abi: Abi, owner_ad
         check(entry["measuredSweepGas"] > 0, f"{name}: measuredSweepGas is above 0")
         check(entry["sweepBase"] > 0, f"{name}: sweepBase is above 0")
         deployed = manifest.vaults.get(name)
-        if _deployment_started(deployed):
+        if _deployment_started(chain.rpc, deployed):
             say(f"  ok   vault of {name}: in the manifest; the float check applies to a new deployment only")
             continue
         need[name] += funds["value"]
@@ -1298,9 +1370,12 @@ def _deploy_checks(config, chains, manifest: Manifest, ledger_abi: Abi, owner_ad
     stop_on_failures()
 
 
-def _deployment_started(entry) -> bool:
-    """True if the manifest holds the contract, or a deployment of it that an earlier run started."""
-    return bool(entry and (entry.get("address") or (entry.get("pendingDeploy") or {}).get("txs")))
+def _deployment_started(rpc: Rpc, entry) -> bool:
+    """True if the manifest holds the contract, or a deployment transaction that the chain has. A journal
+    with a transaction that the node does not know is not a deployment: the checks apply to the next one."""
+    if not entry:
+        return False
+    return bool(entry.get("address")) or _known(rpc, (entry.get("pendingDeploy") or {}).get("txs") or [])
 
 
 def _new_entry(chain_id: int, **first) -> dict:
@@ -1389,35 +1464,42 @@ def cmd_deploy(args) -> int:
             raise OpsError(f"the vault of {name} at {vault['address']} has callbackSender {stored}, not {sender}: "
                            f"the value is immutable, so this vault cannot serve this hub")
 
+    def setup_step(record, key, done, data, what):
+        """One owner call of the hub with its hash in `record[key]`. `done`: the state of the hub needs no
+        call. The journal of an earlier run is closed first in each case. Returns the receipt, or None."""
+        if done:
+            return reconcile_recorded(lasna.rpc, record, key, manifest.save, what, drop_unknown=True)
+        if not _journal(record, key):
+            record[key] = None  # the hash of an earlier call with other values
+        return transact_recorded(lasna.rpc, owner, hub_address, data, record, key, manifest.save, abi=hub_abi,
+                                 what=what)
+
     for name in config["vaults"]:
         chain, vault = chains[name], manifest.vaults[name]
         sweep_base = config["chains"][name]["sweepBase"]
         proxy, registered, base, _, _ = read_hub("vaultInfo", chain.chain_id)
-        if same_address(proxy, chain.ledger) and same_address(registered, vault["address"]) and base == sweep_base:
+        done = same_address(proxy, chain.ledger) and same_address(registered, vault["address"]) and base == sweep_base
+        receipt = setup_step(vault, "setVaultTx", done,
+                             hub_abi.encode("setVault", chain.chain_id, chain.ledger, vault["address"], sweep_base),
+                             f"hub.setVault for {name}")
+        if done:
             say(f"hub.setVault for {name}: registered already; no transaction")
-            continue
-        vault["setVaultTx"] = None
-        receipt = transact_recorded(
-            lasna.rpc, owner, hub_address,
-            hub_abi.encode("setVault", chain.chain_id, chain.ledger, vault["address"], sweep_base),
-            vault, "setVaultTx", manifest.save, abi=hub_abi, what=f"hub.setVault for {name}")
-        say(f"hub.setVault for {name}: tx {receipt['transactionHash']} block {block_of(receipt)} "
-            f"(proxy {chain.ledger}, vault {vault['address']}, sweepBase {sweep_base})")
+        else:
+            say(f"hub.setVault for {name}: tx {receipt['transactionHash']} block {block_of(receipt)} "
+                f"(proxy {chain.ledger}, vault {vault['address']}, sweepBase {sweep_base})")
 
     wanted = int.from_bytes(keccak256(f"{config['cronTopic']}(uint256)".encode()), "big")
     cron = hub.setdefault("cron", {"topic": config["cronTopic"], "setCronTopicTx": None, "resumeCronTx": None})
     cron["topic"] = config["cronTopic"]
-    if read_hub("cronTopic") != wanted:
-        cron["setCronTopicTx"] = None
-        receipt = transact_recorded(lasna.rpc, owner, hub_address, hub_abi.encode("setCronTopic", wanted), cron,
-                                    "setCronTopicTx", manifest.save, abi=hub_abi, what="hub.setCronTopic")
+    done = read_hub("cronTopic") == wanted
+    receipt = setup_step(cron, "setCronTopicTx", done, hub_abi.encode("setCronTopic", wanted), "hub.setCronTopic")
+    if not done:
         say(f"hub.setCronTopic({config['cronTopic']}): tx {receipt['transactionHash']} block {block_of(receipt)}")
-    if read_hub("cronSubscribed"):
+    done = read_hub("cronSubscribed")
+    receipt = setup_step(cron, "resumeCronTx", done, hub_abi.encode("resumeCron"), "hub.resumeCron")
+    if done:
         say(f"cron: subscribed already to {config['cronTopic']}; no transaction")
     else:
-        cron["resumeCronTx"] = None
-        receipt = transact_recorded(lasna.rpc, owner, hub_address, hub_abi.encode("resumeCron"), cron,
-                                    "resumeCronTx", manifest.save, abi=hub_abi, what="hub.resumeCron")
         say(f"hub.resumeCron ({config['cronTopic']}): tx {receipt['transactionHash']} block {block_of(receipt)}")
     manifest.save()
 
@@ -1752,8 +1834,8 @@ def cmd_remove(args) -> int:
     if record is not None and record["txs"].get("pending"):
         # A transaction of the enrollment with no receipt can still get into a block after the removal.
         try:
-            finish_recorded(chain.rpc, record["txs"], "setPolicy", manifest.save, "vault.setPolicy")
-            receipt = finish_recorded(lasna.rpc, record["txs"], "enroll", manifest.save, "hub.enroll")
+            reconcile_recorded(chain.rpc, record["txs"], "setPolicy", manifest.save, "vault.setPolicy")
+            receipt = reconcile_recorded(lasna.rpc, record["txs"], "enroll", manifest.save, "hub.enroll")
         except OpsError as error:
             raise OpsError(f"{error}. Run enroll again with the same policy to finish the enrollment; then "
                            f"run remove") from None
@@ -1775,19 +1857,21 @@ def cmd_remove(args) -> int:
     if kind == 0:
         say("  1 hub.disarm: the hub never had the target; no transaction")
     else:
-        in_receipt = False
         if TARGET_STATES[state] == "Disarmed":
-            say("  1 hub.disarm: the hub has the target in state Disarmed already; no transaction")
+            # A second `hub.disarm` reverts and changes nothing: the journal of an earlier run can be closed.
+            receipt = reconcile_recorded(lasna.rpc, removing, "hubDisarm", save, "hub.disarm", drop_unknown=True)
+            say("  1 hub.disarm: the hub has the target in state Disarmed already; no transaction"
+                + (f" (tx {removing['hubDisarm']} of an earlier run)" if receipt else ""))
         else:
             receipt = transact_recorded(lasna.rpc, session.owner, hub,
                                         hub_abi.encode("disarm", chain.chain_id, target), removing, "hubDisarm",
                                         save, abi=hub_abi, what="hub.disarm")
             say(f"  1 hub.disarm   on {LASNA}: tx {removing['hubDisarm']} block {block_of(receipt)}")
-            tuple_topics = [topic_of_address(hub), topic_of_int(chain.chain_id), topic_of_address(chain.ledger)]
-            in_receipt = any(
-                log["topics"][1:] == tuple_topics and _is_debt_tuple(log, session.ledger_abi, target)
-                for log in receipt_logs(receipt, lasna.ledger, session.system_abi.topic("Unsubscribe"))
-            )
+        tuple_topics = [topic_of_address(hub), topic_of_int(chain.chain_id), topic_of_address(chain.ledger)]
+        in_receipt = receipt is not None and any(
+            log["topics"][1:] == tuple_topics and _is_debt_tuple(log, session.ledger_abi, target)
+            for log in receipt_logs(receipt, lasna.ledger, session.system_abi.topic("Unsubscribe"))
+        )
 
         active, last = target_subscription(session, chain, target)
         if active:
@@ -1813,9 +1897,11 @@ def cmd_remove(args) -> int:
             if session.read_vault(args.chain, "hasPolicy", target):
                 raise OpsError("the vault still has a policy for the target")
         else:
-            say("  2 vault.disarm: the vault has no policy for the target; no transaction")
+            # A second `vault.disarm` gives the same state: the journal of an earlier run can be closed.
+            receipt = reconcile_recorded(chain.rpc, removing, "vaultDisarm", save, "vault.disarm", drop_unknown=True)
+            say("  2 vault.disarm: the vault has no policy for the target; no transaction"
+                + (f" (tx {removing['vaultDisarm']} of an earlier run)" if receipt else ""))
     if record is not None:
-        removing.pop("pending", None)
         record["removed"] = record.pop("removing")
         manifest.save()
     say("removed: no subscription and no policy for the target")
@@ -1827,12 +1913,29 @@ def cmd_remove(args) -> int:
 # ----------------------------------------------------------------------------------------------
 
 
+MAX_VAULT_UP = 64  # stops a recovery that does not end
+
+
 def cmd_recover(args) -> int:
     session = Session(args)
     chain = session.destination(args.chain)
     lasna, hub, hub_abi = session.lasna, session.hub, session.hub_abi
+    manifest = session.manifest
     vault = session.vault(args.chain)
     session.require_owner(args.chain)
+
+    # The record of this recovery: `recoveries` of the vault entry. A record with a journal is a recovery
+    # that an earlier run did not finish. A new record goes to the manifest with its first transaction.
+    recoveries = manifest.vaults[args.chain].setdefault("recoveries", [])
+    if recoveries and recoveries[-1].get("pending"):
+        record = recoveries[-1]
+    else:
+        record = {"deposit": None, "depositBlock": None, "vaultUp": []}
+
+    def save():
+        if not any(entry is record for entry in recoveries):
+            recoveries.append(record)
+        manifest.save()
 
     block, debt = session.read_ledger(chain, "debt", vault)
     say(f"recover: vault {vault} on {args.chain} (chain ID {chain.chain_id})")
@@ -1841,34 +1944,139 @@ def cmd_recover(args) -> int:
         reserve = session.read_vault(args.chain, "selfReserveTarget")
         value = debt + reserve
         try:
-            receipt = transact(chain.rpc, session.owner, chain.ledger, session.ledger_abi.encode("depositTo", vault),
-                               value=value, abi=session.ledger_abi, what="proxy.depositTo")
+            # The debt changes between two runs, so the journal is not bound to the value. A deposit of an
+            # earlier run that waits for a receipt is not sent a second time.
+            receipt = transact_recorded(chain.rpc, session.owner, chain.ledger,
+                                        session.ledger_abi.encode("depositTo", vault), record, "deposit", save,
+                                        value=value, abi=session.ledger_abi, what="proxy.depositTo", bind=False)
         except OpsError as error:
             raise OpsError(f"{error}. hub.vaultUp was not sent") from None
+        record["depositBlock"] = block_of(receipt)
+        save()
+        # The value of a deposit that an earlier run sent can differ from the value of this run.
+        sent = hex_int(chain.rpc.transaction(receipt["transactionHash"])["value"])
         say(f"  1 proxy.depositTo on {args.chain}: tx {receipt['transactionHash']} block {block_of(receipt)}, "
-            f"value {amount(value)} = debt {debt} + float {reserve}")
+            f"value {amount(sent)} = debt {sent - reserve} + float {reserve}")
         block, debt = session.read_ledger(chain, "debt", vault)
         say(f"  debt of the vault at the proxy, block {block}: {amount(debt)}")
     else:
-        say("  1 proxy.depositTo: no debt, so no deposit")
+        # A deposit of an earlier run cleared the debt, or nothing waits: close its journal.
+        receipt = reconcile_recorded(chain.rpc, record, "deposit", save, "proxy.depositTo", drop_unknown=True)
+        say("  1 proxy.depositTo: no debt, so no deposit"
+            + (f" (tx {record['deposit']} of an earlier run cleared it)" if receipt else ""))
 
     sends = 0
     while True:
+        _, _, _, up, pending = session.read_hub("vaultInfo", chain.chain_id)
+        if up and pending == 0:
+            break
         # The hub cannot read the destination ledger: `vaultUp` runs only while the vault debt is 0.
+        _, debt = session.read_ledger(chain, "debt", vault)
         if debt > 0:
             raise OpsError(f"the debt of the vault is {amount(debt)}, above 0: hub.vaultUp was not sent")
+        if sends == MAX_VAULT_UP:
+            raise OpsError(f"the hub still reports pending targets after {sends} vaultUp")
         receipt = transact(lasna.rpc, session.owner, hub, hub_abi.encode("vaultUp", chain.chain_id), abi=hub_abi,
                            what="hub.vaultUp")
         sends += 1
         event = hub_abi.decode_event("VaultUp", receipt_logs(receipt, hub, hub_abi.topic("VaultUp"))[0])
+        record["vaultUp"].append({"tx": receipt["transactionHash"], "block": block_of(receipt),
+                                  "requestId": str(event["requestId"]), "sent": event["sent"],
+                                  "remaining": event["remaining"]})
+        save()
         say(f"  2 hub.vaultUp on {LASNA}: tx {receipt['transactionHash']} block {block_of(receipt)}, "
             f"requestId {event['requestId']}, sent {event['sent']}, remaining {event['remaining']}")
-        if event["remaining"] == 0:
-            break
-        _, debt = session.read_ledger(chain, "debt", vault)
-    _, _, _, up, pending = session.read_hub("vaultInfo", chain.chain_id)
-    say(f"recovered: hub.vaultInfo reports up {str(up).lower()}, pending {pending}, after {sends} vaultUp")
+    if not sends:
+        say("  2 hub.vaultUp: the hub has the vault up with no pending target; no transaction")
+    if not recoveries:
+        del manifest.vaults[args.chain]["recoveries"]
+    say(f"recovered: hub.vaultInfo reports up true, pending 0, after {sends} vaultUp")
     return 0
+
+
+# ----------------------------------------------------------------------------------------------
+# status
+# ----------------------------------------------------------------------------------------------
+
+
+def cmd_status(args) -> int:
+    """Reads the funds and the state of the hub, of each vault and of each enrolled target. It needs no key
+    and sends nothing. Exit status 1 if one line needs an action of the owner."""
+    session = Session(args, owner=False)
+    manifest, lasna, hub, ledger_abi = session.manifest, session.lasna, session.hub, session.ledger_abi
+    warnings = []
+
+    def warn(text: str) -> None:
+        warnings.append(text)
+        say(f"  WARN {text}")
+
+    def ledger(chain: Chain, account: str) -> tuple:
+        return session.read_ledger(chain, "debt", account)[1], session.read_ledger(chain, "reserves", account)[1]
+
+    balance, floor = lasna.rpc.balance(hub), session.read_hub("principalFloor")
+    debt, reserves = ledger(lasna, hub)
+    coeff, _ = ledger_parameter(lasna, ledger_abi, "_gasPriceCoeffPer1000", manifest.data["chains"][LASNA],
+                                "gasPriceCoeffPer1000")
+    fee = trigger_fee(lasna.rpc.gas_price(), coeff or 1000)
+    spendable = max(balance - floor, 0) + reserves
+    say(f"hub {hub} on {LASNA}, block {lasna.rpc.head()}")
+    say(f"  principal {amount(balance)}, floor {amount(floor)}")
+    say(f"  fee float (reserves) {amount(reserves)}, target {amount(session.read_hub('selfReserveTarget'))}, "
+        f"daily cap of self-care {amount(session.read_hub('selfCareDailyCap'))}, debt {amount(debt)}")
+    say(f"  one full trigger of {TRIGGER_GAS} gas costs {amount(fee)}: the funds above the floor and the float "
+        f"cover {spendable // fee if fee else 0} of them")
+    say(f"  cron subscribed {str(session.read_hub('cronSubscribed')).lower()}, last tick "
+        f"{session.read_hub('lastTick')}, paused {str(session.read_hub('paused')).lower()}")
+    if debt:
+        warn(f"the hub is in debt and gets no reaction: send depositTo(hub) at the system contract with "
+             f"{amount(debt)} or more")
+    elif reserves < fee:
+        warn("the fee float of the hub does not cover one full trigger")
+    # The hub emits HubLow and parks its cron tick only below the floor. Self-care stops at the floor, so the
+    # float can go to 0 with no event.
+    if balance < floor + fee:
+        warn("the principal of the hub above its floor does not cover one full trigger: self-care cannot refill "
+             "the float. Send lREACT to the hub")
+    if not session.read_hub("cronSubscribed"):
+        warn("the hub has no cron subscription: no gauge tick runs. hub.resumeCron starts it")
+    if session.read_hub("paused"):
+        warn("the hub is paused")
+
+    for name in manifest.vaults:
+        chain, vault = session.chain(name), session.vault(name)
+        _, _, _, up, pending = session.read_hub("vaultInfo", chain.chain_id)
+        debt, reserves = ledger(chain, vault)
+        balance, floor = chain.rpc.balance(vault), session.read_vault(name, "principalFloor")
+        target = session.read_vault(name, "selfReserveTarget")
+        say(f"vault {vault} on {name}, block {chain.rpc.head()}")
+        say(f"  principal {amount(balance)}, floor {amount(floor)}")
+        say(f"  fee float (reserves) {amount(reserves)}, target {amount(target)}, debt {amount(debt)}")
+        say(f"  hub: up {str(up).lower()}, pending {pending}; paused {str(session.read_vault(name, 'paused')).lower()}")
+        if debt or not up or pending:
+            warn(f"the vault of {name} needs a recovery (debt {debt}, up {str(up).lower()}, pending {pending}): "
+                 f"run recover --chain {name}")
+        elif reserves * 2 < target:
+            warn(f"the fee float of the vault of {name} is below half of its target")
+        if balance <= floor:
+            warn(f"the principal of the vault of {name} is at its floor: it pays no target. Send funds to the vault")
+
+    for record in manifest.data["enrollments"]:
+        if record.get("removed"):
+            continue
+        chain = session.chain(record["chain"])
+        _, state, _ = session.read_hub("targetInfo", chain.chain_id, record["target"])
+        debt, reserves = ledger(chain, record["target"])
+        policy = Policy.from_json(record["policy"])
+        say(f"target {record['label']} {record['target']} on {record['chain']}: hub state {TARGET_STATES[state]}, "
+            f"debt {amount(debt)}, reserves {amount(reserves)} (low {policy.low}, high {policy.high})")
+        if TARGET_STATES[state] != "Active":
+            warn(f"the hub has {record['label']} in state {TARGET_STATES[state]}")
+        if record["chain"] != LASNA and session.read_vault(record["chain"], "quarantined", record["target"]):
+            warn(f"the vault has {record['label']} in quarantine: vault.release, or remove the target")
+        if debt:
+            warn(f"{record['label']} is in debt")
+    say(f"status: {len(warnings)} warning(s)" if warnings else "status: ok")
+    return 1 if warnings else 0
 
 
 # ----------------------------------------------------------------------------------------------
@@ -1915,13 +2123,13 @@ def cmd_loop_check(args) -> int:
     # The record is in the manifest before the first transaction, and each hash before its transaction goes
     # to the node: the next run continues a check that stopped at any point.
     save()
-    callback = record.setdefault("canaryCallback", {})
+    callback = record.setdefault("canaryCallback", {"chain": args.chain, "chainId": chain.chain_id})
     if not callback.get("address"):
         deploy_recorded(chain.rpc, session.owner, callback_artifact, (), 0, callback, save, "CanaryCallback")
     canary = callback["address"]
     say(f"  CanaryCallback {canary} on {args.chain}: tx {callback['deployTx']} block {callback['deployBlock']}")
 
-    lasna_canary = record.setdefault("canaryReactive", {})
+    lasna_canary = record.setdefault("canaryReactive", {"chain": LASNA, "chainId": lasna.chain_id})
     if not lasna_canary.get("address"):
         deploy_recorded(lasna.rpc, session.owner, reactive_artifact,
                         (lasna.ledger, chain.chain_id, canary, CANARY_CALLBACK_GAS), 0, lasna_canary, save,
@@ -2080,6 +2288,10 @@ def build_parser() -> argparse.ArgumentParser:
     recover = commands.add_parser("recover", parents=[common], help="restore a vault that is in debt")
     recover.add_argument("--chain", required=True, metavar="<name>")
     recover.set_defaults(run=cmd_recover)
+
+    status = commands.add_parser("status", parents=[common],
+                                 help="read the funds and the state of the hub, the vaults and the targets")
+    status.set_defaults(run=cmd_status)
 
     loop = commands.add_parser("loop-check", parents=[common], help="show the live destination loop with a canary")
     loop.add_argument("--chain", required=True, metavar="<name>")

@@ -103,11 +103,20 @@ class DryRun:
             arguments += ["--rpc", f"{name}={self.proxy.url(name) if through_proxy else anvil.url}"]
         return arguments
 
-    def ops(self, *arguments, manifest=None) -> subprocess.CompletedProcess:
+    def ops(self, *arguments, manifest=None, env=None) -> subprocess.CompletedProcess:
         """Runs `python -m lifeline.ops`. Each request of the command goes through the recording proxy."""
         command = [sys.executable, "-m", "lifeline.ops", *arguments, "--manifest", str(manifest or self.manifest),
                    *self._rpc_arguments()]
-        return subprocess.run(command, env=self.env, capture_output=True, text=True, timeout=300, cwd=ops.ROOT)
+        return subprocess.run(command, env={**self.env, **(env or {})}, capture_output=True, text=True, timeout=300,
+                              cwd=ops.ROOT)
+
+    def nonce(self, name, tag="latest") -> int:
+        return int(self.rpcs[name].request("eth_getTransactionCount", [self.account.address, tag]), 16)
+
+    def edit_manifest(self, change) -> None:
+        data = self.data()
+        change(data)
+        self.manifest.write_text(json.dumps(data, indent=2))
 
     def relay_command(self, *arguments) -> list:
         return [sys.executable, "-m", "lifeline.forkrelay", *self._rpc_arguments(through_proxy=False),
@@ -295,6 +304,52 @@ def test_deploy_writes_the_manifest_and_a_second_run_deploys_nothing(net):
     assert result.stdout.count("no deployment") == 3
     assert net.data() == data
 
+    result = net.ops("status")
+    assert result.returncode == 0 and "status: ok" in result.stdout, result.stdout + result.stderr
+    assert net.hub in result.stdout and net.vault(BASE) in result.stdout and "cron subscribed true" in result.stdout
+
+
+def test_deploy_closes_the_journal_of_a_step_that_is_done(net):
+    data = net.data()
+    resume = data["contracts"]["hub"]["cron"]["resumeCronTx"]
+    set_vault = data["contracts"]["vaults"][BASE]["setVaultTx"]
+    nonce = int(net.rpcs[LASNA].transaction(resume)["nonce"], 16)
+
+    def stopped_before_the_receipt(manifest):
+        # `resumeCron` is in a block, and the run stopped before it wrote the hash to its place.
+        cron = manifest["contracts"]["hub"]["cron"]
+        cron.update(resumeCronTx=None, pending={"resumeCronTx": {"nonce": nonce, "txs": [resume]}})
+        # A journal of `setVault` with a transaction that the node does not know; the vault is registered.
+        vault = manifest["contracts"]["vaults"][BASE]
+        vault["pending"] = {"setVaultTx": {"nonce": nonce - 1, "txs": ["0x" + "33" * 32]}}
+
+    net.edit_manifest(stopped_before_the_receipt)
+    before, mark = net.blocks(), net.proxy.mark()
+    result = net.ops("deploy", "--config", str(net.config))
+    assert result.returncode == 0, result.stderr
+    assert net.blocks() == before and net.proxy.sent(mark) == []
+    assert "its journal is closed" in result.stdout
+    # No journal stays open: a later run cannot take the old receipt for a new step.
+    assert net.data() == data
+    assert net.data()["contracts"]["hub"]["cron"]["resumeCronTx"] == resume
+    assert net.data()["contracts"]["vaults"][BASE]["setVaultTx"] == set_vault
+
+
+def test_the_float_checks_apply_to_a_deployment_that_never_reached_the_chain(net):
+    # A manifest with the journal of a hub deployment that the node does not know: no hub exists.
+    manifest = net.dir / "journal-only.json"
+    journal = {"nonce": net.nonce(LASNA), "txs": ["0x" + "44" * 32]}
+    manifest.write_text(json.dumps({
+        "version": 1, "chains": net.data()["chains"],
+        "contracts": {"hub": {"chain": LASNA, "chainId": 5318007, "address": None, "deployBlock": None,
+                              "deployTx": None, "pendingDeploy": journal}, "vaults": {}},
+    }))
+    before = net.blocks()
+    result = net.ops("deploy", "--config", str(net.dir / "low-hub.json"), manifest=manifest)
+    assert result.returncode != 0 and "covers one full trigger" in result.stderr
+    assert net.blocks() == before
+    assert json.loads(manifest.read_text())["contracts"]["hub"]["pendingDeploy"] == journal
+
 
 def test_verify_refuses_a_local_development_node(net):
     result = net.ops("verify", "--sourcify", "http://127.0.0.1:9")
@@ -479,6 +534,8 @@ def test_loop_check_names_the_missing_step_without_a_relay_and_passes_with_it(ne
             assert re.search(HASH, line), line
         check = net.data()["loopCheck"]
         assert check["status"] == "passed" and check["chain"] == BASE and check["missing"] is None
+        assert (check["canaryCallback"]["chain"], check["canaryCallback"]["chainId"]) == (BASE, 84532)
+        assert (check["canaryReactive"]["chain"], check["canaryReactive"]["chainId"]) == (LASNA, 5318007)
         assert check["steps"]["relayed"]["requestId"] in steps[1] and check["steps"]["relayed"]["requestId"] in steps[2]
         assert net.debt(BASE, check["canaryCallback"]["address"]) == 0
         # Each hash is a transaction of its fork.
@@ -539,6 +596,22 @@ def test_remove_leaves_no_subscription(net):
     before = net.blocks()
     result = net.ops("remove", "--chain", BASE, "--target", canary)
     assert result.returncode == 0 and net.blocks() == before
+
+    # As if the run had stopped after `hub.disarm` was in a block and before it wrote the hash: the next run
+    # takes the hash from the journal, sends nothing, and loses no hash.
+    def stopped(manifest):
+        entry = next(r for r in manifest["enrollments"] if r["target"] == canary)
+        removed = entry.pop("removed")
+        nonce = int(net.rpcs[LASNA].transaction(removed["hubDisarm"])["nonce"], 16)
+        entry["removed"] = None
+        entry["removing"] = {"hubDisarm": None, "vaultDisarm": removed["vaultDisarm"],
+                             "pending": {"hubDisarm": {"nonce": nonce, "txs": [removed["hubDisarm"]]}}}
+
+    net.edit_manifest(stopped)
+    result = net.ops("remove", "--chain", BASE, "--target", canary)
+    assert result.returncode == 0 and net.blocks() == before, result.stderr
+    assert "the receipt holds Unsubscribe" in result.stdout
+    assert next(r for r in net.data()["enrollments"] if r["target"] == canary) == record
 
 
 # ----------------------------------------------------------------------------------------------
@@ -601,6 +674,8 @@ def test_recover_refuses_vault_up_while_the_vault_is_in_debt(net):
     assert relayed(net.relay()) == (1, 0)
     _, _, _, up, _ = net.read(LASNA, net.hub, net.hub_abi, "vaultInfo", 84532)
     assert up is False
+    result = net.ops("status")
+    assert result.returncode == 1 and "the vault of base-sepolia needs a recovery" in result.stdout
 
     net.fund(BASE, 0)
     try:
@@ -613,6 +688,7 @@ def test_recover_refuses_vault_up_while_the_vault_is_in_debt(net):
         net.fund(BASE, 100 * 10**18)
     _, _, _, up, _ = net.read(LASNA, net.hub, net.hub_abi, "vaultInfo", 84532)
     assert up is False and net.debt(BASE, net.vault(BASE)) > 0
+    assert "recoveries" not in net.data()["contracts"]["vaults"][BASE]
 
 
 def test_recover_deposits_then_sends_vault_up_until_nothing_is_pending(net):
@@ -658,9 +734,129 @@ def test_recover_deposits_then_sends_vault_up_until_nothing_is_pending(net):
         assert int(records[between[-1]]["result"], 16) == 0
         assert int(records[between[-1]]["params"][1], 16) >= deposit_block
 
+    recovery = net.data()["contracts"]["vaults"][BASE]["recoveries"]
+    assert len(recovery) == 1 and recovery[0]["deposit"] == sent[0][1] and "pending" not in recovery[0]
+    assert [(call["tx"], call["sent"], call["remaining"]) for call in recovery[0]["vaultUp"]] == \
+        [(sent[1][1], 8, 1), (sent[2][1], 1, 0)]
+
     assert relayed(net.relay()) == (0, 2)
     for target in targets:
         assert net.debt(BASE, target) == 0
+
+    # The vault is up and nothing is pending: a second run sends nothing.
+    before = net.blocks()
+    result = net.ops("recover", "--chain", BASE)
+    assert result.returncode == 0 and net.blocks() == before, result.stderr
+    assert "no deposit" in result.stdout and "no pending target; no transaction" in result.stdout
+    assert net.data()["contracts"]["vaults"][BASE]["recoveries"] == recovery
+
+
+# ----------------------------------------------------------------------------------------------
+# The measured gas of a full sweep
+# ----------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", [UNICHAIN, BASE])
+def test_measured_sweep_gas_of_the_configuration_holds_on_each_proxy(net, name):
+    """`measuredSweepGas` of `deployments/config.json` is the input of the float check of `deploy`. The
+    number comes from the contract test `test_sweepFitsItsGasLimit` on a Base Sepolia fork. This test
+    measures a full sweep (`SWEEP_MAX` targets, each one rescued) through the real proxy of each chain."""
+    vault, chain_id = net.vault(name), net.chain_id[name]
+    targets = [net.new_callback_canary(name) for _ in range(ops.SWEEP_MAX)]
+    for index, target in enumerate(targets):
+        result = net.ops("enroll", "--chain", name, "--target", target, "--label", f"sweep {index}", *CANARY_POLICY)
+        assert result.returncode == 0, result.stderr
+    relayed(net.relay())
+
+    net.junk_until_vault_debt(name)
+    assert relayed(net.relay()) == (1, 0)
+    for index, target in enumerate(targets):
+        net.pong(name, target, index + 1)
+    assert relayed(net.relay()) == (ops.SWEEP_MAX, 0)
+    result = net.ops("recover", "--chain", name)
+    assert result.returncode == 0, result.stderr
+    assert f"sent {ops.SWEEP_MAX}, remaining 0" in result.stdout
+
+    result = net.relay()
+    assert relayed(result) == (0, 1)
+    delivery = net.rpcs[name].receipt(re.search(rf"delivery  {name} {vault} gas (\d+) .*tx ({HASH})", result.stdout)[2])
+    results = [net.vault_abi.decode_event("Result", log)
+               for log in ops.receipt_logs(delivery, vault, net.vault_abi.topic("Result"))]
+    assert len(results) == ops.SWEEP_MAX and all(ops.OUTCOMES[r["outcome"]] == "Rescued" for r in results)
+    assert not ops.receipt_logs(delivery, vault, net.vault_abi.topic("SweepPartial"))
+    _, _, sweep_base, _, _ = net.read(LASNA, net.hub, net.hub_abi, "vaultInfo", chain_id)
+    limit = int(net.rpcs[name].transaction(delivery["transactionHash"])["gas"], 16)
+    assert limit == sweep_base + 80_000 * ops.SWEEP_MAX
+
+    # The fee that the real proxy charged for this sweep: the change of the reserves of the vault, with the
+    # self-care deposit of the same callback added back.
+    block = int(delivery["blockNumber"], 16)
+    reserves = [net.ledger_abi.decode("reserves", net.rpcs[name].call(
+        net.ledger[name], net.ledger_abi.encode("reserves", vault), number)) for number in (block - 1, block)]
+    added = sum(net.vault_abi.decode_event("SelfCare", log)["added"]
+                for log in ops.receipt_logs(delivery, vault, net.vault_abi.topic("SelfCare")))
+    fee = reserves[0] + added - reserves[1]
+    assert fee > 0 and net.debt(name, vault) == 0
+
+    # The fee of the float check of `deploy`, from `measuredSweepGas` of the configuration, at the gas price
+    # of this delivery. It must cover the fee that the proxy charged, and not be far above it.
+    extra = net.read(name, net.ledger[name], net.ledger_abi, "_extraGas")
+    coeff = net.read(name, net.ledger[name], net.ledger_abi, "_gasPriceCoeffPer1000")
+    price = int(delivery["effectiveGasPrice"], 16)
+    configured = net.live["chains"][name]["measuredSweepGas"]
+    checked = ops.sweep_fee(extra, configured, price, coeff)
+    charged = fee * 1000 // (price * coeff) - extra
+    print(f"SWEEP_GAS chain={name} n={ops.SWEEP_MAX} charged={charged} receipt={int(delivery['gasUsed'], 16)} "
+          f"configured={configured} limit={limit} fee={fee} checked={checked}")
+    assert int(delivery["gasUsed"], 16) < limit
+    assert fee <= checked <= fee * 1.25, "measuredSweepGas of the configuration does not fit a real full sweep"
+
+
+def test_recover_does_not_send_a_second_deposit_while_the_first_one_waits(net):
+    """A deposit that waits for its receipt when the command stops must not be sent a second time: the
+    second one would stay in the reserves of the vault, and reserves cannot be withdrawn."""
+    name, vault = UNICHAIN, net.vault(UNICHAIN)
+    net.junk_until_vault_debt(name)
+    assert relayed(net.relay()) == (1, 0)
+    reserve = net.read(name, vault, net.vault_abi, "selfReserveTarget")
+    nonce, short = net.nonce(name), {"LIFELINE_RECEIPT_TIMEOUT": "3"}
+
+    net.anvils[name].request("evm_setAutomine", [False])
+    try:
+        # The deposit goes to the node and gets no receipt: the run stops.
+        result = net.ops("recover", "--chain", name, env=short)
+        assert result.returncode != 0 and "no receipt" in result.stderr and "hub.vaultUp was not sent" in result.stderr
+        journal = net.data()["contracts"]["vaults"][name]["recoveries"][-1]["pending"]["deposit"]
+        assert journal["nonce"] == nonce and len(journal["txs"]) == 1
+        assert (net.nonce(name), net.nonce(name, "pending")) == (nonce, nonce + 1)
+
+        # The next run finds the deposit of the journal and waits for it. It sends no second one.
+        before_lasna = net.blocks()[LASNA]
+        result = net.ops("recover", "--chain", name, env=short)
+        assert result.returncode != 0 and "an earlier run stopped at this transaction" in result.stdout
+        assert net.nonce(name, "pending") == nonce + 1 and net.blocks()[LASNA] == before_lasna
+        assert net.data()["contracts"]["vaults"][name]["recoveries"][-1]["pending"]["deposit"] == journal
+
+        # A new transaction of the same account does not go out while one waits for its receipt.
+        ops_timeout, ops.RECEIPT_TIMEOUT = ops.RECEIPT_TIMEOUT, 2
+        try:
+            with pytest.raises(ops.OpsError, match="has a transaction with no receipt"):
+                ops.send_transaction(net.rpcs[name], net.account, net.account.address, b"", 1)
+        finally:
+            ops.RECEIPT_TIMEOUT = ops_timeout
+        assert net.nonce(name, "pending") == nonce + 1
+    finally:
+        net.anvils[name].request("evm_setAutomine", [True])
+        net.anvils[name].request("anvil_mine", ["0x1"])
+
+    result = net.ops("recover", "--chain", name)
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert journal["txs"][0] in result.stdout and "sent 0, remaining 0" in result.stdout
+    assert net.nonce(name) == nonce + 1, "a second deposit"
+    assert net.debt(name, vault) == 0
+    assert net.read(name, net.ledger[name], net.ledger_abi, "reserves", vault) == reserve
+    recovery = net.data()["contracts"]["vaults"][name]["recoveries"][-1]
+    assert recovery["deposit"] == journal["txs"][0] and "pending" not in recovery and len(recovery["vaultUp"]) == 1
 
 
 # ----------------------------------------------------------------------------------------------
@@ -730,8 +926,17 @@ def test_a_deployment_that_stopped_is_continued_and_not_sent_a_second_time(net, 
     assert saved and saved[0]["pendingDeploy"]["nonce"] == nonce and saved[0]["pendingDeploy"]["txs"]
     assert entry["address"] is None
 
+    first = saved[0]["pendingDeploy"]
     receipt = ops.deploy_recorded(rpc, net.account, net.callback, (), 0, entry, save, "canary")
     assert int(rpc.request("eth_getTransactionCount", [sender, "latest"]), 16) == nonce + 1, "two deployments"
+    if broken is NeverSent:
+        # The second transaction has the same nonce and fees that a node accepts for a replacement.
+        mined = rpc.transaction(receipt["transactionHash"])
+        assert receipt["transactionHash"] not in first["txs"] and int(mined["nonce"], 16) == nonce
+        for field, value in first["fees"].items():
+            assert int(mined[field], 16) >= int(value) * 9 // 8 + 1
+    else:
+        assert receipt["transactionHash"] == first["txs"][0]
     assert entry["address"] == ops.create_address(sender, nonce) and rpc.code(entry["address"])
     assert entry["deployTx"] == receipt["transactionHash"] and "pendingDeploy" not in entry
     assert entry["deployBlock"] == int(receipt["blockNumber"], 16)

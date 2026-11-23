@@ -251,3 +251,9 @@ def test_the_tip_of_a_transaction_is_one_wei_or_more():
             return "0x0"
 
     assert ops._fees(Node()) == {"maxPriorityFeePerGas": 1, "maxFeePerGas": 150 * 10**9 + 1}
+
+
+def test_replacement_fees_are_higher_in_each_field():
+    assert ops._replacement_fees({"maxFeePerGas": "150000000001", "maxPriorityFeePerGas": "1"}) == \
+        {"maxFeePerGas": 168750000002, "maxPriorityFeePerGas": 2}
+    assert ops._replacement_fees(None) == {}

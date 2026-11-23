@@ -152,11 +152,15 @@
       }
     },
     "canaryCallback": {
+      "chain": "base-sepolia",
+      "chainId": 84532,
       "address": "0xa462B906917C0372872AD35C0321eB5Daa60692E",
       "deployBlock": 62489272,
       "deployTx": "0x1af0608df54206901d76b4daf147c68d4b5a8c573440148efb84ac856c7f5bc8"
     },
     "canaryReactive": {
+      "chain": "lasna",
+      "chainId": 5318007,
       "address": "0x2F1154a2De20B7f57A868FAC2Fb29AD13D2007A6",
       "deployBlock": 9039280,
       "deployTx": "0x47c1e5fd13e79275131d3cdb33d283be2145dc5b3f6149595b42b71af35da6c7"
