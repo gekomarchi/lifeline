@@ -737,45 +737,65 @@ def test_a_deployment_that_stopped_is_continued_and_not_sent_a_second_time(net, 
     assert entry["deployBlock"] == int(receipt["blockNumber"], 16)
 
 
-def test_an_enrollment_that_stopped_is_restored_from_the_chain(net):
+def test_a_journal_with_a_used_nonce_and_an_unknown_hash_stops_the_command(net):
+    rpc, sender = net.rpcs[LASNA], net.account.address
+    nonce = int(rpc.request("eth_getTransactionCount", [sender, "latest"]), 16)
+    # The journal of an earlier run: a nonce that another transaction used, and a hash that the node does
+    # not know. The result of that run is not known, so nothing is sent.
+    entry = {"pendingDeploy": {"nonce": nonce - 1, "txs": ["0x" + "11" * 32]}}
+    before = net.blocks()
+    with pytest.raises(ops.OpsError, match="is not known"):
+        ops.deploy_recorded(rpc, net.account, net.callback, (), 0, entry, lambda: None, "canary")
+    assert net.blocks() == before and entry["pendingDeploy"]["txs"] == ["0x" + "11" * 32]
+
+
+def test_an_enrollment_that_stopped_is_continued_from_its_journal(net):
     canary = net.new_callback_canary()
-    arguments = ["enroll", "--chain", BASE, "--target", canary, "--label", "restore"]
+    arguments = ["enroll", "--chain", BASE, "--target", canary, "--label", "journal"]
     result = net.ops(*arguments, *CANARY_POLICY)
     assert result.returncode == 0, result.stderr
     complete = net.data()["enrollments"][-1]
+    nonce = int(net.rpcs[LASNA].transaction(complete["txs"]["enroll"])["nonce"], 16)
     before = net.blocks()
 
-    def run_again(change, policy=CANARY_POLICY):
+    def edit(change):
         data = net.data()
         change(data["enrollments"])
         net.manifest.write_text(json.dumps(data, indent=2))
-        return net.ops(*arguments, *policy)
 
-    # As if the run had stopped after `hub.enroll` was in a block and before the command wrote the result.
-    result = run_again(lambda records: records[-1]["txs"].update(enroll=None, enrollBlock=None))
+    def journal_of(tx_hash):
+        def change(records):
+            txs = records[-1]["txs"]
+            txs["pending"] = {"enroll": {"nonce": nonce, "txs": [tx_hash]}}
+            txs.update(enroll=None, enrollBlock=None)
+        return change
+
+    # As if the run had stopped after it sent `hub.enroll` and before it saw the receipt. The journal has
+    # the hash: the next run takes the receipt and sends nothing.
+    edit(journal_of(complete["txs"]["enroll"]))
+    result = net.ops(*arguments, *CANARY_POLICY)
     assert result.returncode == 0, result.stderr
-    assert result.stdout.count("sent by an earlier run") == 2
+    assert "an earlier run stopped" in result.stdout
     restored = net.data()["enrollments"][-1]
     assert {**restored, "txs": {**restored["txs"], "readBackBlock": None}} == \
         {**complete, "txs": {**complete["txs"], "readBackBlock": None}}
 
-    # As if the run had written no record at all: the two hashes come from the logs of the vault and the hub.
-    result = run_again(lambda records: records.pop())
-    assert result.returncode == 0, result.stderr
-    restored = net.data()["enrollments"][-1]
-    assert restored["txs"]["setPolicy"] == complete["txs"]["setPolicy"]
-    assert (restored["txs"]["enroll"], restored["txs"]["enrollBlock"]) == \
-        (complete["txs"]["enroll"], complete["txs"]["enrollBlock"])
+    # A journal with a hash that the node does not know, and a nonce that was used: the result is not known.
+    # `enroll` stops. `remove` stops too: that transaction could still get into a block after the removal.
+    edit(journal_of("0x" + "22" * 32))
+    result = net.ops(*arguments, *CANARY_POLICY)
+    assert result.returncode != 0 and "is not known" in result.stderr
+    result = net.ops("remove", "--chain", BASE, "--target", canary)
+    assert result.returncode != 0 and "Run enroll again" in result.stderr
 
-    # Another policy than the one on the chain is refused, and the manifest gets no record.
-    count = len(net.data()["enrollments"]) - 1
-    other = [*CANARY_POLICY[:3], "0.000000000000002", *CANARY_POLICY[4:]]
-    result = run_again(lambda records: records.pop(), other)
-    assert result.returncode != 0 and "differs from the input" in result.stderr
-    assert len(net.data()["enrollments"]) == count
+    # The hub has the target and the manifest has no record of the enrollment: refused.
+    edit(lambda records: records.pop())
+    result = net.ops(*arguments, *CANARY_POLICY)
+    assert result.returncode != 0 and "no record of that enrollment" in result.stderr
 
-    assert net.blocks() == before, "a restored enrollment sent a transaction"
+    assert net.blocks() == before, "a command sent a transaction"
     assert net.target_state(BASE, canary) == "Active"
+    edit(lambda records: records.append(complete))
 
 
 def test_forkrelay_refuses_an_rpc_that_is_not_a_local_development_node(net, tmp_path):

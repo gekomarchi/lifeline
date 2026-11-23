@@ -173,11 +173,19 @@ A command changes only its own entries and keeps each other entry of the file. T
 
 ### A run that stops
 
-A command writes the manifest before each transaction goes to the node, with the hash of that transaction. So the same command, run again, continues after a failure or a lost answer of a node:
+A command writes the manifest before each transaction goes to the node, with the nonce and the hash of that transaction (a journal). The hash moves to its place in the file when the transaction has a receipt. So the same command, run again, continues after a failure or a lost answer of a node. The rule for a journal:
 
-- `deploy` and `loop-check` write the nonce and the hash of a deployment to `pendingDeploy` of its entry. The next run waits for that transaction, or sends it again with the same nonce if the node does not know it. No contract is deployed two times. A contract entry with `address` null is a deployment that did not finish.
-- `enroll` and `fleet` write the enrollment record before `setPolicy`. The next run with the same policy sends only the steps that are missing. If the hub has the target already and the record is not complete, the command takes the hashes from the `PolicySet` log of the vault and the `Enrolled` log of the hub, after it compares the policy on the chain with the input.
-- `remove` writes its hashes to `removing` of the record, and moves them to `removed` at the end.
+- The chain has the transaction, in a block or not: the command waits for it and sends nothing.
+- The node does not know the transaction and the nonce is free: the command sends the transaction again with the same nonce. One of the two at most can get into a block.
+- The node does not know the transaction and the nonce was used: the result is not known. The command stops and sends nothing. It does not use a new nonce. Run the command again later. If the result is the same, find the transaction of that nonce in a block explorer and correct the manifest.
+
+Where the journal is:
+
+- `deploy` and `loop-check`: `pendingDeploy` of the entry of a contract. No contract is deployed two times. A contract entry with `address` null is a deployment that did not finish.
+- `enroll`, `fleet` and each other transaction: `pending` next to the hash. `enroll` writes the enrollment record before `setPolicy`. The next run with the same policy sends only the steps that are missing.
+- `remove` writes its hashes to `removing` of the record, and moves them to `removed` at the end. It does not start while a transaction of the enrollment has no receipt: finish the enrollment with `enroll` first.
+
+If the hub has a target and the manifest has no record of that enrollment, `enroll` and `fleet` refuse the target. `remove` removes it.
 
 ### Checks before deployment
 
