@@ -766,6 +766,34 @@ def test_junk_counts_each_request_on_the_chain_and_stops_at_its_limit(net):
         assert result.returncode == 1 and f"behind block {newest}" in result.stderr, result.stderr + result.stdout
         assert net.blocks() == blocks and junk_requests(net) == 3
 
+        # A run that stopped after its third request went to the node and before it saw the receipt: the
+        # record has 2 requests, and the third one in its journal. The nonce of the account is the newest
+        # one, and the node that gives the logs is behind: 2 requests, as the record says. The request of the
+        # journal is in a block, so the list is not complete: the command sends no request with the number 3.
+        complete = net.scenarios.read_text()
+        logs = junk_request_logs(net)
+        stopped = json.loads(complete)
+        stopped["junk"].update(
+            junkRequests=2, lastJunkRequest={"block": int(logs[1]["blockNumber"], 16), "tx": logs[1]["transactionHash"]},
+            pendingRequests=[{"nonce": int(net.rpcs[LASNA].transaction(logs[2]["transactionHash"])["nonce"], 16),
+                              "tx": logs[2]["transactionHash"]}])
+        net.scenarios.write_text(json.dumps(stopped))
+        blocks = net.blocks()
+        net.proxy.tamper = lambda chain, method, params, result: (
+            result[:2] if chain == LASNA and method == "eth_getLogs" and params[0]["topics"][0] == request_topic
+            else result)
+        try:
+            result = net.experiment("junk", "--chain", BASE, "--max-junk", "3", *short)
+        finally:
+            net.proxy.tamper = None
+        assert result.returncode == 1 and "the node gave no log of it" in result.stderr, result.stderr + result.stdout
+        assert net.blocks() == blocks and junk_requests(net) == 3
+        # With each log the request of the journal is settled, and the count is 3.
+        result = net.experiment("junk", "--chain", BASE, "--max-junk", "3", *short)
+        assert result.returncode == 1 and "not in debt after 3 junk requests" in result.stderr, result.stdout
+        assert net.scenario("junk")["pendingRequests"] == [] and net.scenario("junk")["junkRequests"] == 3
+        assert net.blocks() == blocks
+
         # A run that continues checks the hub again: a paused hub cannot report the vault as down.
         ops.transact(net.rpcs[LASNA], net.account, net.hub, net.hub_abi.encode("pause"), abi=net.hub_abi)
         try:
@@ -874,6 +902,7 @@ def test_junk_takes_the_vault_offline_and_recover_does_the_waiting_rescue(net):
     numbers = junk_numbers(net, record["lasnaStartBlock"])
     assert numbers == [1, 2, 3, 4, *range(6, len(numbers) + 2)], "a number was used two times"
     assert record["undeliveredAtDebt"] == 0 and record["junkAfterRecovery"] == 0
+    assert record["pendingRequests"] == [], "each request that went to the node has its log"
     assert len(net.rpcs[BASE].logs(net.ledger[BASE], [net.ledger_abi.topic("CallbackFailure"),
                                                        ops.topic_of_address(vault)], net.origin[BASE])) \
         == record["junkRequests"]

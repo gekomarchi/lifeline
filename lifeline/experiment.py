@@ -854,7 +854,8 @@ def junk_recipient(session: ops.Session, chain_name: str, owner_address: str) ->
 
 
 def request_callbacks(session: ops.Session, account, owner_address: str, requester: str, chain_name: str,
-                      recipient: str, payloads: list, gas_limit: int, nonce: int = None) -> list:
+                      recipient: str, payloads: list, gas_limit: int, nonce: int = None,
+                      journal=None) -> list:
     """Requests one callback for each payload through `JunkRequester`, in one burst of transactions. Returns
     the receipts.
 
@@ -863,7 +864,11 @@ def request_callbacks(session: ops.Session, account, owner_address: str, request
 
     `nonce`: the nonce of the first transaction, for a caller that decided the burst from a state of the
     chain with that nonce (see `idle_block`). If the account sent another transaction after that state, the
-    burst is not sent, or the node refuses it. Without it the nonce is the newest one of the account."""
+    burst is not sent, or the node refuses it. Without it the nonce is the newest one of the account.
+
+    `journal(tx_hash, nonce)` runs for each transaction after its signature and before it goes to the node:
+    a caller that writes the hash to a file there finds the request again after a stop, also at a node that
+    does not give its log."""
     fixtures = session.manifest.data["fixtures"]
     is_fixture = any(isinstance(entry, dict) and entry.get("chain") == chain_name
                      and same_address(entry.get("address") or "", recipient) for entry in fixtures.values())
@@ -883,8 +888,9 @@ def request_callbacks(session: ops.Session, account, owner_address: str, request
     except RpcError as error:
         raise OpsError(f"the callback request on {LASNA} would revert: {error.message}") from None
     gas = estimate * 6 // 5 + 10_000
+    before_send = None if journal is None else (lambda tx_hash, used, fees: journal(tx_hash, used))
     hashes = [ops.send_transaction(lasna.rpc, account, requester, data, gas=gas, abi=abi, what="callback request",
-                                   nonce=nonce + index)
+                                   nonce=nonce + index, before_send=before_send)
               for index, data in enumerate(calls)]
     return [ops.wait_receipt(lasna.rpc, tx_hash) for tx_hash in hashes]
 
@@ -1020,16 +1026,53 @@ def cmd_junk(args) -> int:
     ])
     state = {"nonce": None}  # the nonce of the account at the read that decides the next requests
 
+    def journal(tx_hash: str, nonce: int) -> None:
+        """Each request is in the record before it goes to the node: `pendingRequests`."""
+        record.setdefault("pendingRequests", []).append({"nonce": nonce, "tx": tx_hash})
+        scenarios.save()
+
+    def settle_journal(logs: list, nonce: int) -> None:
+        """Compares the requests that the record has as sent with the logs that the node gave, at the nonce
+        of the same read. A request of a run that stopped before it saw the receipt is in the journal. If
+        that request is in a block and the node gave no log of it, the list of the node is not complete:
+        the command stops. A list with a request too few would permit a request above the limit, a burst
+        before the delivery of the burst before it, and a number that a request has already."""
+        pending = record.get("pendingRequests") or []
+        if not pending:
+            return
+        found = {log["transactionHash"] for log in logs}
+        # A request with a log is settled, and with it each other transaction that was signed with its nonce.
+        settled = {entry["nonce"] for entry in pending if entry["tx"] in found}
+        for used in sorted({entry["nonce"] for entry in pending} - settled):
+            if used >= nonce:
+                continue  # not in a block at this read: the transaction did not go out, or the node is behind
+            receipts = [lasna.rpc.receipt(entry["tx"]) for entry in pending if entry["nonce"] == used]
+            mined = [receipt for receipt in receipts if receipt is not None and receipt.get("blockNumber")]
+            if any(hex_int(receipt["status"]) == 1 for receipt in mined):
+                raise OpsError(f"the callback request {mined[0]['transactionHash']} of {scenarios.path} is in "
+                               f"block {block_of(mined[0])} of {LASNA}, and the node gave no log of it: the node "
+                               f"is behind. Nothing was sent. Run the command again")
+            if not mined:
+                raise OpsError(f"the account used the nonce {used} on {LASNA}, and no callback request of "
+                               f"{scenarios.path} with that nonce has a receipt: the node is behind, or another "
+                               f"command sent a transaction with the fixture key. Nothing was sent. Run the "
+                               f"command again. If another command used the nonce, delete the entries with "
+                               f"that nonce from pendingRequests of the junk record")
+            settled.add(used)  # it reverted: no request
+        record["pendingRequests"] = [entry for entry in pending if entry["nonce"] not in settled]
+        scenarios.save()
+
     def requests_to(recipient: str) -> list:
         """The callback requests of the requester for one recipient since the start of the flood. The chain is
-        the journal: a request of a run that stopped is in this list."""
+        the journal of the requests that have a log, and the record is the journal of the requests that went
+        to the node: a request of a run that stopped is in this list, or the command stops."""
         # One block for the nonce of the account and for the list, not below a block that the run saw or
-        # that the record has. A list with a request too few would permit a request above the limit, a burst
-        # before the delivery of the burst before it, and a number that a request has already. The nonce
-        # binds the next requests to this read: see `request_callbacks`.
+        # that the record has. The nonce binds the next requests to this read: see `request_callbacks`.
         block, state["nonce"] = idle_block(lasna.rpc, account.address)
-        return logs_now(lasna.rpc, lasna.ledger, [CALLBACK_REQUEST, chain_topic, topic_of_address(requester),
-                                                  topic_of_address(recipient)], lasna_start, block)
+        logs = logs_now(lasna.rpc, lasna.ledger, [CALLBACK_REQUEST, chain_topic, topic_of_address(requester),
+                                                  [vault_topic, waiting_topic]], lasna_start, block)
+        settle_journal(logs, state["nonce"])
+        return [log for log in logs if log["topics"][3] == topic_of_address(recipient)]
 
     def delivered(from_block: int = None) -> set:
         """The numbers of the junk requests of this flood that the proxy delivered. Each delivery is a
@@ -1084,7 +1127,7 @@ def cmd_junk(args) -> int:
                 first = max(numbers, default=0) + 1
                 payloads = [junk_payload(vault_abi, lasna_start, first + index) for index in range(burst)]
                 receipts = request_callbacks(session, account, owner.address, requester, args.chain, vault,
-                                             payloads, JUNK_CALLBACK_GAS, state["nonce"])
+                                             payloads, JUNK_CALLBACK_GAS, state["nonce"], journal)
                 # The count with the receipts of this burst: the next read must not show fewer requests.
                 record["junkRequests"] = sent + len(receipts)
                 scenarios.save()
@@ -1133,7 +1176,7 @@ def cmd_junk(args) -> int:
             require_guardian(session, what="the junk scenario")
             request_callbacks(session, account, owner.address, requester, args.chain, waiting,
                               [callback_abi.encode("pong", ZERO_ADDRESS, pongs + 1)], ops.CANARY_CALLBACK_GAS,
-                              state["nonce"])
+                              state["nonce"], journal)
             waited = False
         # Each request is a step, also the ones of a run that stopped: the chain has them.
         for index, request in enumerate(requests_to(waiting), 1):
