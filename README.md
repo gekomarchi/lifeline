@@ -2,73 +2,79 @@
 
 **Lifeline: the gas guardian for my reactive automations.** Reactive automations stop without a warning when their gas credit runs out. Lifeline is the guardian I set once: it refuels them across chains inside my budget, and it stops feeding one that breaks.
 
-Lifeline runs on Reactive Network testnet only. Entry track: "Set It and Forget It".
+Testnet only. Entry track: "Set It and Forget It". Each number below is a link to its query result or to [`JUDGE.md`](JUDGE.md).
 
-| Contract | Chain (chain ID) | Address | Sourcify | Ledger of the chain |
-|---|---|---|---|---|
-| `LifelineHub` | Lasna ([5318007](JUDGE.md#heights)) | `0xbba61E507e7CC334e57A62c39A776272DA6b07Dd` | [verified](https://repo.sourcify.dev/5318007/0xbba61E507e7CC334e57A62c39A776272DA6b07Dd) | system contract `0x8888888888888888888888888888888888888888` |
-| `LifelineVault` | Unichain Sepolia ([1301](JUDGE.md#heights)) | `0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26` | [verified](https://repo.sourcify.dev/1301/0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26) | callback proxy `0x775c9B990ADe401060B78D0e98684eEf8d2466C1` |
-| `LifelineVault` | Base Sepolia ([84532](JUDGE.md#heights)) | `0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2` | [verified](https://repo.sourcify.dev/84532/0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2) | callback proxy `0x476F44b11F5C942c58f4c8E3d0300E5710743585` |
-
-The addresses come from [`deployments/manifest.json`](deployments/manifest.json).
+| Contract | Chain | Address, linked to the verified source on Sourcify | Gas ledger of the chain |
+|---|---|---|---|
+| `LifelineHub` | Lasna ([5318007](JUDGE.md#heights)) | [`0xbba61E507e7CC334e57A62c39A776272DA6b07Dd`](https://repo.sourcify.dev/5318007/0xbba61E507e7CC334e57A62c39A776272DA6b07Dd) | system contract `0x8888888888888888888888888888888888888888` |
+| `LifelineVault` | Unichain Sepolia ([1301](JUDGE.md#heights)) | [`0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26`](https://repo.sourcify.dev/1301/0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26) | callback proxy `0x775c9B990ADe401060B78D0e98684eEf8d2466C1` |
+| `LifelineVault` | Base Sepolia ([84532](JUDGE.md#heights)) | [`0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2`](https://repo.sourcify.dev/84532/0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2) | callback proxy `0x476F44b11F5C942c58f4c8E3d0300E5710743585` |
 
 ## Problem
 
-A reactive contract pays each reaction from its reserves at the system contract. A callback contract pays each callback from its reserves at the callback proxy. When the reserves are empty, the ledger records a debt and the contract gets no more work. There is no error: the automation only stops.
+A contract pays each run from its reserves at the gas ledger of its chain. When the reserves are empty, the contract gets no more work, and there is no error. So the builder over-funded the first target, `FastfillReactive`: it holds [60.37 lREACT](evidence/network/table.md) (query `fastfill_reactive_reserves`), and reserves cannot be withdrawn.
 
-The first user is the builder. The builder's own automation `FastfillReactive` holds [60.37 lREACT](evidence/network/table.md) in reserves (query `fastfill_reactive_reserves`), and reserves cannot be withdrawn. The builder over-funded it, because a contract that runs out stops with no error.
-
-Network numbers, from 2026-11-05 00:00 EET to the heights in [`evidence/network/heights.json`](evidence/network/heights.json):
-
-| Number | Value | Query in [`data.json`](evidence/network/data.json) |
+| On the network, from 2026-11-05 00:00 EET to the [heights](evidence/network/heights.json) | Value | Query in [`data.json`](evidence/network/data.json) |
 |---|---|---|
-| Debt events on Lasna | [349](evidence/network/table.md) | `lasna_debt_events` |
-| Debt events on the destination chains | [47](evidence/network/table.md): Base Sepolia [36](evidence/network/table.md), Unichain Sepolia [11](evidence/network/table.md) | `destination_debt_events` |
+| Debt events | Lasna [349](evidence/network/table.md), destination chains [47](evidence/network/table.md) | `lasna_debt_events`, `destination_debt_events` |
 | Contracts with a debt event that are in debt at the end | Lasna [199 of 256](evidence/network/table.md), Base Sepolia [24 of 36](evidence/network/table.md), Unichain Sepolia [8 of 11](evidence/network/table.md) | `stopped_contracts` |
-| Contracts on Lasna with 3 or more debt events | [14](evidence/network/table.md) | `repeat_debtors` |
-| Dropped callbacks, derived from debt intervals (not a count of observed reverted transactions) | [146](evidence/network/table.md) | `dropped_callbacks` |
+| Lasna contracts with 3 or more debt events | [14](evidence/network/table.md) | `repeat_debtors` |
+| Dropped callbacks, derived from debt intervals (not observed reverts) | [146](evidence/network/table.md) | `dropped_callbacks` |
 
-What Lifeline does for an enrolled automation:
-
-- An automation that runs out works again. Measured on testnet: a Lasna target was alive [1 block](JUDGE.md#lasna-rescues-and-gaps) after its debt event, in each of [2 rescues](JUDGE.md#lasna-rescues-and-gaps). A Base Sepolia target was alive [5 blocks](JUDGE.md#loop-check-canary-base-sepolia) after its debt event, in [1 rescue](JUDGE.md#loop-check-canary-base-sepolia). The time in seconds is not measured yet.
-- An automation normally does not run out, because a slow gauge refills it first.
-- A broken automation is cut off after a set number of rescues. Measured on testnet: a canary that reverts in a loop was [quarantined after 2 rescues](JUDGE.md#quarantine), and the hub paid [0 after the quarantine](JUDGE.md#quarantine).
+| What Lifeline does for an enrolled automation | Measured on testnet |
+|---|---|
+| An automation that runs out works again. | Lasna: alive [1 block](JUDGE.md#lasna-rescues-and-gaps) after the debt event, in each of [2 rescues](JUDGE.md#lasna-rescues-and-gaps). Base Sepolia: alive [5 blocks](JUDGE.md#loop-check-canary-base-sepolia) after it, in [1 rescue](JUDGE.md#loop-check-canary-base-sepolia). The time in seconds is not measured yet. |
+| An automation normally does not run out. | A slow gauge refills it first. |
+| A broken automation is cut off. | A canary that reverts in a loop was [quarantined after 2 rescues](JUDGE.md#quarantine), and the hub paid [0 after the quarantine](JUDGE.md#quarantine). |
 
 ## How it works
 
-```
-Lasna target in debt ───────► system contract emits BlacklistContract(target)
-                                 └► LifelineHub.react() ── depositTo(target)
-destination target in debt ─► callback proxy emits BlacklistContract(target)
-                                 └► LifelineHub.react() ── callback ──► LifelineVault.reconcile(target)
-                                                                          └ proxy.depositTo(target)
-cron tick ──────────────────► LifelineHub.react() ── refill Lasna targets below low
-                                                   └ callback ──► LifelineVault.sweep(targets[])
+```mermaid
+sequenceDiagram
+  participant T as Your contract
+  participant L as Gas ledger of its chain<br/>(system contract or callback proxy)
+  participant H as LifelineHub<br/>(Lasna)
+  participant V as LifelineVault<br/>(destination chain)
+  Note over T,V: AIRBAG: a contract runs out of gas credit
+  T->>L: runs out of gas credit
+  L->>H: debt event of the network
+  rect rgba(128, 128, 128, 0.12)
+    Note over H: if the contract is on Lasna
+    H->>L: pays the debt and refills the contract
+  end
+  rect rgba(128, 128, 128, 0.12)
+    Note over H,V: if the contract is on a destination chain
+    H->>V: rescue request
+    V->>L: pays the debt and refills the contract
+  end
+  L-->>T: the contract works again
+  Note over T,V: GAUGE: on each cron tick, before a contract runs out
+  H->>L: refills each Lasna contract below its low mark
+  H->>V: sweep request
+  V->>L: refills each contract below its low mark
 ```
 
-| Part | What it does |
-|---|---|
-| Hub and vaults | One `LifelineHub` on Lasna guards reactive contracts. One `LifelineVault` on each destination chain guards callback contracts, on request of the hub. There is no server and no bridge. |
-| Funds | Each contract has a principal (its balance) and a small fee float (its reserves at the ledger). The principal pays the targets, and the owner can withdraw it. The ledger takes fees from the float only: neither contract has `pay()`. Self-care moves principal into the float up to `selfReserveTarget`, at most `selfCareDailyCap` for each day, and never below `principalFloor`. |
-| Airbag | The hub subscribes to the network's own debt event of each enrolled target, with the exact target address. For a Lasna target it pays `debt + (high - reserves)` in that reaction. For a destination target it requests one `reconcile` callback, and the vault pays from its own principal. |
-| Gauge | On each cron tick (`Cron10000` by default) the hub refills each Lasna target that is below `low`, and requests one `sweep` on each vault that has a target. One sweep has at most 8 targets; a cursor continues on the next tick. |
-| Quarantine | After `maxRescues` rescues inside `window` seconds, the next debt quarantines the target: no more payment. The hub decides for a Lasna target, the vault for a destination target. For a destination target the hub counts relay requests only: at `2 x maxRescues + 2` requests inside `window` it parks the target (`RelayLimited`). |
+- **Airbag.** The hub subscribes to the network's own debt event of each enrolled target. The payment is `debt + (high - reserves)`.
+- **Gauge.** On each cron tick (`Cron10000` by default), each target with reserves below `low` is refilled to `high`.
+- **Quarantine.** After `maxRescues` rescues inside `window` seconds, the next debt quarantines the target: no more payment.
+- **Funds.** The principal (the balance) pays the targets, and the owner can withdraw it. Fees come only from a small fee float (the reserves of the contract at its ledger): neither contract has `pay()`. Self-care refills the float from the principal, at most `selfCareDailyCap` for each day.
+- One hub on Lasna, one vault on each destination chain. No server, no bridge, no code in the target.
 
 ## Lifeline and Reactivate
 
 Reactivate is an earlier project for the same problem.
 
-| Part | Lifeline | Against Reactivate |
-|---|---|---|
-| Trigger | The network's own debt event. The guardian works when the application is dead. | New |
-| Code in the target | None: `depositTo` needs no code in the target. | New |
-| Infrastructure | No server and no deployment for each application. | New |
-| Destination chains | Debt at a callback proxy is handled by the vault of that chain. | New |
-| Budget and quarantine | `maxDebt`, `dailyCap`, `maxRescues` in `window`. | New |
-| Principal isolation | The ledger can take only the fee float. | New |
-| Threshold top-up | The gauge refills a target below `low`. | Not new |
+| Against Reactivate | Lifeline |
+|---|---|
+| New | The trigger is the network's own debt event, so the guardian works when the application is dead. |
+| New | `depositTo` needs no code in the target. |
+| New | No server and no deployment for each application. |
+| New | Debt on a destination chain is handled. |
+| New | Budget and quarantine. |
+| New | Principal isolation: the ledger can take only the fee float. |
+| Not new | Threshold top-up (the gauge). |
 
-The strongest alternative is a cron poller that calls `depositTo`, or large pre-funding. The experiment runs three identical canary automations side by side: A with no guardian, B with a cron poller, C with Lifeline. Result: [the three-arm table](JUDGE.md#three-arm-table). At the heights of that table no load is recorded ([0 pokes for each arm](JUDGE.md#three-arm-table)), so it shows no difference between the arms yet.
+The strongest alternative is a cron poller that calls `depositTo`, or large pre-funding. The experiment runs three identical canary automations side by side: no guardian, cron poller, Lifeline. Result: [the three-arm table](JUDGE.md#three-arm-table). No load is recorded at its heights ([0 pokes for each arm](JUDGE.md#three-arm-table)), so it shows no difference yet.
 
 ## Quick start
 
@@ -82,9 +88,10 @@ pip install -e ".[ops]"
 forge build
 ```
 
-### Fork dry run
+<details>
+<summary><b>Fork dry run</b>: no funds, ends with <code>loop-check passed</code></summary>
 
-The dry run needs no funds. Start three local forks, each in its own terminal:
+Start three local forks, each in its own terminal:
 
 ```
 anvil --fork-url https://lasna-rpc.rnk.dev/ --port 8545 --disable-min-priority-fee
@@ -123,7 +130,10 @@ loop-check passed
 - The RPC of a destination fork must serve the state of the fork block. At the two blocks above, the proxies authorize the delivery account that `forkrelay` uses. For another block, give `--operator <chain>=<address>`.
 - For a new dry run, start new forks and delete `.cache/dry`.
 
-### Testnet
+</details>
+
+<details>
+<summary><b>Testnet</b>: the same steps with a funded key</summary>
 
 Use a funded key. `deploy` prints its checks first, and it sends nothing if the balance of a chain is not above `principal + feeFloat` of the contracts of that chain in [`deployments/config.json`](deployments/config.json).
 
@@ -138,142 +148,74 @@ python -m lifeline.ops status --manifest deployments/my-manifest.json
 
 The end is the same as in the dry run. The canary stays enrolled: remove it with `remove`, or continue with your own contract in "Enroll".
 
+</details>
+
 ## Operator guide
 
-```
-python -m lifeline.ops deploy     [--config <file>]
-python -m lifeline.ops verify     [--sourcify <url>]
-python -m lifeline.ops enroll     --chain <name> --target <address> --label <text>
-                                  --low <amount> --high <amount> --max-debt <amount> --daily-cap <amount>
-                                  --max-rescues <n> --window <seconds> [--guest --consent <reference>]
-python -m lifeline.ops fleet      [--config <file>]
-python -m lifeline.ops remove     --chain <name> --target <address>
-python -m lifeline.ops recover    --chain <name>
-python -m lifeline.ops status
-python -m lifeline.ops loop-check --chain <name> [--timeout <seconds>] [--new] [--canary-reserve <amount>]
-python -m lifeline.forkrelay      --rpc <chain>=<url> ... [--cron-tick] [--watch] [--state <file>]
-```
+Each command accepts `--manifest <file>` (default [`deployments/manifest.json`](deployments/manifest.json)) and `--rpc <chain>=<url>`. Chain names: `lasna`, `unichain-sepolia`, `base-sepolia`. `LIFELINE_OWNER_KEY` is the key of the owner; `verify` and `status` need no key. After a failure, run the same command again: it continues. Do not run two commands with one key at the same time.
 
-- Each command accepts `--manifest <file>` (default `deployments/manifest.json`) and `--rpc <chain>=<url>`. Chain names: `lasna`, `unichain-sepolia`, `base-sepolia`.
-- An amount is a decimal number in the native unit of the chain: lREACT on Lasna, ETH on a destination chain.
-- The commands read each ABI from `out/`: run `forge build` first. `LIFELINE_OWNER_KEY` is the key of the owner of the hub and of each vault. `verify` and `status` need no key.
-- Exit status 0 is success. Status 1 is a refusal or a failure, with the reason on standard error.
-- `deploy` reads [`deployments/config.json`](deployments/config.json) and writes the manifest. Each later command reads the manifest and adds its records.
-- A command writes a transaction to the manifest before it sends it. After a failure, run the same command again with the same inputs: it continues from the manifest and from the state of the chain. `hub.vaultUp` has no such record: `recover` reads the hub and the vault debt before each call. Do not run two commands with one key at the same time.
-
-### Configuration and manifest
-
-| Entry of `deployments/config.json` | Meaning |
+| Task | Command |
 |---|---|
-| `chains.<name>` | `chainId`, `ledger` (the system contract on Lasna, the callback proxy on a destination chain) and the `rpc` list. A destination chain also has `sweepBase` and `measuredSweepGas`: the base gas and the measured gas of one full sweep. |
-| `hub`, `vaults.<name>` | `principal`, `feeFloat`, `selfReserveTarget`, `selfCareDailyCap`, `principalFloor`, in wei. The deployment sends `principal + feeFloat`. |
-| `callbackSender` | `"hub"`: each vault accepts only the callbacks that the hub requested. |
-| `cronTopic` | `Cron10000` or `Cron1000`. |
-| `fleet` | The targets of the `fleet` command: `label`, `chain`, `address`, `policy` (amounts in wei). |
-
-- Before its first transaction, `deploy` checks each chain ID and each ledger, the policies of `fleet`, and the owner balances. It also checks that the float of the hub covers one full trigger, and that `selfReserveTarget` of each vault covers 4 full sweeps. A second run deploys nothing that the manifest has.
-- The manifest holds `contracts` (the hub and each vault with `address`, `deployBlock` and `deployTx`), `enrollments[]` (with `policy`, `guest`, `consent`, the transaction hashes and `removed`), `loopCheck` and `fixtures`. It holds no key.
+| Deploy the hub and the vaults from [`deployments/config.json`](deployments/config.json); write the manifest | `python -m lifeline.ops deploy` |
+| Verify the contracts on Sourcify | `python -m lifeline.ops verify` |
+| Enroll one target | `python -m lifeline.ops enroll`, see "Enroll" |
+| Enroll each `fleet` entry of the configuration | `python -m lifeline.ops fleet` |
+| Remove a target | `python -m lifeline.ops remove --chain <name> --target <address>` |
+| Restore a vault that is in debt | `python -m lifeline.ops recover --chain <name>` |
+| Show funds and states; a `WARN` line and exit status 1 for each item that needs the owner | `python -m lifeline.ops status` |
+| Show the full rescue loop with a test target on a destination chain | `python -m lifeline.ops loop-check --chain <name>` |
+| Build the read-only board [`board/index.html`](board/index.html) | `python -m lifeline.board` |
 
 ### Enroll
 
-Example values, not measurements:
-
 ```
-# a reactive contract on Lasna
-python -m lifeline.ops enroll --chain lasna --target <address> --label "my automation" \
-  --low 0.05 --high 0.25 --max-debt 0.25 --daily-cap 0.5 --max-rescues 2 --window 3600
-
-# a callback contract on a destination chain
 python -m lifeline.ops enroll --chain unichain-sepolia --target <address> --label "my callback contract" \
   --low 0.0005 --high 0.002 --max-debt 0.001 --daily-cap 0.004 --max-rescues 2 --window 3600
 ```
 
-- Lasna target. One transaction: `hub.enroll(5318007, target, policy)`. The hub reconciles the target at once.
-- Destination target. Three steps in this order: `vault.setPolicy(target, policy)` on the destination chain, which reconciles the target at once; a read-back of `vault.policyOf(target)`; then `hub.enroll(chainId, target, policy)` on Lasna. If the read-back differs, the command stops and sends nothing to Lasna.
-- The `setPolicy` line shows the result of the first reconcile. With `DebtAboveCap`, `DailyCap` or `Floor` the vault paid nothing and an old debt stays: clear it or give another policy.
-- `fleet` enrolls each entry of `fleet` of the configuration through the same path.
-
-### Policy
+The amounts are examples, not measurements, in the native unit of the chain. For a reactive contract use `--chain lasna` and amounts in lREACT.
 
 | Flag | Meaning |
 |---|---|
 | `--low` | The refill mark. The gauge refills a target with reserves below it. |
-| `--high` | The reserves after a payment. A payment is `debt + (high - reserves)`. |
+| `--high` | The reserves after a payment. |
 | `--max-debt` | A debt above this is not paid. There is never a partial payment. |
-| `--daily-cap` | The most principal for this target in one calendar day (UTC). A payment that does not fit is not made. |
-| `--max-rescues`, `--window` | A rescue is a payment that cleared a debt. After `--max-rescues` rescues (1 to 4) inside `--window` seconds, the next debt quarantines the target. A top-up is not a rescue. |
+| `--daily-cap` | The most principal for this target in one calendar day (UTC). |
+| `--max-rescues`, `--window` | A rescue is a payment that cleared a debt. After `--max-rescues` rescues (1 to 4) inside `--window` seconds, the next debt quarantines the target. |
 
-The contracts accept marks in native units only. The presets are advice, not measurements. One run is the fee of one reaction or one callback of your target: read it from the transactions of the target.
+- **Presets (advice, not measurements).** One run is the fee of one reaction or one callback of your target. light (a few runs each day): `low` 2 runs, `high` 10 runs. standard (each hour): 4 and 20. heavy (each minute): 10 and 50. The fleet policy of `FastfillReactive` has [`low` 0.05 lREACT and `high` 0.25 lREACT](JUDGE.md#fleet-report).
+- **Order.** Lasna target: `hub.enroll`, which reconciles the target at once. Destination target: `vault.setPolicy` (the vault reconciles at once), a read-back of `vault.policyOf`, then `hub.enroll` on Lasna.
+- If the `setPolicy` line shows `DebtAboveCap`, `DailyCap` or `Floor`, the vault paid nothing and an old debt stays: clear it or give another policy.
 
-| Preset | For a target that runs | `low` | `high` |
-|---|---|---|---|
-| light | a few times each day | 2 runs | 10 runs |
-| standard | each hour | 4 runs | 20 runs |
-| heavy | each minute | 10 runs | 50 runs |
+### Stop and recover
 
-Set `maxDebt` above the fee of the largest run, and `dailyCap` to the refills that you accept for each day. The fleet policy of `FastfillReactive` has [`low` 0.05 lREACT and `high` 0.25 lREACT](JUDGE.md#fleet-report).
-
-### Remove
-
-```
-python -m lifeline.ops remove --chain <name> --target <address>
-```
-
-The command sends `hub.disarm(chainId, target)` on Lasna first, then `vault.disarm(target)` on the destination chain. A Lasna target stops with `hub.disarm`. For a destination target, `vault.disarm` is the authoritative stop, and `hub.disarm` stops the relay cost.
-
-### Recover a vault
-
-A vault in debt runs no callback. The hub emits `VaultDown(chainId)`, sends no request to that vault, and keeps each later debt event of that chain as pending.
-
-```
-python -m lifeline.ops recover --chain <name>
-```
-
-1. It reads `debt(vault)` at the callback proxy.
-2. If the debt is above 0, it sends `proxy.depositTo(vault)` with the value `debt + selfReserveTarget`.
-3. While the hub reports the vault as down or reports pending targets, it checks that `debt(vault)` is 0 and sends `hub.vaultUp(chainId)`. Each call sends one catch-up sweep for at most 8 pending targets.
-
-### Manual recovery transactions
+`remove` sends `hub.disarm(chainId, target)` first, then `vault.disarm(target)`. A Lasna target stops with `hub.disarm`. For a destination target, `vault.disarm` is the authoritative stop, and `hub.disarm` stops the relay cost.
 
 | Case | Transaction |
 |---|---|
-| The hub is in debt, or `status` warns about its float | `depositTo(hub)` at the system contract on Lasna |
-| A vault is in debt (`VaultDown`) | `proxy.depositTo(vault)` on the destination chain, then `hub.vaultUp(chainId)` on Lasna when `debt(vault)` is 0. `recover` does both. |
-| A destination target is parked by the relay limit (`RelayLimited`) | `hub.rearm(chainId, target)` on Lasna |
-| A target is quarantined | Lasna target: `hub.release(target)`, which reconciles it at once. Destination target: `vault.release(target)` on the destination chain; the next sweep reconciles it. |
+| The hub is in debt, or `status` warns about its float | `depositTo(hub)` at the system contract on Lasna, with a value |
+| A vault is in debt (the hub emits `VaultDown`) | `proxy.depositTo(vault)` with the debt plus a new float as the value, then `hub.vaultUp(chainId)` on Lasna when `debt(vault)` is 0. `recover` does both, and repeats `vaultUp` until no target is pending. |
+| A destination target is parked by the relay limit (`RelayLimited`: `2 x maxRescues + 2` requests inside `window`) | `hub.rearm(chainId, target)` on Lasna |
+| A target is quarantined | Lasna target: `hub.release(target)`. Destination target: `vault.release(target)` on the destination chain. |
+| `status` warns about a low principal | A plain transfer of the native currency to the hub or to the vault. The owner takes principal back with `withdraw(uint256)`; a float cannot be withdrawn. |
 
-Any account can send `depositTo`. The other functions accept only the owner.
-
-Add `--rpc-url <RPC of the chain> --private-key $LIFELINE_OWNER_KEY` to each line:
+Any account can send `depositTo`. The other functions accept only the owner. With `cast` (example value):
 
 ```
-cast send 0x8888888888888888888888888888888888888888 "depositTo(address)" <hub> --value <amount>ether   # on Lasna
-cast send <proxy> "depositTo(address)" <vault> --value <amount>ether                                      # on the destination chain
-cast send <hub> "vaultUp(uint256)" <chainId>                                                              # on Lasna
-cast send <hub> "rearm(uint256,address)" <chainId> <target>                                               # on Lasna
-cast send <hub> "release(address)" <target>                                                               # on Lasna
-cast send <vault> "release(address)" <target>                                                             # on the destination chain
+cast send <ledger> "depositTo(address)" <hub or vault> --value 0.2ether --rpc-url <RPC of the chain> --private-key $LIFELINE_OWNER_KEY
+cast send <hub> "rearm(uint256,address)" <chainId> <target> --rpc-url <Lasna RPC> --private-key $LIFELINE_OWNER_KEY
 ```
-
-### Funds, status and board
-
-| Item | How |
-|---|---|
-| Add principal | Send the native currency to the hub or to the vault. The owner takes it back with `withdraw(uint256)`. |
-| Add to a fee float | `depositTo(contract)` at the ledger. A float cannot be withdrawn. |
-| Status | `python -m lifeline.ops status` prints the funds of the hub and of each vault, and the state, the debt and the reserves of each target. It prints a `WARN` line for each item that needs the owner, and exits with status 1 if there is one. |
-| Board | `python -m lifeline.board` builds [`board/index.html`](board/index.html) from the manifest. Open the file in a browser. The page is read-only and sends requests only to the RPC URLs of the manifest. Build it again after each command that changes the manifest. |
 
 ## Limits
 
-- **Future delivery, not zero loss.** Lifeline restores future delivery. Work that arrives while a target is in debt is lost, and nothing replays it. For a Lasna rescue the hub emits `Gap(target, deadFromBlock, aliveAtBlock)`, so the owner knows what to retry; `deadFromBlock` is 0 if no debt event started the rescue. For a destination target the gap is the time from `BlacklistContract(target)` to `WhitelistContract(target)` at the callback proxy. `JUDGE.md` lists each gap.
-- **Calendar-day caps.** A cap counts for one calendar day (UTC), so two caps can be paid across midnight.
+- **Future delivery, not zero loss.** Lifeline restores future delivery. Work that arrives while a target is in debt is lost. The owner learns what to retry from the `Gap` event of the hub (Lasna target) or from the debt interval at the callback proxy (destination target). `JUDGE.md` lists each gap.
+- **Calendar-day caps.** Calendar-day caps allow two caps across midnight (UTC).
 - **`PaymentFailure`.** `PaymentFailure` does not always accompany debt. Lifeline listens to `BlacklistContract` only.
-- **Sample values.** [0.0125 lREACT and 7e11 wei](evidence/network/table.md) are samples (the `sampleFeeWei` parameters of the network queries), not protocol constants.
-- **A quarantined target in the sweep.** A target that is quarantined on a vault stays in the sweep of the hub until `hub.disarm`. The cost is bounded: one sweep for each vault for each tick while at least one target is enrolled on that chain, and a quarantined target adds one storage read and one `Result` event. `hub.disarm` ends the cost.
-- **`vaultUp` after the vault debt is 0.** The hub cannot read the destination ledger. A sweep request to a vault in debt is not delivered, and its targets are not pending any more. `recover` makes the check before each call.
+- **Sample values.** [0.0125 lREACT and 7e11 wei](evidence/network/table.md) are samples (the `sampleFeeWei` parameters of the queries), not protocol constants.
+- **A quarantined target in the sweep.** A target that is quarantined on a vault stays in the sweep of the hub until `hub.disarm`. The cost is bounded: one sweep for each vault for each tick while at least one target is enrolled on that chain, plus one storage read and one `Result` event for the quarantined target.
+- **`vaultUp` only after the vault debt is 0.** The hub cannot read the destination ledger. A sweep request to a vault in debt is not delivered, and its targets are not pending any more.
 - **Junk callbacks.** If someone floods a Lifeline vault with junk callbacks, the rescue funds are not spent on them: the proxy can take only the small fee float, and at most `selfCareDailyCap` of principal per day refills that float. The vault can be pushed offline. One transaction, `proxy.depositTo(vault)`, brings it back, and the hub then repeats the rescues that were waiting. The largest loss for each day is the float plus `selfCareDailyCap`. Full prevention needs a platform change.
-- **Low funds.** `HubLow` and `VaultLow` come only when the principal is below `principalFloor`. A hub at its floor keeps its cron subscription, and it goes into debt with no event when its float is empty. `status` warns before that state.
+- **Low funds.** `HubLow` and `VaultLow` come only when the principal is below `principalFloor`. A hub at its floor goes into debt with no event when its float is empty. `status` warns before that state.
 
 ## Not built
 
@@ -294,60 +236,33 @@ cast send <vault> "release(address)" <target>                                   
 
 ## Guests
 
-The owner enrolls a contract of another participant on request, with the written consent of the target owner: `enroll --guest --consent <reference>`. Without the reference the command refuses. A guest uses the same path as each other target. There is no public pool.
-
-Status: [no guest enrolled](JUDGE.md#guests). The candidates are in the `guest_candidates` query of [`evidence/network/data.json`](evidence/network/data.json).
+The owner enrolls a contract of another participant on request, with the written consent of the target owner: `enroll --guest --consent <reference>`. Without the reference the command refuses. Status: [no guest enrolled](JUDGE.md#guests). The candidates are in the `guest_candidates` query of [`evidence/network/data.json`](evidence/network/data.json).
 
 ## Evidence and reproduction
 
-Each number in this file is a link to [`evidence/network/table.md`](evidence/network/table.md), where its row names the query, the chain and the heights, or to a section of [`JUDGE.md`](JUDGE.md).
+The three commands need no key and send no transaction. A first run pins the heights and writes `heights.json`. A run with `--heights <file>` gives the same files again.
 
 | Evidence | Command | Output |
 |---|---|---|
-| Network statistics | `python -m lifeline.stats [--rpc <chain>=<url> ...] [--heights <file>]` | `evidence/network/`: `data.json`, `table.md`, `heights.json` |
-| Experiment | `python -m lifeline.experiment measure [--rpc <chain>=<url> ...] [--heights <file>]` | `evidence/experiment/`: `data.json`, `table.md`, `heights.json` |
-| Judge document | `python -m lifeline.judge [--rpc <chain>=<url> ...] [--heights <file>]` | `JUDGE.md`, `evidence/judge/data.json`, `evidence/judge/heights.json` |
+| Network statistics | `python -m lifeline.stats [--heights <file>]` | [`evidence/network/`](evidence/network/table.md) |
+| Three-arm experiment | `python -m lifeline.experiment measure [--heights <file>]` | [`evidence/experiment/`](evidence/experiment/table.md) |
+| Lifeline's own operation | `python -m lifeline.judge [--heights <file>]` | [`JUDGE.md`](JUDGE.md), [`evidence/judge/`](evidence/judge/data.json) |
 
-- The three commands need no key and send no transaction. `judge` needs `pip install -e ".[ops]"` and `forge build`.
-- A first run pins `to` of each chain at the head and writes `heights.json`. A run with `--heights <file>` gives the same files again. No file has a wall-clock time or an RPC URL.
-- `JUDGE.md` is generated. Do not edit it by hand. Run `measure` first, then `judge`.
-- Network queries: `lasna_debt_events`, `destination_debt_events`, `stopped_contracts`, `cron_stopped_share`, `repeat_debtors`, `dropped_callbacks`, `fastfill_fill_times`, `cron_poller_ward_dead_time`, `fastfill_reactive_reserves`, `guest_candidates`. `cron_poller_ward_dead_time` is not configured (`subjects.cronPoller` of `config/network.json`), so this file has no number for it.
-- Not recorded at the committed heights: the load of the three-arm experiment and the junk recovery. `JUDGE.md` says so in their sections.
-
-The experiment drivers send transactions on the deployment of the manifest:
-
-```
-python -m lifeline.experiment fixtures   [--dest-chain <name>]
-python -m lifeline.experiment load       --pokes <n> --interval <seconds>
-python -m lifeline.experiment quarantine
-python -m lifeline.experiment junk       --chain <name>
-```
-
-- `LIFELINE_FIXTURE_KEY` deploys and drives the fixtures. `fixtures` and `junk` also need `LIFELINE_OWNER_KEY`.
-- `fixtures` deploys three identical canary automations (arms A, B, C), the cron poller of arm B, a looping canary, a waiting canary and a junk requester. It enrolls arm C and the looping canary with `enroll`.
-- `junk` accepts only a vault of the manifest whose owner is the address of `LIFELINE_OWNER_KEY`. It floods that vault, waits for `VaultDown`, then runs `recover`.
-- Order: `fixtures`, `load`, then `quarantine` and `junk`, then `measure`, then `judge`. The drivers write `evidence/experiment/scenarios.json`.
+- `JUDGE.md` is generated: do not edit it. Run `measure` first, then `judge`.
+- Not recorded at the committed heights: the load of the three-arm experiment and the junk recovery. The query `cron_poller_ward_dead_time` is not configured, so this file has no number for the cron poller.
+- The experiment drivers send transactions: `python -m lifeline.experiment <driver>`, in this order: `fixtures`, `load --pokes <n> --interval <seconds>`, `quarantine`, `junk --chain <name>`. They need `LIFELINE_FIXTURE_KEY`; `fixtures` and `junk` also need `LIFELINE_OWNER_KEY`.
 
 ## Development
 
-| Item | Value |
-|---|---|
-| Foundry | 1.10.0 |
-| Solidity compiler | 0.8.30, EVM version `cancun`, optimizer with 200 runs |
-| `lib/reactive-lib-omni` | commit `3ade0dc` |
-| `lib/forge-std` | v1.17.0 |
+Foundry 1.10.0, Solidity 0.8.30. Each node must serve the state of the fork blocks of the tests.
 
 ```
 export LASNA_RPC_URL=<url> BASE_SEPOLIA_RPC_URL=<url>
-forge test
-
-pip install -e ".[test]"
-python -m pytest
+forge test                                # the contracts against the real ledgers on forks
+pip install -e ".[test]" && python -m pytest   # the real commands against a local JSON-RPC server
 ```
 
-- `forge test` runs the contracts against the real ledgers on forks of Lasna and Base Sepolia. Each node must serve the state of the fork block of the test. `forge test --match-contract LifelineTypesTest` needs no fork.
-- `python -m pytest` runs the real commands against a local JSON-RPC server.
-- The fork modules (`test_ops_forks.py`, `test_experiment_forks.py`, `test_judge_forks.py`, `test_board_forks.py`) repeat the dry run with the real commands. They also need `anvil`, the build output and `UNICHAIN_SEPOLIA_RPC_URL`; without one of them the modules are skipped. Set `BASE_SEPOLIA_FORK_BLOCK=62527000` and `UNICHAIN_SEPOLIA_FORK_BLOCK=68574000`: a fork of the newest block does not have the delivery account of `forkrelay`. The board modules need Chrome or Chromium.
+The fork modules (`test_*_forks.py`) repeat the dry run. They need `anvil`, the build output and `UNICHAIN_SEPOLIA_RPC_URL`; without one of them they are skipped. Set `BASE_SEPOLIA_FORK_BLOCK=62527000` and `UNICHAIN_SEPOLIA_FORK_BLOCK=68574000`.
 
 ## License
 
