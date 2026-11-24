@@ -556,7 +556,7 @@ Open `board/index.html` in a browser: a double click, or the `file://` URL that 
 | Diagnostics only | The number of `CallbackFailure` logs of each callback proxy for the vault and for each target of its chain. |
 
 - State. The page reads the head of each chain first. Each `eth_call` and each `eth_getBalance` names that block number, and the page shows it. So each number on the page is the value of a direct read at that block.
-- Amounts. The table shows a short form that is cut and not rounded up. The exact value in the native unit and in wei is the title of the number, and it is in the details of a target row.
+- Amounts. The table shows a short form that is cut and not rounded up: four decimals for 1 or more, four digits after the first one below 1, and wei below 1 gwei. The exact value in the native unit and in wei is the title of the number, and it is in the details of a target row.
 - Warnings. The page marks a contract in debt, a principal at its floor, a float that is empty or below half of its target, a hub that is paused or has no cron subscription, a vault that is down at the hub, pending targets, a target in debt, and reserves below the `low` mark. `python -m lifeline.ops status` has the two checks that need the gas price (the funds for one full trigger); the page does not have them.
 - A destination target that the vault quarantined and that is still in the list of the hub has this note: the hub still has it in the sweep list, and `hub.disarm` stops its sweep cost.
 - Failure counts are diagnostics only. Any caller can make a proxy write a `CallbackFailure` log for a contract (finding F6), so a count is not a state. It changes no target state and no other value on the page. The system contract of Lasna has no such event: the counts are for the destination chains.
@@ -566,7 +566,7 @@ Open `board/index.html` in a browser: a double click, or the `file://` URL that 
 
 Each chain uses the `rpc` list of the manifest, in order. A request that fails goes to the next URL. Each URL must answer `eth_chainId` with the chain ID of the manifest. When a URL after the first one gives the values, the chain shows "Fallback RPC" with the failure of the first one.
 
-When no URL of a chain gives the full state, the chain shows its error with the failure of each URL. The page removes each number of that chain: it does not keep the last values. The other chains keep their values. A target of that chain keeps the state that the hub gave, with no number.
+When no URL of a chain gives the full state, the chain shows its error with the failure of each URL. The page removes each number of that chain: it does not keep the last values. The other chains keep their values. A target of that chain keeps the state that the hub gave, with no number. If the chain of the hub gives no answer, each destination target keeps its row and the values of its own chain (debt, reserves, marks), with a hub state that is not known; the page reads the targets of the last hub list that it had.
 
 To set another URL for a chain, type it into the field "Set another RPC URL" of the chain row and press Enter (or "Use"). From then on each request of that chain goes to that URL, with no fallback to the list. The row shows "Override". "Clear" goes back to the list. The node must permit requests from a page (CORS).
 
@@ -576,7 +576,7 @@ The event queries of a chain start at the later of the `deployBlock` of its cont
 
 To change the lookback, type a number of blocks into the field "Lookback" at the top and press Enter (or "Apply"). The lookback is one number of blocks for each chain, so the time that it covers differs by chain: the chain row shows it. If a node limits the request rate, the page waits (up to about 3 minutes for one window) and continues, and the row says so. If each node refuses the log queries, the chain shows "Event queries failed" and no event number; its state stays.
 
-"Auto read" reads each chain again after 30 s, 1 min or 5 min (default: 1 min) while the page is visible. A later read asks only for the logs of the new blocks.
+"Auto read" reads each chain again after 30 s, 1 min or 5 min (default: 1 min) while the page is visible. A later read asks only for the logs of the new blocks. It keeps the logs that it has only while the last block of the old window has the same block hash; after a reorganization it reads the window again.
 
 The page keeps a setting that is not a default in the fragment of its URL, so a reload keeps it: `#lookback=<blocks>&auto=<seconds>&theme=<light|dark>&rpc.<chain>=<url>`.
 

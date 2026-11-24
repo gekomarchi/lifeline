@@ -55,10 +55,8 @@ def brief(wei: int, unit: str) -> str:
         return f"{wei:,}wei"
     whole, fraction = divmod(wei, 10**18)
     digits = f"{fraction:018d}"
-    if whole:
-        return f"{whole:,}.{digits[:4]}{unit}"
-    first = len(digits) - len(digits.lstrip("0"))
-    return "0." + digits[:first + 4].rstrip("0") + unit
+    digits = digits[:4 if whole else len(digits) - len(digits.lstrip("0")) + 4].rstrip("0")
+    return f"{whole:,}" + ("." + digits if digits else "") + unit
 
 
 def _text(value) -> str:

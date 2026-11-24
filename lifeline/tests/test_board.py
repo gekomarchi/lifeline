@@ -77,6 +77,15 @@ def test_the_output_names_no_url_other_than_the_rpc_urls():
     assert "//" not in re.sub(r"(?m)^\s*//.*$|\s//\s.*$", "", rest).replace("://", "")  # no scheme-relative URL
 
 
+def test_an_rpc_url_with_a_query_is_a_url_of_the_output():
+    manifest = copy.deepcopy(MANIFEST)
+    url = "https://rpc.example.test/v1?key=a&mode=<b>"
+    manifest["chains"]["lasna"]["rpc"].append(url)
+    page = board.render(manifest)
+    assert config_of(page)["chains"][0]["rpc"] == [*MANIFEST["chains"]["lasna"]["rpc"], url]
+    assert url not in page and "key=a\\u0026mode=\\u003cb\\u003e" in page
+
+
 def test_the_output_loads_no_other_resource():
     page = board.render(MANIFEST)
     assert not re.search(r"<(link|img|iframe|object|embed|audio|video|source|base)\b", page, re.IGNORECASE)

@@ -32,35 +32,29 @@
   --h-neutral: 265; --c-neutral: 0.004;
   --h-accent: 263; --c-accent: 0.2; --l-accent: 62%;
   --h-success: 147; --h-danger: 26; --h-warning: 56; --h-info: 257;
-  --ink-l: 53%; --sem-l-shift: 0%;
+  --ink-l: 50%; --sem-l-shift: 0%;
 
   --gray-0: oklch(100% 0 0);
-  --gray-50: oklch(98.5% calc(var(--c-neutral) * .5) var(--h-neutral));
   --gray-100: oklch(97% calc(var(--c-neutral) * .6) var(--h-neutral));
   --gray-150: oklch(95% calc(var(--c-neutral) * .8) var(--h-neutral));
   --gray-300: oklch(87% var(--c-neutral) var(--h-neutral));
   --gray-400: oklch(76% var(--c-neutral) var(--h-neutral));
-  --gray-500: oklch(64% calc(var(--c-neutral) * 2) var(--h-neutral));
   --gray-600: oklch(51% calc(var(--c-neutral) * 2) var(--h-neutral));
   --gray-700: oklch(44% calc(var(--c-neutral) * 2) var(--h-neutral));
   --gray-800: oklch(37% calc(var(--c-neutral) * 1.8) var(--h-neutral));
-  --gray-900: oklch(27% var(--c-neutral) var(--h-neutral));
   --gray-925: oklch(22% var(--c-neutral) var(--h-neutral));
   --gray-950: oklch(19% var(--c-neutral) var(--h-neutral));
   --gray-975: oklch(16% var(--c-neutral) var(--h-neutral));
-  --gray-1000: oklch(0% 0 0);
   --accent-400: oklch(calc(var(--l-accent) + 9%) calc(var(--c-accent) * .85) var(--h-accent));
   --accent-500: oklch(var(--l-accent) var(--c-accent) var(--h-accent));
 
   --canvas: var(--gray-150);
   --surface-1: var(--gray-0);
   --surface-sunken: var(--gray-100);
-  --surface-inverse: var(--gray-950);
   --ink-1: var(--gray-950);
   --ink-2: var(--gray-800);
   --ink-3: var(--gray-600);
   --ink-4: var(--gray-400);
-  --ink-inverse: var(--gray-0);
   --line-1: color-mix(in oklch, var(--ink-1) 7%, transparent);
   --line-2: color-mix(in oklch, var(--ink-1) 13%, transparent);
   --line-3: color-mix(in oklch, var(--ink-1) 22%, transparent);
@@ -83,15 +77,14 @@
   --info-ink: oklch(var(--ink-l) 0.18 var(--h-info));
   --info-soft: color-mix(in oklch, var(--info) 12%, transparent);
   --hover: color-mix(in oklch, var(--ink-1) 4.5%, transparent);
-  --press: color-mix(in oklch, var(--ink-1) 8.5%, transparent);
-  --focus-ring: 0 0 0 3px color-mix(in oklch, var(--accent-500) 40%, transparent);
+  --focus-ring: 0 0 0 1.5px var(--accent), 0 0 0 4px color-mix(in oklch, var(--accent-500) 40%, transparent);
   --ring: inset 0 0 0 .5px var(--line-2);
   --disabled-opacity: .45;
 
   --font-sans: "Inter", "Inter Variable", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --w-regular: 400; --w-medium: 500; --w-semibold: 600; --w-bold: 700;
+  --w-regular: 400; --w-medium: 500; --w-semibold: 600;
   --text-title-3: 16px; --text-body: 14.5px; --text-callout: 13.5px; --text-footnote: 12.5px;
   --text-caption: 11.5px; --text-label: 11px; --text-mono: 12.5px;
   --tr-title-3: -0.01em; --tr-body: -0.006em; --tr-label: 0.06em;
@@ -104,7 +97,7 @@
   --control-h-sm: 28px; --control-h-xs: 24px; --topbar-h: 52px;
   --page-max: 1480px;
 
-  --dur-2: 140ms; --dur-3: 180ms;
+  --dur-3: 180ms;
   --ease-standard: cubic-bezier(.25, .1, .25, 1);
 }
 [data-theme="dark"] {
@@ -113,12 +106,10 @@
   --canvas: var(--gray-975);
   --surface-1: var(--gray-925);
   --surface-sunken: oklch(13% var(--c-neutral) var(--h-neutral));
-  --surface-inverse: var(--gray-100);
   --ink-1: oklch(98.5% 0 0);
   --ink-2: var(--gray-300);
-  --ink-3: var(--gray-500);
+  --ink-3: var(--gray-400);
   --ink-4: var(--gray-700);
-  --ink-inverse: var(--gray-950);
   --line-1: color-mix(in oklch, var(--ink-1) 8%, transparent);
   --line-2: color-mix(in oklch, var(--ink-1) 14%, transparent);
   --line-3: color-mix(in oklch, var(--ink-1) 24%, transparent);
@@ -128,7 +119,6 @@
   --accent: var(--accent-400);
   --accent-soft: color-mix(in oklch, var(--accent-400) 18%, transparent);
   --hover: color-mix(in oklch, var(--ink-1) 5%, transparent);
-  --press: color-mix(in oklch, var(--ink-1) 10%, transparent);
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -216,7 +206,6 @@ select.field { padding-right: var(--sp-2); cursor: pointer; }
 .btn--ghost { background: transparent; color: var(--ink-3); }
 .btn--ghost:hover { background: var(--hover); color: var(--ink-1); }
 .btn--xs { height: var(--control-h-xs); padding: 0 var(--sp-2); font-size: var(--text-caption); border-radius: var(--r-xs); }
-.btn--xs.btn--icon { width: var(--control-h-xs); padding: 0; }
 .kbd {
   display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 5px;
   background: var(--surface-1); box-shadow: var(--ring), 0 1px 0 var(--line-2); font-family: var(--font-mono);
@@ -230,7 +219,6 @@ select.field { padding-right: var(--sp-2); cursor: pointer; }
 }
 .chip:hover { background: var(--fill-2); }
 .chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); box-shadow: inset 0 0 0 1.5px var(--accent); }
-.chip:focus-visible { box-shadow: var(--focus-ring); }
 .chip[aria-pressed="true"]:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent), var(--focus-ring); }
 .chip__n { color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .chip[aria-pressed="true"] .chip__n { color: inherit; }
@@ -263,10 +251,10 @@ select.field { padding-right: var(--sp-2); cursor: pointer; }
 
 /* The state rail: a 3px edge that has the tone of the worst state of its row or block. */
 .rail { --tone: transparent; box-shadow: inset 3px 0 0 var(--tone); }
-[data-sev="3"] > .rail, .rail[data-sev="3"] { --tone: var(--danger); }
-[data-sev="2"] > .rail, .rail[data-sev="2"] { --tone: var(--warning); }
-[data-sev="1"] > .rail, .rail[data-sev="1"] { --tone: var(--success); }
-[data-sev="info"] > .rail, .rail[data-sev="info"] { --tone: var(--info); }
+[data-sev="3"] > .rail { --tone: var(--danger); }
+[data-sev="2"] > .rail { --tone: var(--warning); }
+[data-sev="1"] > .rail { --tone: var(--success); }
+[data-sev="info"] > .rail { --tone: var(--info); }
 
 .verdict {
   display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; min-height: 44px;
@@ -277,7 +265,6 @@ select.field { padding-right: var(--sp-2); cursor: pointer; }
 .verdict__items { display: flex; align-items: center; gap: var(--sp-15); flex-wrap: wrap; min-width: 0; }
 .verdict__item { cursor: pointer; height: auto; min-height: 22px; padding-block: 4px; max-width: 100%; white-space: normal; line-height: 1.25; }
 .verdict__item:hover { filter: brightness(.97); }
-.verdict__item:focus-visible { box-shadow: var(--focus-ring); }
 
 .panel { min-width: 0; background: var(--surface-1); box-shadow: var(--ring); border-radius: var(--radius-panel); overflow: hidden; }
 .panel__header {
@@ -325,9 +312,15 @@ th[aria-sort="descending"] .th-sort .ico { transform: rotate(180deg); }
 .note--warning { color: var(--warning-ink); }
 .note--danger { color: var(--danger-ink); }
 .empty { padding: var(--sp-5) var(--sp-4); color: var(--ink-3); font-size: var(--text-callout); }
-.nodata { color: var(--ink-4); }
+.nodata { color: var(--ink-3); }
 
-.addr { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; }
+.cell { display: flex; align-items: flex-start; gap: var(--sp-15); }
+.cell > div { min-width: 0; }
+.label { display: block; max-width: 30ch; }
+.label--short { max-width: 24ch; }
+.tags--below { margin-top: var(--sp-1); }
+.btn--after { margin-left: var(--sp-2); }
+.addr { display: inline-flex; align-items: center; gap: var(--sp-05); max-width: 100%; }
 .copy { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; color: var(--ink-4); }
 .copy:hover { color: var(--ink-1); background: var(--hover); }
 .copy .ico { font-size: 12px; }
@@ -355,8 +348,6 @@ th[aria-sort="descending"] .th-sort .ico { transform: rotate(180deg); }
 .notice > .ico { color: var(--danger-ink); margin-top: 2px; }
 .notice__title { font-weight: var(--w-semibold); font-size: var(--text-callout); }
 .notice ul { padding-left: 1.2em; margin-top: 2px; color: var(--ink-2); overflow-wrap: anywhere; }
-.notice--warning { background: var(--warning-soft); }
-.notice--warning > .ico { color: var(--warning-ink); }
 .table tr.alert > td { padding: 0 var(--sp-4) var(--sp-25) var(--sp-4); white-space: normal; }
 
 /* Gauge: a level on a track, with a tick at each mark. */
@@ -384,7 +375,6 @@ th[aria-sort="descending"] .th-sort .ico { transform: rotate(180deg); }
   .panel__tools { margin-left: 0; width: 100%; }
   /* A wide table scrolls inside its panel, and its first column stays in view. */
   .table th:first-child, .table td.rail { position: sticky; left: 0; z-index: 1; background: var(--surface-1); }
-  .table tr.alert > td, .table tr.detail > td { white-space: normal; }
   .detail__body, .notice { max-width: calc(100vw - 2 * var(--sp-4)); position: sticky; left: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -513,7 +503,7 @@ th[aria-sort="descending"] .th-sort .ico { transform: rotate(180deg); }
 
 <div class="visually-hidden" id="live" role="status" aria-live="polite"></div>
 
-<script id="board-config" type="application/json">{"build":"ba70213be715","lookback":30000,"chunk":10000,"maxLookback":5000000,"cronTopic":"Cron10000","chains":[{"name":"lasna","chainId":5318007,"role":"hub","unit":"lREACT","ledger":"0x8888888888888888888888888888888888888888","rpc":["https://lasna-rpc.rnk.dev/"],"contract":"0xbba61E507e7CC334e57A62c39A776272DA6b07Dd","deployBlock":9039165},{"name":"unichain-sepolia","chainId":1301,"role":"vault","unit":"ETH","ledger":"0x775c9B990ADe401060B78D0e98684eEf8d2466C1","rpc":["https://sepolia.unichain.org"],"contract":"0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26","deployBlock":68567187},{"name":"base-sepolia","chainId":84532,"role":"vault","unit":"ETH","ledger":"0x476F44b11F5C942c58f4c8E3d0300E5710743585","rpc":["https://base-sepolia-rpc.publicnode.com","https://base-sepolia.gateway.tenderly.co"],"contract":"0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2","deployBlock":62488753}],"enrollments":[{"label":"FastfillReactive","chain":"lasna","target":"0x05a566959544A55c16012aeeF0a09067da1f204f","guest":false,"removed":false},{"label":"FastfillExecutor","chain":"unichain-sepolia","target":"0x916D4d5f9E363CbdFA8C34fB41185a75A6a2E705","guest":false,"removed":false},{"label":"loop-check canary (base-sepolia)","chain":"base-sepolia","target":"0xa462B906917C0372872AD35C0321eB5Daa60692E","guest":false,"removed":true},{"label":"experiment armC.reactive","chain":"lasna","target":"0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948","guest":false,"removed":false},{"label":"experiment armC.callback","chain":"base-sepolia","target":"0x313496642Ce898F7dD723B6AB6CF4A5891A456ed","guest":false,"removed":false},{"label":"experiment looping","chain":"lasna","target":"0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9","guest":false,"removed":false}],"targetStates":["None","Active","Quarantined","Parked","Disarmed"],"outcomes":["Rescued","ToppedUp","NoNeed","Paused","NoPolicy","Quarantined","NoCode","DebtAboveCap","DailyCap","Floor","Failed"],"abi":{"hub":{"functions":{"paused":{"selector":"0x5c975abb","inputs":[],"outputs":[["","bool"]]},"principalFloor":{"selector":"0x034bc3d7","inputs":[],"outputs":[["","uint256"]]},"selfReserveTarget":{"selector":"0x301b3004","inputs":[],"outputs":[["","uint256"]]},"cronSubscribed":{"selector":"0xc0d062c6","inputs":[],"outputs":[["","bool"]]},"targetCount":{"selector":"0x419b4731","inputs":["uint256"],"outputs":[["","uint256"]]},"targetAt":{"selector":"0xb2e8a6ff","inputs":["uint256","uint256"],"outputs":[["","address"]]},"targetInfo":{"selector":"0xeae69fc9","inputs":["uint256","address"],"outputs":[["kind","uint8"],["state","uint8"],["policy.low","uint256"],["policy.high","uint256"],["policy.maxDebt","uint256"],["policy.dailyCap","uint256"],["policy.maxRescues","uint32"],["policy.window","uint32"]]},"vaultInfo":{"selector":"0x929060d8","inputs":["uint256"],"outputs":[["proxy","address"],["vault","address"],["sweepBase","uint256"],["up","bool"],["pending","uint256"]]}},"events":{"HubLow":{"topic":"0x143da04d0a81ad5c9096114a2dc95b5e33297ebef84497ddedf8de3577bb9a45","indexed":[],"data":[["balance","uint256"],["principalFloor","uint256"]]},"Rescued":{"topic":"0x4a6458ae369d11c4d1f635d2eb45743786d38e6a8ab7f284dd8be6f365f2eba8","indexed":[["target","address"]],"data":[["debt","uint256"],["paid","uint256"]]},"Gap":{"topic":"0x894112cfca0d3e43b58be6964d91082c5432e15fb02818137321a4f43a777399","indexed":[["target","address"]],"data":[["deadFromBlock","uint256"],["aliveAtBlock","uint256"]]}}},"vault":{"functions":{"paused":{"selector":"0x5c975abb","inputs":[],"outputs":[["","bool"]]},"principalFloor":{"selector":"0x034bc3d7","inputs":[],"outputs":[["","uint256"]]},"selfReserveTarget":{"selector":"0x301b3004","inputs":[],"outputs":[["","uint256"]]},"hasPolicy":{"selector":"0x321193ae","inputs":["address"],"outputs":[["","bool"]]},"policyOf":{"selector":"0xf514d6e5","inputs":["address"],"outputs":[["low","uint256"],["high","uint256"],["maxDebt","uint256"],["dailyCap","uint256"],["maxRescues","uint32"],["window","uint32"]]},"quarantined":{"selector":"0x7abb7002","inputs":["address"],"outputs":[["","bool"]]}},"events":{"VaultLow":{"topic":"0x1b5df79162a587c10a76a5ef94a678ba2f685e7aa2dae5004776c38d2950846b","indexed":[],"data":[["balance","uint256"],["principalFloor","uint256"]]},"Result":{"topic":"0x8fc7633d10a82d38e2ff0dedc6eb0b1c67f1bfc77a1b3e7586fe0a7c96f665e0","indexed":[["id","uint256"],["target","address"]],"data":[["outcome","uint8"],["paid","uint256"]]}}},"ledger":{"functions":{"debt":{"selector":"0x9b6c56ec","inputs":["address"],"outputs":[["debt_","uint256"]]},"reserves":{"selector":"0xd66bd524","inputs":["address"],"outputs":[["reserves_","uint256"]]}},"events":{"CallbackFailure":{"topic":"0xc8313f695443128e273f1edfcec40b94b7deea8dfbeafd0043290d6601d999db","indexed":[["target_","address"]],"data":[]}}}}}</script>
+<script id="board-config" type="application/json">{"build":"24bc68b2bb8c","lookback":30000,"chunk":10000,"maxLookback":5000000,"cronTopic":"Cron10000","chains":[{"name":"lasna","chainId":5318007,"role":"hub","unit":"lREACT","ledger":"0x8888888888888888888888888888888888888888","rpc":["https://lasna-rpc.rnk.dev/"],"contract":"0xbba61E507e7CC334e57A62c39A776272DA6b07Dd","deployBlock":9039165},{"name":"unichain-sepolia","chainId":1301,"role":"vault","unit":"ETH","ledger":"0x775c9B990ADe401060B78D0e98684eEf8d2466C1","rpc":["https://sepolia.unichain.org"],"contract":"0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26","deployBlock":68567187},{"name":"base-sepolia","chainId":84532,"role":"vault","unit":"ETH","ledger":"0x476F44b11F5C942c58f4c8E3d0300E5710743585","rpc":["https://base-sepolia-rpc.publicnode.com","https://base-sepolia.gateway.tenderly.co"],"contract":"0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2","deployBlock":62488753}],"enrollments":[{"label":"FastfillReactive","chain":"lasna","target":"0x05a566959544A55c16012aeeF0a09067da1f204f","guest":false,"removed":false},{"label":"FastfillExecutor","chain":"unichain-sepolia","target":"0x916D4d5f9E363CbdFA8C34fB41185a75A6a2E705","guest":false,"removed":false},{"label":"loop-check canary (base-sepolia)","chain":"base-sepolia","target":"0xa462B906917C0372872AD35C0321eB5Daa60692E","guest":false,"removed":true},{"label":"experiment armC.reactive","chain":"lasna","target":"0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948","guest":false,"removed":false},{"label":"experiment armC.callback","chain":"base-sepolia","target":"0x313496642Ce898F7dD723B6AB6CF4A5891A456ed","guest":false,"removed":false},{"label":"experiment looping","chain":"lasna","target":"0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9","guest":false,"removed":false}],"targetStates":["None","Active","Quarantined","Parked","Disarmed"],"outcomes":["Rescued","ToppedUp","NoNeed","Paused","NoPolicy","Quarantined","NoCode","DebtAboveCap","DailyCap","Floor","Failed"],"abi":{"hub":{"functions":{"paused":{"selector":"0x5c975abb","inputs":[],"outputs":[["","bool"]]},"principalFloor":{"selector":"0x034bc3d7","inputs":[],"outputs":[["","uint256"]]},"selfReserveTarget":{"selector":"0x301b3004","inputs":[],"outputs":[["","uint256"]]},"cronSubscribed":{"selector":"0xc0d062c6","inputs":[],"outputs":[["","bool"]]},"targetCount":{"selector":"0x419b4731","inputs":["uint256"],"outputs":[["","uint256"]]},"targetAt":{"selector":"0xb2e8a6ff","inputs":["uint256","uint256"],"outputs":[["","address"]]},"targetInfo":{"selector":"0xeae69fc9","inputs":["uint256","address"],"outputs":[["kind","uint8"],["state","uint8"],["policy.low","uint256"],["policy.high","uint256"],["policy.maxDebt","uint256"],["policy.dailyCap","uint256"],["policy.maxRescues","uint32"],["policy.window","uint32"]]},"vaultInfo":{"selector":"0x929060d8","inputs":["uint256"],"outputs":[["proxy","address"],["vault","address"],["sweepBase","uint256"],["up","bool"],["pending","uint256"]]}},"events":{"HubLow":{"topic":"0x143da04d0a81ad5c9096114a2dc95b5e33297ebef84497ddedf8de3577bb9a45","indexed":[],"data":[["balance","uint256"],["principalFloor","uint256"]]},"Rescued":{"topic":"0x4a6458ae369d11c4d1f635d2eb45743786d38e6a8ab7f284dd8be6f365f2eba8","indexed":[["target","address"]],"data":[["debt","uint256"],["paid","uint256"]]},"Gap":{"topic":"0x894112cfca0d3e43b58be6964d91082c5432e15fb02818137321a4f43a777399","indexed":[["target","address"]],"data":[["deadFromBlock","uint256"],["aliveAtBlock","uint256"]]}}},"vault":{"functions":{"paused":{"selector":"0x5c975abb","inputs":[],"outputs":[["","bool"]]},"principalFloor":{"selector":"0x034bc3d7","inputs":[],"outputs":[["","uint256"]]},"selfReserveTarget":{"selector":"0x301b3004","inputs":[],"outputs":[["","uint256"]]},"hasPolicy":{"selector":"0x321193ae","inputs":["address"],"outputs":[["","bool"]]},"policyOf":{"selector":"0xf514d6e5","inputs":["address"],"outputs":[["low","uint256"],["high","uint256"],["maxDebt","uint256"],["dailyCap","uint256"],["maxRescues","uint32"],["window","uint32"]]},"quarantined":{"selector":"0x7abb7002","inputs":["address"],"outputs":[["","bool"]]}},"events":{"VaultLow":{"topic":"0x1b5df79162a587c10a76a5ef94a678ba2f685e7aa2dae5004776c38d2950846b","indexed":[],"data":[["balance","uint256"],["principalFloor","uint256"]]},"Result":{"topic":"0x8fc7633d10a82d38e2ff0dedc6eb0b1c67f1bfc77a1b3e7586fe0a7c96f665e0","indexed":[["id","uint256"],["target","address"]],"data":[["outcome","uint8"],["paid","uint256"]]}}},"ledger":{"functions":{"debt":{"selector":"0x9b6c56ec","inputs":["address"],"outputs":[["debt_","uint256"]]},"reserves":{"selector":"0xd66bd524","inputs":["address"],"outputs":[["reserves_","uint256"]]}},"events":{"CallbackFailure":{"topic":"0xc8313f695443128e273f1edfcec40b94b7deea8dfbeafd0043290d6601d999db","indexed":[["target_","address"]],"data":[]}}}}}</script>
 <script>
 (() => {
 "use strict";
@@ -539,7 +529,8 @@ const POST_WAITS = [1200, 2400, 4800]; // waits of one request that a node refus
 const SCAN_WORKERS = 3;        // log requests of one chain at the same time
 const MAX_LOG_REQUESTS = 600;  // log requests of one chain for one window
 const MAX_TARGETS = 400;       // targets of one hub list that the page reads
-const MAX_EVENT_ROWS = 300;    // rows of the event table before "Show more"
+const MAX_EVENT_ROWS = 300;    // rows of the event table before "Show each row"
+const MAX_TIME_READS = 200;    // block headers that one log request can ask for
 const DEFAULT_AUTO = 60;       // seconds between two reads; 0 is off
 const AUTO_CHOICES = [0, 30, 60, 300];
 const REQUEST_ID_BASE = 1n << 128n; // a `requestId` of the hub is above it; a `tickId` is a block number
@@ -549,8 +540,7 @@ const WEI = 10n ** 18n;
 // Numbers, addresses, DOM
 // ---------------------------------------------------------------------------------------------
 
-const NUMBER = new Intl.NumberFormat("en-US");
-const fmtInt = (value) => NUMBER.format(value);
+const fmtInt = new Intl.NumberFormat("en-US").format;
 const hex = (value) => "0x" + BigInt(value).toString(16);
 const lower = (address) => String(address).toLowerCase();
 const short = (address) => address.slice(0, 6) + "\u2026" + address.slice(-4);
@@ -558,17 +548,17 @@ const short = (address) => address.slice(0, 6) + "\u2026" + address.slice(-4);
 /** The full decimal value of an amount in the native unit, with no rounding. */
 function exact(wei) {
   const fraction = (wei % WEI).toString().padStart(18, "0").replace(/0+$/, "");
-  return NUMBER.format(wei / WEI) + (fraction ? "." + fraction : "");
+  return fmtInt(wei / WEI) + (fraction ? "." + fraction : "");
 }
 
 /** A short form of an amount, cut and never rounded up: [text, unit]. */
 function brief(wei, unit) {
   if (wei === 0n) return ["0", unit];
-  if (wei < 10n ** 9n) return [NUMBER.format(wei), "wei"];
+  if (wei < 10n ** 9n) return [fmtInt(wei), "wei"];
+  // Four decimals above 1, four digits after the first one below 1; no zero at the end.
   const whole = wei / WEI, fraction = (wei % WEI).toString().padStart(18, "0");
-  if (whole > 0n) return [NUMBER.format(whole) + "." + fraction.slice(0, 4), unit];
-  const first = fraction.search(/[1-9]/);
-  return ["0." + fraction.slice(0, first + 4).replace(/0+$/, ""), unit];
+  const digits = fraction.slice(0, whole > 0n ? 4 : fraction.search(/[1-9]/) + 4).replace(/0+$/, "");
+  return [fmtInt(whole) + (digits ? "." + digits : ""), unit];
 }
 
 function host(url) {
@@ -603,8 +593,8 @@ function icon(name) {
   return holder;
 }
 
-function tag(tone, text, mark, extra) {
-  return h("span", { class: "tag" + (tone ? " tag--" + tone : ""), ...(extra || {}) }, mark && icon(mark), text);
+function tag(tone, text, mark) {
+  return h("span", { class: "tag" + (tone ? " tag--" + tone : "") }, mark && icon(mark), text);
 }
 
 /** An amount with its exact value as the title and as `data-raw`, for a check against a direct read. */
@@ -615,13 +605,13 @@ function amount(wei, unit, field) {
     text, h("span", { class: "unit" }, shown));
 }
 
-function noData(field, text) {
+function noData(field) {
   return h("span", { class: "nodata", data: { field, raw: "" }, title: "No data: the chain did not answer" },
-    text || "no data");
+    "no data");
 }
 
 function skeleton(width) {
-  return h("span", { class: "skel", style: `--w:${width || "8ch"}`, "aria-label": "Reading" });
+  return h("span", { class: "skel", style: `--w:${width}`, "aria-label": "Reading" });
 }
 
 function address(value, field) {
@@ -701,10 +691,10 @@ function topicOf(address) {
   return "0x" + word("address", address);
 }
 
-// Topic 0 of each event that the page reads, with its source.
+// Topic 0 of each event that the page reads.
 const EVENTS = new Map();
-for (const source of ["hub", "vault", "ledger"]) {
-  for (const [name, fragment] of Object.entries(ABI[source].events)) EVENTS.set(fragment.topic, { source, name, fragment });
+for (const source of Object.values(ABI)) {
+  for (const [name, fragment] of Object.entries(source.events)) EVENTS.set(fragment.topic, { name, fragment });
 }
 
 function decodeLog(log) {
@@ -716,7 +706,7 @@ function decodeLog(log) {
   });
   if (event.fragment.data.length) Object.assign(args, decodeWords(event.fragment.data, log.data, event.name));
   return {
-    name: event.name, source: event.source, args,
+    name: event.name, args,
     block: Number(BigInt(log.blockNumber)), index: Number(BigInt(log.logIndex || "0x0")),
     tx: log.transactionHash || "", time: log.blockTimestamp ? Number(BigInt(log.blockTimestamp)) : null,
   };
@@ -927,7 +917,6 @@ const balance = (of) => ({ what: "eth_getBalance", method: "eth_getBalance", of 
 const header = (number) => ({ what: "eth_getBlockByNumber", method: "eth_getBlockByNumber", number, optional: true });
 
 async function runReads(url, block, reads, signal) {
-  if (!reads.length) return [];
   const tagOf = hex(block);
   const answers = await post(url, reads.map((read) => {
     if (read.method === "eth_call") {
@@ -951,12 +940,19 @@ async function runReads(url, block, reads, signal) {
 }
 
 const timeOf = (block) => (block && block.timestamp ? Number(BigInt(block.timestamp)) : null);
+const hashOf = (block) => (block && typeof block.hash === "string" ? block.hash : null);
+/** The last block of the event window that the page has: a read gets its hash again, to see a reorganization. */
+const windowEnd = (chain, head) => (chain.events && chain.events.phase === "done" ? chain.events.to : head);
+
+// Chain name -> the targets of its hub list at the last read of the hub. While the hub chain gives no answer,
+// a destination chain still shows the ledger values of these targets: the list is an inventory, not a number.
+const DISCOVERED = new Map();
 
 /** The targets of a chain that the page reads: the enrollments of the manifest and the list of the hub. */
 function targetsOf(chain) {
   const found = new Map();
   for (const entry of CONFIG.enrollments) if (entry.chain === chain.cfg.name) found.set(lower(entry.target), entry.target);
-  const lists = HUB.data ? HUB.data.lists[chain.cfg.name] || [] : [];
+  const lists = (HUB.data ? HUB.data.lists[chain.cfg.name] : DISCOVERED.get(chain.cfg.name)) || [];
   for (const target of lists) if (!found.has(lower(target))) found.set(lower(target), target);
   return [...found.values()];
 }
@@ -967,13 +963,13 @@ async function readHub(chain, url, head, signal) {
   const first = await runReads(url, head, [
     balance(hub), call("ledger", ledger, "reserves", hub), call("ledger", ledger, "debt", hub),
     call("hub", hub, "paused"), call("hub", hub, "cronSubscribed"), call("hub", hub, "principalFloor"),
-    call("hub", hub, "selfReserveTarget"), header(head),
+    call("hub", hub, "selfReserveTarget"), header(head), header(windowEnd(chain, head)),
     ...CHAINS.map((other) => call("hub", hub, "targetCount", other.cfg.chainId)),
     ...vaults.map((other) => call("hub", hub, "vaultInfo", other.cfg.chainId)),
   ], signal);
-  const [principal, float, debt, paused, cron, floor, floatTarget, headBlock] = first;
-  const counts = first.slice(8, 8 + CHAINS.length).map(Number);
-  const infos = first.slice(8 + CHAINS.length);
+  const [principal, float, debt, paused, cron, floor, floatTarget, headBlock, endBlock] = first;
+  const counts = first.slice(9, 9 + CHAINS.length).map(Number);
+  const infos = first.slice(9 + CHAINS.length);
   if (counts.some((count) => count > MAX_TARGETS)) {
     throw new RpcFailure("rpc", `the hub lists more than ${MAX_TARGETS} targets on one chain`);
   }
@@ -1006,7 +1002,8 @@ async function readHub(chain, url, head, signal) {
   slots.forEach(([key, field], at) => { (info[key] = info[key] || {})[field] = values[at]; });
 
   return {
-    headTime: timeOf(headBlock),
+    headTime: timeOf(headBlock), headHash: hashOf(headBlock),
+    checked: { block: windowEnd(chain, head), hash: hashOf(endBlock) },
     data: {
       contract: { principal, float, debt, paused, cron, floor, floatTarget },
       vaultInfo: Object.fromEntries(vaults.map((other, at) => [other.cfg.name, infos[at]])),
@@ -1021,21 +1018,22 @@ async function readVault(chain, url, head, signal) {
   const values = await runReads(url, head, [
     balance(vault), call("ledger", ledger, "reserves", vault), call("ledger", ledger, "debt", vault),
     call("vault", vault, "paused"), call("vault", vault, "principalFloor"), call("vault", vault, "selfReserveTarget"),
-    header(head),
+    header(head), header(windowEnd(chain, head)),
     ...targets.flatMap((target) => [
       call("vault", vault, "hasPolicy", target), call("vault", vault, "policyOf", target),
       call("vault", vault, "quarantined", target), call("ledger", ledger, "debt", target),
       call("ledger", ledger, "reserves", target),
     ]),
   ], signal);
-  const [principal, float, debt, paused, floor, floatTarget, headBlock] = values;
+  const [principal, float, debt, paused, floor, floatTarget, headBlock, endBlock] = values;
   const records = {};
   targets.forEach((target, at) => {
-    const [hasPolicy, policy, quarantined, targetDebt, reserves] = values.slice(7 + at * 5, 12 + at * 5);
+    const [hasPolicy, policy, quarantined, targetDebt, reserves] = values.slice(8 + at * 5, 13 + at * 5);
     records[lower(target)] = { hasPolicy, policy, quarantined, debt: targetDebt, reserves };
   });
   return {
-    headTime: timeOf(headBlock),
+    headTime: timeOf(headBlock), headHash: hashOf(headBlock),
+    checked: { block: windowEnd(chain, head), hash: hashOf(endBlock) },
     data: { contract: { principal, float, debt, paused, floor, floatTarget }, targets: records },
   };
 }
@@ -1087,8 +1085,10 @@ async function loadState(chain) {
             const wasError = chain.phase === "error";
             Object.assign(chain, {
               phase: "ok", busy: false, attempts, used: index, head: result.head, headTime: result.headTime,
-              data: result.data, readAt: Date.now(), failedAt: null,
+              headHash: result.headHash, checked: result.checked, data: result.data, readAt: Date.now(),
+              failedAt: null,
             });
+            if (chain === HUB) for (const [name, list] of Object.entries(result.data.lists)) DISCOVERED.set(name, list);
             if (index > 0) announce(`${chain.cfg.name}: URL ${index + 1} of ${chain.urls.length} is in use`);
             else if (wasError) announce(`${chain.cfg.name}: the chain answers again`);
             render();
@@ -1186,7 +1186,7 @@ async function logRequest(chain, queries, from, to, signal) {
         throw new RpcFailure("rpc", "eth_getLogs: " + describe(refused.error), isLimit(refused.error, refused.status));
       }
       if (answers.some((answer) => !Array.isArray(answer.result))) throw new RpcFailure("rpc", "eth_getLogs gave no list");
-      if (!checked && chain.attempts[index]) Object.assign(chain.attempts[index], { state: "ok", error: null, logsOnly: true });
+      if (!checked && chain.attempts[index]) Object.assign(chain.attempts[index], { state: "ok", error: null });
       return answers.map((answer) => answer.result);
     } catch (error) {
       if (error instanceof Cancelled || error instanceof Narrower) throw error;
@@ -1205,7 +1205,7 @@ async function logRequest(chain, queries, from, to, signal) {
 /** The block time of each row that has none, with one header request for each block. A failure leaves no time. */
 async function fillTimes(chain, rows, signal) {
   const wanted = [...new Set(rows.filter((row) => row.time === null && !chain.times.has(row.block)).map((row) => row.block))]
-    .slice(0, MAX_BATCH);
+    .slice(0, MAX_TIME_READS);
   if (wanted.length) {
     try {
       const answers = await post(chain.urls[chain.used],
@@ -1222,7 +1222,11 @@ async function fillTimes(chain, rows, signal) {
 }
 
 async function scanEvents(chain) {
-  const gen = chain.scanned = chain.gen, signal = chain.abort.signal, cfg = chain.cfg;
+  const gen = chain.scanned = chain.gen, cfg = chain.cfg;
+  // One switch for the requests of this scan: a newer read of the chain, or the failure of one request.
+  const scan = new AbortController(), signal = scan.signal;
+  if (chain.abort.signal.aborted) return;
+  chain.abort.signal.addEventListener("abort", () => scan.abort(), { once: true });
   const to = chain.head, from = Math.max(cfg.deployBlock, to - S.lookback);
   const recipients = cfg.role === "vault" ? [cfg.contract, ...targetsOf(chain)] : [];
   const queries = cfg.role === "hub"
@@ -1234,9 +1238,14 @@ async function scanEvents(chain) {
   const events = chain.events = {
     key, from, to, phase: "scanning", rows: [], failures: [], error: null, blocks: 0, left: 0,
     clamped: from === cfg.deployBlock, empty: from > to, fromTime: null, waitUntil: null, waits: 0,
+    toHash: chain.headHash,
   };
+  const live = () => gen === chain.gen && chain.events === events && events.phase === "scanning";
   const pending = [];
-  if (previous && previous.phase === "done" && previous.key === key && previous.to <= to && previous.to + 1 >= from) {
+  // The last block of the old window is still in the chain: its hash is the one that the old scan saw.
+  const sameChain = previous && previous.toHash && chain.checked && chain.checked.block === previous.to
+    && chain.checked.hash === previous.toHash;
+  if (sameChain && previous.phase === "done" && previous.key === key && previous.to <= to && previous.to + 1 >= from) {
     // The window moved with the head: keep the rows that it still has, and read only the new blocks.
     events.rows = previous.rows.filter((row) => row.block >= from);
     events.failures = previous.failures.filter((failure) => failure.block >= from);
@@ -1288,28 +1297,28 @@ async function scanEvents(chain) {
         pending.sort((a, b) => b[1] - a[1]); // the newest range is the next one
         continue;
       }
-      if (gen !== chain.gen) throw new Cancelled();
-      const rows = [];
+      const rows = [], failures = [];
       for (const log of results.flat()) {
         const row = decodeLog(log);
         if (!row) continue;
-        if (row.name === "CallbackFailure") events.failures.push({ recipient: lower(row.args.target_), block: row.block });
+        if (row.name === "CallbackFailure") failures.push({ recipient: lower(row.args.target_), block: row.block });
         else rows.push(row);
       }
       await fillTimes(chain, rows, signal);
-      if (gen !== chain.gen) throw new Cancelled();
+      if (!live()) throw new Cancelled(); // the scan ended while this request was on its way
       events.rows.push(...rows);
+      events.failures.push(...failures);
       events.left -= high - low + 1;
       render();
     }
   };
   try {
     await Promise.all(Array.from({ length: SCAN_WORKERS }, worker));
-    if (gen !== chain.gen) return;
-    events.rows.sort((a, b) => b.block - a.block || b.index - a.index);
+    if (!live()) return;
     events.phase = "done";
   } catch (error) {
-    if (error instanceof Cancelled || gen !== chain.gen) return;
+    if (error instanceof Cancelled || !live()) return;
+    scan.abort(); // no other request of this scan adds a row after the failure
     if (!(error instanceof RpcFailure)) console.error(error);
     if (error instanceof RpcFailure && error.kind === "transport") {
       // No URL of the chain answers any more: the chain has no number that the page can stand for.
@@ -1412,16 +1421,15 @@ function targetRows() {
       label: entry.label, guest: entry.guest, removed: entry.removed, manifest: true, listed: null,
     });
   }
-  if (hub) {
-    for (const row of rows.values()) row.listed = false;
-    for (const chain of CHAINS) {
-      for (const target of hub.lists[chain.cfg.name]) {
-        const key = keyOf(chain.cfg.name, target);
-        if (!rows.has(key)) {
-          rows.set(key, { key, chain, address: target, label: null, guest: false, removed: false, manifest: false });
-        }
-        rows.get(key).listed = true;
+  if (hub) for (const row of rows.values()) row.listed = false;
+  for (const chain of CHAINS) {
+    // With no answer of the hub: the targets of its last list, with a list state that is not known.
+    for (const target of (hub ? hub.lists[chain.cfg.name] : DISCOVERED.get(chain.cfg.name)) || []) {
+      const key = keyOf(chain.cfg.name, target);
+      if (!rows.has(key)) {
+        rows.set(key, { key, chain, address: target, label: null, guest: false, removed: false, manifest: false, listed: null });
       }
+      if (hub) rows.get(key).listed = true;
     }
   }
 
@@ -1532,6 +1540,8 @@ const $ = (id) => document.getElementById(id);
 let queued = false;
 
 function render() {
+  // The mark of a read in progress is on the page at once; the rest of the page follows in one step.
+  if (isBusy()) document.body.dataset.phase = "reading";
   if (queued) return;
   queued = true;
   setTimeout(draw, 30);
@@ -1567,13 +1577,14 @@ function chips(holder, group, choices, current, pick) {
     }, text, count === undefined ? null : h("span", { class: "chip__n" }, fmtInt(count)))));
 }
 
-function table(kind, caption, head, body) {
-  return h("table", { class: `table table--${kind}` },
+function table(caption, head, body) {
+  return h("table", { class: "table" },
     h("caption", { class: "visually-hidden" }, caption),
     h("thead", null, h("tr", null, head)), h("tbody", null, body));
 }
 
-const th = (text, right, extra) => h("th", { scope: "col", class: right ? "r" : null, ...(extra || {}) }, text);
+const kv = (term, value) => h("div", { class: "kv" }, h("dt", null, term), h("dd", null, value));
+const th = (text, right) => h("th", { scope: "col", class: right ? "r" : null }, text);
 
 function gauge(tone, level, ticks, label) {
   return h("div", { class: "gauge", "data-tone": tone, role: "img", "aria-label": label, title: label,
@@ -1617,7 +1628,7 @@ function utc(seconds) {
 function drawVerdict(funds, targets) {
   const items = [];
   const add = (sev, tone, text, mark, section) => items.push({ sev, tone, text, mark, section });
-  const count = (list, text) => `${list.length} ${text}${list.length === 1 ? "" : "s"}`;
+  const count = (list, text) => `${list.length} ${list.length === 1 ? "target" : "targets"} ${text}`;
   const names = (list) => list.map((chain) => chain.cfg.name).join(", ");
 
   const failed = CHAINS.filter((chain) => chain.phase === "error");
@@ -1640,13 +1651,13 @@ function drawVerdict(funds, targets) {
     if (list.length) add(sev, tone, count(list, text), mark, "targets");
   };
   const managed = (row) => row.hubState !== "Disarmed" && row.hubState !== "None";
-  group((row) => managed(row) && row.known && row.debt > 0n, 3, "danger", "target in debt", "debt");
-  group((row) => row.sweepNote, 2, "warning", "target quarantined on a vault and still swept by the hub", "quarantine");
-  group((row) => row.hubState === "Quarantined", 2, "warning", "target quarantined by the hub", "quarantine");
-  group((row) => row.hubState === "Parked", 2, "warning", "target parked", "parked");
+  group((row) => managed(row) && row.known && row.debt > 0n, 3, "danger", "in debt", "debt");
+  group((row) => row.sweepNote, 2, "warning", "quarantined on a vault and still swept by the hub", "quarantine");
+  group((row) => row.hubState === "Quarantined", 2, "warning", "quarantined by the hub", "quarantine");
+  group((row) => row.hubState === "Parked", 2, "warning", "parked", "parked");
   group((row) => managed(row) && row.known && row.debt === 0n && row.low !== null && row.reserves < row.low, 2, "warning",
-    "target below its low mark", "warn");
-  group((row) => row.tags.some((entry) => entry.text === "No vault policy"), 2, "warning", "target with no vault policy", "warn");
+    "below its low mark", "warn");
+  group((row) => row.tags.some((entry) => entry.text === "No vault policy"), 2, "warning", "with no vault policy", "warn");
 
   for (const chain of CHAINS) {
     if (!chain.events) continue;
@@ -1666,7 +1677,7 @@ function drawVerdict(funds, targets) {
     h("span", { class: "verdict__head" }, head),
     h("span", { class: "dim" }, `${answered} of ${CHAINS.length} chains read`,
       waiting ? `, ${first.length} in progress` : ""),
-    h("span", { class: "verdict__items" }, items.sort((a, b) => b.sev - a.sev).map((item, index) =>
+    h("span", { class: "verdict__items" }, items.sort((a, b) => b.sev - a.sev).map((item) =>
       h("button", { class: `tag tag--${item.tone} verdict__item`, type: "button", data: { fk: `verdict:${item.text}` },
         title: "Show the section", onclick: () => $(item.section).scrollIntoView({ behavior: "smooth", block: "start" }) },
         item.mark && icon(item.mark), item.text))));
@@ -1703,7 +1714,7 @@ function buildChains() {
       onclick: () => { chain.open = !chain.open; render(); } }, icon("chevron"));
     const cells = { status: h("td"), block: h("td", { class: "r" }), rpc: h("td"), window: h("td") };
     const row = h("tr", { class: "row", data: { chain: name } },
-      h("td", { class: "rail" }, h("div", { style: "display:flex;gap:6px;align-items:flex-start" }, expander,
+      h("td", { class: "rail" }, h("div", { class: "cell" }, expander,
         h("div", null, h("span", { class: "strong" }, name),
           h("span", { class: "cap" }, `chain ${chain.cfg.chainId} \u00b7 ${chain.cfg.role} \u00b7 ${chain.cfg.unit}`)))),
       cells.status, cells.block, cells.rpc, cells.window, h("td", null, form, error));
@@ -1712,7 +1723,7 @@ function buildChains() {
     chain.el = { row, cells, input, clear, alert, detail, expander, error };
     rows.push(row, alert, detail);
   }
-  $("chains-body").replaceChildren(table("chains", "The chains, their RPC state, their latest block and their event window", [
+  $("chains-body").replaceChildren(table("The chains, their RPC state, their latest block and their event window", [
     th("Chain"), th("RPC state"), th("Latest block", true), th("RPC in use"), th("Event window (blocks)"),
     th("Set another RPC URL"),
   ], rows));
@@ -1763,7 +1774,7 @@ function chainWindow(chain) {
       h("span", { class: "cap" }, `Reading the logs: ${Math.round(done)}%`),
       events.waitUntil && h("span", { class: "note note--warning" },
         `The node limits the request rate. The next request goes out at ${clock(events.waitUntil)}.`)],
-    events.phase === "error" && [h("span", { class: "tags", style: "margin-top:4px" }, tag("warning", "Event queries failed", "warn")),
+    events.phase === "error" && [h("span", { class: "tags tags--below" }, tag("warning", "Event queries failed", "warn")),
       h("span", { class: "note note--warning" }, events.error)],
   ];
 }
@@ -1814,7 +1825,6 @@ function drawChains() {
     expander.setAttribute("aria-expanded", String(chain.open));
     detail.hidden = !chain.open;
     if (chain.open) {
-      const kv = (term, value) => h("div", { class: "kv" }, h("dt", null, term), h("dd", null, value));
       detail.firstChild.replaceChildren(h("dl", { class: "detail__body" },
         kv(chain.cfg.role === "hub" ? "Hub" : "Vault", address(chain.cfg.contract, `contract:${name}`)),
         kv("deployBlock", h("span", { class: "num" }, fmtInt(chain.cfg.deployBlock))),
@@ -1880,7 +1890,7 @@ function drawFunds(rows) {
       h("td", null, level),
       h("td", { class: "r" }, loading ? skeleton("6ch") : amount(v && v.debt, row.unit, field("debt"))));
   });
-  $("funds-body").replaceChildren(table("funds", "The funds and the state of the hub and of each vault", [
+  $("funds-body").replaceChildren(table("The funds and the state of the hub and of each vault", [
     th("Contract"), th("State"), th("Principal (balance)", true), th("Principal floor", true),
     th("Fee float (reserves)", true), th("Float target", true), th("Float level"), th("Debt", true),
   ], body));
@@ -1909,7 +1919,6 @@ function sortTargets(rows) {
 }
 
 function targetDetail(row, unit) {
-  const kv = (term, value) => h("div", { class: "kv" }, h("dt", null, term), h("dd", null, value));
   const wei = (value) => (value === null || value === undefined ? "no data" : `${exact(value)} ${unit} (${value} wei)`);
   const p = row.policy;
   const origin = row.manifest
@@ -1975,11 +1984,11 @@ function drawTargets(all) {
         h("span", { class: "cap" }, text)];
     }
     const main = h("tr", { class: "row" + (row.sev === 0 ? " is-muted" : ""), data: { sev: String(row.sev >= 2 ? row.sev : 0), target: row.key, state: row.hubState || "" } },
-      h("td", { class: "rail" }, h("div", { style: "display:flex;gap:6px;align-items:flex-start" },
+      h("td", { class: "rail" }, h("div", { class: "cell" },
         h("button", { class: "expander", type: "button", "aria-expanded": String(open), "aria-label": `Details of ${row.label || row.address}`,
           data: { fk: `texp:${row.key}` }, onclick: () => { if (open) T.open.delete(row.key); else T.open.add(row.key); render(); } }, icon("chevron")),
-        h("div", { style: "min-width:0" },
-          h("span", { class: (row.label ? "strong" : "dim") + " truncate", style: "display:block;max-width:30ch",
+        h("div", null,
+          h("span", { class: (row.label ? "strong" : "dim") + " truncate label",
             title: row.label || "No label: the manifest has no enrollment of this address" }, row.label || "No label"),
           address(row.address, `${base}.address`), row.guest && tag("outline", "guest")))),
       h("td", null, row.chain.cfg.name),
@@ -1999,7 +2008,7 @@ function drawTargets(all) {
       : "The manifest has no enrollment, and the hub lists no target."));
     return;
   }
-  holder.replaceChildren(table("targets", "The targets, their state, their debt and their reserves against the marks", [
+  holder.replaceChildren(table("The targets, their state, their debt and their reserves against the marks", [
     sortHead("label", "Target"), sortHead("chain", "Chain"), sortHead("attention", "State"), sortHead("debt", "Debt", true),
     sortHead("reserves", "Reserves", true), th("Level against the marks"), th("Low mark", true), th("High mark", true),
   ], body.length ? body : h("tr", null, h("td", { colspan: 8, class: "empty" }, "No target has this state, this chain and this text."))));
@@ -2011,7 +2020,7 @@ function eventCells(row) {
   const chain = row.chain, unit = chain.cfg.unit, a = row.args;
   const subject = (target) => {
     const label = labelOf(chain, target);
-    return [label ? h("span", { class: "strong truncate", style: "display:block;max-width:24ch", title: label }, label) : null, address(target)];
+    return [label ? h("span", { class: "strong truncate label label--short", title: label }, label) : null, address(target)];
   };
   const own = [h("span", { class: "strong" }, chain.cfg.role === "hub" ? "Hub" : "Vault")];
   switch (row.name) {
@@ -2069,16 +2078,16 @@ function drawEvents({ rows, timed }) {
   if (shown.length > visible.length) notes.push(`${fmtInt(visible.length)} of ${fmtInt(shown.length)} rows shown.`);
   foot.hidden = !notes.length;
   foot.replaceChildren(h("span", null, notes.join(" "), shown.length > visible.length
-    && h("button", { class: "btn btn--xs", type: "button", style: "margin-left:8px", data: { fk: "emore" }, onclick: () => { E.more = true; render(); } }, "Show each row")));
+    && h("button", { class: "btn btn--xs btn--after", type: "button", data: { fk: "emore" }, onclick: () => { E.more = true; render(); } }, "Show each row")));
 
   if (!body.length) {
     const reading = CHAINS.some((chain) => chain.phase === "loading") || scanning.length;
-    holder.replaceChildren(h("p", { class: "empty", data: { empty: "events" } }, reading ? "Reading the logs."
+    holder.replaceChildren(h("p", { class: "empty" }, reading ? "Reading the logs."
       : rows.length ? "No event has this type and this chain."
         : absent.length === CHAINS.length ? "No chain gave its events." : "No event in the block window of each chain that answered."));
     return;
   }
-  holder.replaceChildren(table("events", "The events of the hub and of the vaults, newest first", [
+  holder.replaceChildren(table("The events of the hub and of the vaults, newest first", [
     th("Time (UTC)"), th("Block", true), th("Chain"), th("Event"), th("Contract or target"), th("Values"), th("Paid", true),
   ], body));
 }
@@ -2111,12 +2120,12 @@ function drawDiagnostics(targets) {
         if (entry.count) last = h("span", { class: "num" }, fmtInt(entry.last));
       }
       body.push(h("tr", { class: "row" },
-        h("td", { class: "rail" }, h("span", { class: "strong truncate", style: "display:block;max-width:22ch", title: label }, label), address(recipient)),
+        h("td", { class: "rail" }, h("span", { class: "strong truncate label label--short", title: label }, label), address(recipient)),
         h("td", null, name), h("td", { class: "r" }, count), h("td", { class: "r" }, last)));
     }
   }
   $("diag-body").replaceChildren(body.length
-    ? table("diag", "CallbackFailure counts in the block window of each chain. Diagnostics only.", [
+    ? table("CallbackFailure counts in the block window of each chain. Diagnostics only.", [
       th("Callback recipient"), th("Chain"), th("Failures in the window", true), th("Last block", true)], body)
     : h("p", { class: "empty" }, "The manifest has no vault: no callback proxy to read."));
 }
@@ -2149,6 +2158,7 @@ function setOverride(chain, url) {
   Object.assign(chain, { phase: "loading", busy: false, used: null, head: null, headTime: null,
     data: null, events: null, readAt: null, failedAt: null, chunk: CONFIG.chunk, attempts: [] });
   chain.times.clear();
+  if (chain === HUB) DISCOVERED.clear();
   chain.el.input.value = url || "";
   chain.el.error.hidden = true;
   chain.el.input.removeAttribute("aria-invalid");

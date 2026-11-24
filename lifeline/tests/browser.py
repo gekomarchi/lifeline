@@ -141,7 +141,6 @@ class Browser:
             address = "http://127.0.0.1:" + port_file.read_text().split()[0]
         with urllib.request.urlopen(address + "/json/version", timeout=30) as response:
             version = json.loads(response.read())
-        self.version = version.get("Browser", "")
         self._socket = _WebSocket(version["webSocketDebuggerUrl"])
         self._next = 0
         self._pages = {}
@@ -235,7 +234,7 @@ class Page:
                 raise AssertionError(f"the page did not reach: {expression}")
             time.sleep(0.05)
 
-    def type_into(self, selector: str, text: str, enter: bool = True) -> None:
+    def type_into(self, selector: str, text: str) -> None:
         """Types a text into a field as a user does: focus, select all, insert, and the Enter key."""
         self.evaluate(f"(() => {{ const field = document.querySelector({json.dumps(selector)}); field.focus(); "
                       f"field.select(); }})()")
@@ -243,8 +242,7 @@ class Page:
             self.call("Input.insertText", {"text": text})
         else:
             self.press("Backspace", 8)
-        if enter:
-            self.press("Enter", 13, "\r")
+        self.press("Enter", 13, "\r")
 
     def press(self, key: str, code: int, text: str = None) -> None:
         base = {"key": key, "code": key, "windowsVirtualKeyCode": code, "nativeVirtualKeyCode": code}

@@ -249,6 +249,12 @@ def _lookback(value) -> int:
     return value
 
 
+def _inline(value) -> str:
+    """JSON for a script element: no `<`, `>` or `&` can end the element, start a comment or make an entity."""
+    text = json.dumps(value, separators=(",", ":"))
+    return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
 def _check_self_contained(page: str, rpc_urls) -> None:
     """Refuses an output that names an external resource, or a URL other than the RPC URLs."""
     for pattern, what in _EXTERNAL:
@@ -256,7 +262,7 @@ def _check_self_contained(page: str, rpc_urls) -> None:
             raise BoardError(f"the page has {what}: the output must be one self-contained file")
     rest = page
     for url in sorted(rpc_urls, key=len, reverse=True):
-        rest = rest.replace(json.dumps(url)[1:-1], "")
+        rest = rest.replace(_inline(url)[1:-1], "")
     found = _URL_IN_TEXT.search(rest)
     if found:
         line = rest.count("\n", 0, found.start()) + 1
@@ -288,19 +294,16 @@ def render(manifest: dict, lookback: int = DEFAULT_LOOKBACK, artifacts: Path = N
     # The build ID names the inputs: the template and the inlined data. It has no time and no path.
     digest = hashlib.sha256(source.encode() + b"\0" + json.dumps(config, sort_keys=True).encode())
     config["build"] = digest.hexdigest()[:12]
-    # The data is JSON in a script element: no `<` can end the element or start a comment.
-    inlined = json.dumps(config, separators=(",", ":")).replace("<", "\\u003c").replace(">", "\\u003e")
-    page = source.replace(PLACEHOLDER, inlined.replace("&", "\\u0026"))
+    page = source.replace(PLACEHOLDER, _inline(config))
     _check_self_contained(page, [url for chain in content["chains"] for url in chain["rpc"]])
     return page
 
 
-def build(manifest_path=None, out=None, lookback: int = DEFAULT_LOOKBACK, artifacts: Path = None,
-          template: Path = None) -> Path:
+def build(manifest_path=None, out=None, lookback: int = DEFAULT_LOOKBACK) -> Path:
     """Writes the page for a manifest file in one step: a failed build leaves the old file."""
     manifest = ops.Manifest.load(manifest_path)
     out = Path(out or DEFAULT_OUT)
-    page = render(manifest.data, lookback, artifacts, template).encode()
+    page = render(manifest.data, lookback).encode()
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
         temporary = out.with_name(out.name + ".tmp")

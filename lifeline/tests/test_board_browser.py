@@ -8,6 +8,7 @@ path, or `LIFELINE_CDP_URL` for a running one).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 
@@ -74,7 +75,9 @@ class Fleet:
             BASE: MockChain(CHAIN_IDS[BASE], HEADS[BASE], genesis_time=1_789_000_000, block_time=2),
             UNI: MockChain(CHAIN_IDS[UNI], HEADS[UNI], genesis_time=1_790_400_000, block_time=1),
         }
-        self.gate = RpcGate({name: chain.handle for name, chain in self.chains.items()})
+        self.hooks = {}  # chain -> function (method, params) -> an outcome in place of the answer of the chain, or None
+        self.forks = {name: 0 for name in self.chains}  # a new number is a new history: each block has a new hash
+        self.gate = RpcGate({name: self._handle(name) for name in self.chains})
         self.lists = {name: [] for name in self.chains}
         self.expected = {}
         self.enrollments = []
@@ -85,6 +88,20 @@ class Fleet:
         self.manifest = directory / "manifest.json"
         self.out = directory / "index.html"
         self.build(lookback)
+
+    def _handle(self, name):
+        chain = self.chains[name]
+
+        def handle(method, params):
+            outcome = self.hooks[name](method, params) if name in self.hooks else None
+            if outcome is None:
+                outcome = chain.handle(method, params)
+            if method == "eth_getBlockByNumber" and outcome[0] == "result" and outcome[1]:
+                seed = f"{name}:{self.forks[name]}:{outcome[1]['number']}".encode()
+                outcome[1]["hash"] = "0x" + hashlib.sha256(seed).hexdigest()
+            return outcome
+
+        return handle
 
     # Chain content ----------------------------------------------------------------------------
 
@@ -373,6 +390,30 @@ def test_all_urls_of_one_chain_fail_that_chain_shows_an_error_and_no_number(flee
     assert "no data" in funds and not any(character.isdigit() for character in funds.lower().replace(shown_address, ""))
 
 
+def test_a_hub_with_no_answer_keeps_the_targets_and_values_of_the_other_chains(fleet, page):
+    before = opened(page, fleet)
+    unlisted = f"target:{BASE}|{T_UNLISTED_LABEL}"  # in the hub list, and not in the manifest
+    assert before[f"{unlisted}.reserves"] == str(3 * 10**17)
+    fleet.gate.down.update({f"{LASNA}/a", f"{LASNA}/b"})
+    page.click("#refresh")
+    page.wait(f"document.querySelector('#chains-body tr[data-chain=\"{LASNA}\"]').dataset.state === 'error'")
+    page.wait(IDLE)
+    after = page.evaluate(FIELDS)
+    assert state_of(page, BASE) == "ok" and state_of(page, UNI) == "ok"
+    assert set(chain_fields(after, LASNA).values()) == {""}
+    # Each destination target keeps its row and the values of its own chain. The hub state is not known.
+    for field, value in fleet.expected.items():
+        if field.startswith((f"target:{BASE}", f"target:{UNI}", f"funds:{BASE}", f"funds:{UNI}")):
+            hub_value = field.endswith((".state", ".up", ".pending"))
+            assert after.get(field, "") == ("" if hub_value else value), field
+    row = page.evaluate(f"document.querySelector('#targets-body tr[data-target=\"{BASE}|{T_UNLISTED_LABEL}\"]').innerText")
+    assert "Hub state not known" in row and "0.3" in row
+    assert page.evaluate(f"document.querySelectorAll('#events-body tr[data-chain=\"{BASE}\"]').length") == 3
+    # The proxy query still names the target of the last hub list.
+    proxy = [q for q in log_queries(fleet, BASE) if q["address"].lower() == LEDGERS[BASE]][-1]
+    assert "0x" + word(T_UNLISTED_LABEL) in proxy["topics"][1]
+
+
 def test_a_chain_that_stops_does_not_keep_its_last_values(fleet, page):
     fields = opened(page, fleet)
     assert fields[f"funds:{UNI}.principal"] == fleet.expected[f"funds:{UNI}.principal"]
@@ -564,11 +605,8 @@ def test_a_node_with_a_smaller_log_range_gets_smaller_requests(fleet, page):
 
 
 def test_log_queries_that_each_node_refuses_leave_the_state_and_no_event_number(fleet, page):
-    chain = fleet.chains[BASE]
-    handle = chain.handle
-    chain.handle = lambda method, params: (("error", -32000, "the log index is not ready", None)
-                                           if method == "eth_getLogs" else handle(method, params))
-    fleet.gate.routes[BASE] = chain.handle
+    fleet.hooks[BASE] = lambda method, params: (("error", -32000, "the log index is not ready", None)
+                                                if method == "eth_getLogs" else None)
     fields = opened(page, fleet)
     assert state_of(page, BASE) == "ok" and fields[f"funds:{BASE}.principal"] == fleet.expected[f"funds:{BASE}.principal"]
     assert fields[f"failures:{BASE}|{VAULTS[BASE]}"] == ""
@@ -576,6 +614,80 @@ def test_log_queries_that_each_node_refuses_leave_the_state_and_no_event_number(
     row = page.evaluate(f"document.querySelector('#chains-body tr[data-chain=\"{BASE}\"]').innerText")
     assert "Event queries failed" in row and "the log index is not ready" in row
     assert {record["path"] for record in fleet.gate.calls("eth_getLogs", BASE)} == {f"{BASE}/a", f"{BASE}/b"}
+
+
+def test_one_refused_log_request_leaves_no_event_of_a_request_that_ends_later(fleet, page):
+    """Three requests run at a time. One fails; an answer that comes after it adds no row to the cleared scan."""
+    head, start = HEADS[LASNA], HEADS[LASNA] - board.DEFAULT_LOOKBACK
+    fleet.log(LASNA, "hub", "HubLow", head - 15_000, data=[1, 2])
+
+    def hook(method, params):
+        if method != "eth_getLogs":
+            return None
+        low = int(params[0]["fromBlock"], 16)
+        if low == start:  # the oldest chunk: one block
+            return "error", -32000, "the log index is not ready", None
+        if low == head - 20_000 + 1:  # the second chunk, with the new log: a slow answer
+            time.sleep(1.5)
+        return None
+
+    fleet.hooks[LASNA] = hook
+    opened(page, fleet)
+    assert window_of(page, LASNA)[2] == "error" and state_of(page, LASNA) == "ok"
+    time.sleep(2.5)
+    assert window_of(page, LASNA)[2] == "error"
+    assert not page.evaluate(f"document.querySelectorAll('#events-body tr[data-chain=\"{LASNA}\"]').length")
+    assert "HubLow in the window" not in page.evaluate("document.getElementById('verdict').innerText")
+    assert page.evaluate(FIELDS)[f"funds:{LASNA}.principal"] == fleet.expected[f"funds:{LASNA}.principal"]
+
+
+def lasna_events(page) -> list:
+    return page.evaluate(f"[...document.querySelectorAll('#events-body tr[data-chain=\"{LASNA}\"]')]"
+                         f".map((row) => [row.dataset.event, Number(row.dataset.block)])")
+
+
+@pytest.mark.parametrize("blocks", [0, 7])
+def test_a_reorganization_makes_the_page_read_the_window_again(fleet, page, blocks):
+    """The page keeps the logs of a window only while the last block of that window has the same hash."""
+    opened(page, fleet)
+    head = HEADS[LASNA]
+    assert (["HubLow", head - 10] in lasna_events(page)) and len(lasna_events(page)) == 4
+    # Without a reorganization a read asks for no log of a block that the page has.
+    mark = fleet.gate.mark()
+    page.click("#refresh")
+    page.wait(IDLE)
+    assert fleet.gate.calls("eth_call", LASNA, mark) and log_queries(fleet, LASNA, mark) == []
+
+    # Another history: the HubLow log is gone, at the same head or at a head that is 7 blocks later.
+    chain = fleet.chains[LASNA]
+    chain.logs = [log for log in chain.logs if int(log["blockNumber"], 16) != head - 10]
+    chain.head += blocks
+    fleet.forks[LASNA] += 1
+    mark = fleet.gate.mark()
+    page.click("#refresh")
+    page.wait(f"!document.querySelector('#events-body tr[data-chain=\"{LASNA}\"][data-event=\"HubLow\"]')")
+    page.wait(IDLE)
+    # The window moved with the head: with 7 more blocks the oldest event is before its first block.
+    assert lasna_events(page) == [["Gap", head - 2_000], ["Rescued", head - 2_000]] + (
+        [] if blocks else [["Rescued", head - 29_999]])
+    ranges = [(int(q["fromBlock"], 16), int(q["toBlock"], 16)) for q in log_queries(fleet, LASNA, mark)]
+    assert min(low for low, _ in ranges) == head + blocks - board.DEFAULT_LOOKBACK
+    assert max(high for _, high in ranges) == head + blocks
+    assert "HubLow in the window" not in page.evaluate("document.getElementById('verdict').innerText")
+
+
+def test_each_event_block_gets_its_time(fleet, page):
+    """More event blocks than one batch of header requests: each row has a time, and the order is by time."""
+    for index in range(45):
+        fleet.log(UNI, "vault", "Result", HEADS[UNI] - 100 - 3 * index, [0, T_LOW], [ops.OUTCOMES.index("NoNeed"), 0])
+    opened(page, fleet)
+    rows = page.evaluate("[...document.querySelectorAll('#events-body tbody tr')].map((row) => "
+                         "[row.dataset.chain, Number(row.dataset.block), row.cells[0].textContent])")
+    assert len([row for row in rows if row[0] == UNI]) == 46
+    assert all(text != "\u2014" and ":" in text for _, _, text in rows)
+    times = [fleet.chains[name].timestamp(block) for name, block, _ in rows]
+    assert times == sorted(times, reverse=True)
+    assert "a block time is not known" not in page.evaluate("document.getElementById('events-meta').textContent")
 
 
 def test_events_are_newest_first_with_their_values(fleet, page):
@@ -630,6 +742,8 @@ def test_a_target_quarantined_on_the_vault_and_in_the_hub_list_has_the_disarm_no
     lasna = target_row(page, LASNA, T_LASNA_Q)
     assert "Quarantined" in lasna["text"] and "hub.release" in lasna["text"] and "hub.disarm" not in lasna["text"]
     assert "1 target quarantined on a vault and still swept by the hub" in page.evaluate("document.getElementById('verdict').innerText")
+    # The count is before the noun, so a plural reads "2 targets in debt" and not "2 target in debts".
+    assert "2 targets in debt" in page.evaluate("document.getElementById('verdict').innerText")
     # After hub.disarm the target is in no list: the note goes, the vault quarantine stays visible.
     fleet.lists[BASE].remove(T_VAULT_Q)
     fleet.target(BASE, T_VAULT_Q, "Disarmed", debt=3 * 10**12, quarantined=True, listed=False)
