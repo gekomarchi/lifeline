@@ -1,0 +1,292 @@
+1
+00:00:00,200 --> 00:00:01,980
+I do not speak English,
+
+2
+00:00:02,040 --> 00:00:03,460
+so this narration was
+
+3
+00:00:03,520 --> 00:00:05,430
+generated with ElevenLabs.
+
+4
+00:00:05,490 --> 00:00:08,790
+This reactive contract ran out of gas credit.
+
+5
+00:00:08,850 --> 00:00:12,070
+Each transaction to it still shows success.
+
+6
+00:00:12,130 --> 00:00:15,220
+But the network gives it no more work.
+
+7
+00:00:15,280 --> 00:00:16,580
+In this buildathon,
+
+8
+00:00:16,640 --> 00:00:17,780
+more than a quarter of the
+
+9
+00:00:17,840 --> 00:00:20,700
+submissions have a contract in debt.
+
+10
+00:00:20,760 --> 00:00:23,180
+My own automation holds about sixty
+
+11
+00:00:23,240 --> 00:00:25,900
+lREACT that cannot be withdrawn.
+
+12
+00:00:25,960 --> 00:00:29,100
+Over-funding was the only protection.
+
+13
+00:00:29,160 --> 00:00:32,860
+Lifeline is a gas guardian that I set once.
+
+14
+00:00:32,920 --> 00:00:34,260
+Its airbag listens to the
+
+15
+00:00:34,320 --> 00:00:35,980
+network's own debt event,
+
+16
+00:00:36,040 --> 00:00:39,100
+pays the debt, and refills the contract.
+
+17
+00:00:39,160 --> 00:00:42,193
+Its gauge refills a contract on a cron tick,
+
+18
+00:00:42,253 --> 00:00:43,980
+before it runs out.
+
+19
+00:00:44,040 --> 00:00:46,407
+Enrollment is one command.
+
+20
+00:00:46,467 --> 00:00:48,620
+The policy is plain numbers:
+
+21
+00:00:48,680 --> 00:00:51,287
+two refill marks, a daily budget,
+
+22
+00:00:51,347 --> 00:00:53,540
+and a limit of rescues.
+
+23
+00:00:53,600 --> 00:00:56,020
+Two of my automations are enrolled,
+
+24
+00:00:56,080 --> 00:00:58,900
+each with a transaction you can check.
+
+25
+00:00:58,960 --> 00:01:01,780
+Now a live rescue on testnet.
+
+26
+00:01:01,840 --> 00:01:04,700
+This command drives a test automation until
+
+27
+00:01:04,760 --> 00:01:05,940
+its callback contract
+
+28
+00:01:06,000 --> 00:01:08,510
+on Base Sepolia runs out.
+
+29
+00:01:08,570 --> 00:01:12,720
+Now watch, at real speed, with no cut.
+
+30
+00:01:13,120 --> 00:01:14,220
+The debt event.
+
+31
+00:01:14,280 --> 00:01:16,300
+The hub's reaction on Lasna.
+
+32
+00:01:16,360 --> 00:01:18,607
+The vault's payment in a callback.
+
+33
+00:01:18,667 --> 00:01:20,100
+The debt is zero.
+
+34
+00:01:20,160 --> 00:01:21,620
+Nobody sent a transaction
+
+35
+00:01:21,680 --> 00:01:23,460
+after the first step.
+
+36
+00:01:23,520 --> 00:01:26,100
+Here is that reaction on Reactscan,
+
+37
+00:01:26,160 --> 00:01:28,960
+with its callback to Base Sepolia.
+
+38
+00:01:29,020 --> 00:01:31,760
+The debt event has this timestamp.
+
+39
+00:01:31,820 --> 00:01:34,980
+The payment came one second later.
+
+40
+00:01:35,040 --> 00:01:37,060
+Three identical automations
+
+41
+00:01:37,120 --> 00:01:38,847
+got the same load.
+
+42
+00:01:38,907 --> 00:01:42,127
+With no guardian, three callbacks arrived.
+
+43
+00:01:42,187 --> 00:01:44,740
+With a cron poller, also three.
+
+44
+00:01:44,800 --> 00:01:48,070
+With Lifeline, all twenty-four.
+
+45
+00:01:48,130 --> 00:01:49,750
+The poller left its contract
+
+46
+00:01:49,810 --> 00:01:52,450
+dead for about two hours.
+
+47
+00:01:52,510 --> 00:01:55,650
+Lifeline is not a wallet refiller.
+
+48
+00:01:55,710 --> 00:01:58,690
+A refiller sends currency to an account.
+
+49
+00:01:58,750 --> 00:02:00,370
+Lifeline pays a contract's
+
+50
+00:02:00,430 --> 00:02:02,210
+debt at the gas ledger,
+
+51
+00:02:02,270 --> 00:02:05,890
+and only that restarts a stopped contract.
+
+52
+00:02:05,950 --> 00:02:08,770
+A target that breaks is cut off.
+
+53
+00:02:08,830 --> 00:02:10,290
+After two rescues,
+
+54
+00:02:10,350 --> 00:02:11,810
+the hub quarantined this
+
+55
+00:02:11,870 --> 00:02:13,437
+looping test contract,
+
+56
+00:02:13,497 --> 00:02:15,550
+and paid nothing more.
+
+57
+00:02:15,610 --> 00:02:17,310
+A flood of junk callbacks
+
+58
+00:02:17,370 --> 00:02:19,523
+pushed one vault offline.
+
+59
+00:02:19,583 --> 00:02:21,470
+It lost its small fee float
+
+60
+00:02:21,530 --> 00:02:23,070
+and a little self-care,
+
+61
+00:02:23,130 --> 00:02:24,730
+and nothing else.
+
+62
+00:02:24,790 --> 00:02:26,090
+Recovery needed two
+
+63
+00:02:26,150 --> 00:02:28,250
+transactions from the owner.
+
+64
+00:02:28,310 --> 00:02:30,730
+The hub then repeated the waiting rescue,
+
+65
+00:02:30,790 --> 00:02:34,120
+twenty-five seconds after its debt event.
+
+66
+00:02:34,180 --> 00:02:36,760
+No guest is enrolled yet.
+
+67
+00:02:36,820 --> 00:02:39,840
+Lifeline restores future delivery.
+
+68
+00:02:39,900 --> 00:02:42,760
+Work that arrives during a debt is lost.
+
+69
+00:02:42,820 --> 00:02:44,440
+Testnet only.
+
+70
+00:02:44,500 --> 00:02:46,040
+A public pool and automatic
+
+71
+00:02:46,100 --> 00:02:48,760
+vault recovery are not built.
+
+72
+00:02:48,820 --> 00:02:50,160
+Check it yourself:
+
+73
+00:02:50,220 --> 00:02:54,650
+the repository, the live board, and JUDGE.md.
+

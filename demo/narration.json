@@ -1,0 +1,136 @@
+{
+  "voice": {
+    "engine": "ElevenLabs",
+    "name": "Daniel",
+    "voiceId": "onwK4e9ZLuTAKqWW03F9",
+    "model": "eleven_v4",
+    "settings": {
+      "stability": 0.6,
+      "similarity_boost": 0.8,
+      "style": 0.0,
+      "use_speaker_boost": true
+    },
+    "seed": 11,
+    "outputFormat": "mp3_44100_192"
+  },
+  "spoken": {
+    "ElevenLabs": "Eleven Labs",
+    "Lasna": "Lasna",
+    "lREACT": "L-React",
+    "Reactive Network": "Reactive Network",
+    "Reactscan": "React-scan",
+    "Unichain Sepolia": "Unichain Sepolia",
+    "Base Sepolia": "Base Sepolia",
+    "depositTo": "deposit",
+    "vaultUp": "vault-up",
+    "callback proxy": "callback proxy",
+    "JUDGE.md": "judge dot M D"
+  },
+  "clips": [
+    {
+      "id": "n01",
+      "part": 1,
+      "text": "I do not speak English, so this narration was generated with ElevenLabs."
+    },
+    {
+      "id": "n02",
+      "part": 2,
+      "text": "This reactive contract ran out of gas credit. Each transaction to it still shows success. But the network gives it no more work."
+    },
+    {
+      "id": "n03",
+      "part": 2,
+      "text": "In this buildathon, more than a quarter of the submissions have a contract in debt."
+    },
+    {
+      "id": "n04",
+      "part": 2,
+      "text": "My own automation holds about sixty lREACT that cannot be withdrawn. Over-funding was the only protection."
+    },
+    {
+      "id": "n05",
+      "part": 3,
+      "text": "Lifeline is a gas guardian that I set once. Its airbag listens to the network's own debt event, pays the debt, and refills the contract. Its gauge refills a contract on a cron tick, before it runs out."
+    },
+    {
+      "id": "n06",
+      "part": 4,
+      "text": "Enrollment is one command. The policy is plain numbers: two refill marks, a daily budget, and a limit of rescues."
+    },
+    {
+      "id": "n07",
+      "part": 4,
+      "text": "Two of my automations are enrolled, each with a transaction you can check."
+    },
+    {
+      "id": "n08",
+      "part": 5,
+      "text": "Now a live rescue on testnet. This command drives a test automation until its callback contract on Base Sepolia runs out."
+    },
+    {
+      "id": "n09",
+      "part": 5,
+      "text": "Now watch, at real speed, with no cut."
+    },
+    {
+      "id": "n10",
+      "part": 5,
+      "text": "The debt event. The hub's reaction on Lasna. The vault's payment in a callback. The debt is zero. Nobody sent a transaction after the first step."
+    },
+    {
+      "id": "n11",
+      "part": 5,
+      "text": "Here is that reaction on Reactscan, with its callback to Base Sepolia."
+    },
+    {
+      "id": "n12",
+      "part": 5,
+      "text": "The debt event has this timestamp. The payment came one second later."
+    },
+    {
+      "id": "n13",
+      "part": 6,
+      "text": "Three identical automations got the same load. With no guardian, three callbacks arrived. With a cron poller, also three. With Lifeline, all twenty-four."
+    },
+    {
+      "id": "n14",
+      "part": 6,
+      "text": "The poller left its contract dead for about two hours."
+    },
+    {
+      "id": "n15",
+      "part": 6,
+      "text": "Lifeline is not a wallet refiller. A refiller sends currency to an account. Lifeline pays a contract's debt at the gas ledger, and only that restarts a stopped contract."
+    },
+    {
+      "id": "n16",
+      "part": 7,
+      "text": "A target that breaks is cut off. After two rescues, the hub quarantined this looping test contract, and paid nothing more."
+    },
+    {
+      "id": "n17",
+      "part": 7,
+      "text": "A flood of junk callbacks pushed one vault offline. It lost its small fee float and a little self-care, and nothing else."
+    },
+    {
+      "id": "n18",
+      "part": 7,
+      "text": "Recovery needed two transactions from the owner. The hub then repeated the waiting rescue, twenty-five seconds after its debt event."
+    },
+    {
+      "id": "n19",
+      "part": 8,
+      "text": "No guest is enrolled yet."
+    },
+    {
+      "id": "n20",
+      "part": 9,
+      "text": "Lifeline restores future delivery. Work that arrives during a debt is lost. Testnet only. A public pool and automatic vault recovery are not built."
+    },
+    {
+      "id": "n21",
+      "part": 10,
+      "text": "Check it yourself: the repository, the live board, and JUDGE.md."
+    }
+  ]
+}
