@@ -4,7 +4,7 @@
 
 Reactive Omni Buildathon, track "Set It and Forget It". Testnet only. Each number in this file is a link to its query result or to [`JUDGE.md`](JUDGE.md), which is generated from chain data.
 
-**Demo video** (2 min 56 s, with narration and subtitles): [`demo/lifeline-demo.mp4`](demo/lifeline-demo.mp4)
+**Demo video** (2 min 56 s, with narration and subtitles): [watch on Loom](https://www.loom.com/share/f65db54e7a9c4c56ac1bab1b2be135e8). The file is in the repository: [`demo/lifeline-demo.mp4`](demo/lifeline-demo.mp4)
 
 ## Problem
 
