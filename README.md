@@ -3,7 +3,8 @@
 **Lifeline: the gas guardian for my reactive automations.** Reactive automations stop without a warning when their gas credit runs out. Lifeline is the guardian I set once: it refuels them across chains inside my budget, and it stops feeding one that breaks.
 
 Reactive Omni Buildathon, track "Set It and Forget It". Testnet only. Each number in this file is a link to its query result or to [`JUDGE.md`](JUDGE.md), which is generated from chain data.
-<!-- DEMO VIDEO: put the link in the line above when the video is ready. -->
+
+**Demo video** (2 min 56 s, with narration and subtitles): [`demo/lifeline-demo.mp4`](demo/lifeline-demo.mp4)
 
 ## Problem
 
@@ -285,8 +286,6 @@ The owner enrolls a contract of another participant on request, with the written
 ## Evidence and reproduction
 
 The three commands need no key and send no transaction. A first run pins the heights and writes `heights.json`. A run with `--heights <file>` gives the same files again.
-
-The demo video has its own runbook, with the capture step, the shot list and the build commands: [`DEMO.md`](DEMO.md).
 
 | Evidence | Command | Output |
 |---|---|---|
