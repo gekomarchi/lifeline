@@ -75,6 +75,18 @@ def test_first_run_prints_each_number_and_writes_three_files(network):
     assert queries["fastfill_reactive_reserves"]["result"] == {
         "contract": A3, "reservesWei": str(10**18), "block": 21000}
 
+    # A1 and A4 are in debt at `to`. A submission with no contract on the chain is not counted.
+    assert queries["buildathon_debt"]["result"] == {
+        "source": "https://list.test/buidl", "listed": "2026-11-24", "block": 21000,
+        "submissions": 3, "contracts": 4, "inDebt": 2, "contractsInDebt": 2,
+        "byTrack": {"First track": {"submissions": 2, "inDebt": 1}, "Second track": {"submissions": 1, "inDebt": 1}},
+        "inDebtSubmissions": [
+            {"name": "One", "track": "First track", "contracts": [{"address": A1, "debtWei": "5"}]},
+            {"name": "Three", "track": "Second track",
+             "contracts": [{"address": A1, "debtWei": "5"}, {"address": A4, "debtWei": "7"}]},
+        ],
+    }
+
     guests = queries["guest_candidates"]["result"]
     assert [(entry["chain"], entry["address"]) for entry in guests["candidates"]] == [
         ("lasna", A1), ("lasna", A2), ("lasna", A4),
@@ -101,6 +113,10 @@ def test_first_run_prints_each_number_and_writes_three_files(network):
     table = (out / "table.md").read_text()
     assert "| `lasna_debt_events` | debt events | 4 | lasna | 1000 | 21000 |" in table
     assert "| `stopped_contracts` | stopped contracts | 2 | base-sepolia | 1000 | 11000 |" in table
+    assert ("| `buildathon_debt` | buildathon submissions with a contract in debt at to | 2 | lasna | 1000 | 21000 |"
+            in table)
+    assert ("| `buildathon_debt` | buildathon submissions with a contract in debt at to, track First track "
+            "| 1 of 2 | lasna | 1000 | 21000 |" in table)
     for name, query in queries.items():
         assert f"- `{name}`: {query['definition']}" in table
 
@@ -283,7 +299,7 @@ def test_query_with_no_subject_is_not_configured(network, capsys):
         "result": {"missing": "subjects.fastfill.deposit.chain"},
     }
     others = [query for name, query in queries.items() if name != "fastfill_fill_times"]
-    assert len(others) == 9 and all(query["status"] == "ok" and query["result"] for query in others)
+    assert len(others) == 10 and all(query["status"] == "ok" and query["result"] for query in others)
     out = capsys.readouterr().out
     assert "not configured: fastfill_fill_times did not run; subjects.fastfill.deposit.chain is missing" in out
     assert "| `fastfill_fill_times` | not configured:" in (network.tmp_path / "out" / "table.md").read_text()

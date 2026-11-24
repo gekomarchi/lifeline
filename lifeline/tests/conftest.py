@@ -50,6 +50,15 @@ HEIGHTS = {
 SUBJECTS = {
     "fastfillReactive": {"chain": "lasna", "address": A3},
     "cronPoller": {"chain": "lasna", "address": A4, "ward": A1},
+    "buildathon": {
+        "chain": "lasna", "source": "https://list.test/buidl", "listed": "2026-11-24",
+        "submissions": [
+            {"name": "One", "track": "First track", "contracts": [A1, A2]},
+            {"name": "Two", "track": "First track", "contracts": [A3]},
+            {"name": "Three", "track": "Second track", "contracts": [A4.upper().replace("0X", "0x"), A1]},
+            {"name": "No contract", "track": "Second track", "contracts": []},
+        ],
+    },
     "fastfill": {
         "deposit": {"chain": "base-sepolia", "address": DEPOSITS, "event": DEPOSIT_EVENT,
                     "where": {"destination": 1301}},

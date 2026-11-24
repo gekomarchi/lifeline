@@ -421,6 +421,45 @@ def fastfill_reactive_reserves(scan):
     return result, [("reserves of FastfillReactive, wei", str(reserves), [chain])]
 
 
+def buildathon_debt(scan):
+    subject = scan.config["subjects"]["buildathon"]
+    chain = subject["chain"]
+    submissions = [
+        (entry["name"], entry.get("track") or "no track", sorted({address.lower() for address in entry["contracts"]}))
+        for entry in subject["submissions"] if entry.get("contracts")
+    ]
+    contracts = sorted({address for _, _, addresses in submissions for address in addresses})
+    debts = scan.debts(chain, contracts)
+    by_track, in_debt = {}, []
+    for name, track, addresses in submissions:
+        owed = [{"address": address, "debtWei": str(debts[address])} for address in addresses if debts[address] > 0]
+        figures = by_track.setdefault(track, {"submissions": 0, "inDebt": 0})
+        figures["submissions"] += 1
+        if owed:
+            figures["inDebt"] += 1
+            in_debt.append({"name": name, "track": track, "contracts": owed})
+    result = {
+        "source": subject.get("source"),
+        "listed": subject.get("listed"),
+        "block": scan.span(chain)[1],
+        "submissions": len(submissions),
+        "contracts": len(contracts),
+        "inDebt": len(in_debt),
+        "contractsInDebt": sum(1 for address in contracts if debts[address] > 0),
+        "byTrack": by_track,
+        "inDebtSubmissions": in_debt,
+    }
+    rows = [
+        ("buildathon submissions with a contract on the chain", result["submissions"], [chain]),
+        ("buildathon submissions with a contract in debt at to", result["inDebt"], [chain]),
+        ("buildathon contracts in debt at to", result["contractsInDebt"], [chain]),
+    ]
+    for track, figures in sorted(by_track.items()):
+        rows.append((f"buildathon submissions with a contract in debt at to, track {track}",
+                     f"{figures['inDebt']} of {figures['submissions']}", [chain]))
+    return result, rows
+
+
 def guest_candidates(scan):
     params = scan.snapshot.params
     recipients = defaultdict(set)
@@ -518,6 +557,12 @@ QUERIES = (
     Query("fastfill_reactive_reserves", fastfill_reactive_reserves,
           "The value is reserves(FastfillReactive) on the ledger of its chain at to.",
           ("subjects.fastfillReactive.chain", "subjects.fastfillReactive.address")),
+    Query("buildathon_debt", buildathon_debt,
+          "A buildathon submission is an entry of subjects.buildathon.submissions: a project on the public list "
+          "of the Reactive Omni Buildathon, with the contracts on the reactive chain that its public repository "
+          "names. A submission is in debt if debt(contract) on the ledger is above zero at to for one of these "
+          "contracts or more. A contract that a repository names can be an old deployment.",
+          ("subjects.buildathon.chain", "subjects.buildathon.submissions")),
     Query("guest_candidates", guest_candidates,
           "A guest candidate is a contract seen in the scan (a debtor, a subscriber on Lasna, or a callback "
           "recipient on a destination chain) that has a debt event in from..to, has debt above zero at to, "

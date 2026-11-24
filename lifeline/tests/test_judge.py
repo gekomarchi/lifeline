@@ -333,8 +333,8 @@ def section(document: str, title: str) -> str:
 def test_the_data_file_has_the_join_the_fleet_the_cost_and_the_scenarios_from_the_chain_data(network, capsys):
     assert network.run("out") == 0
     data, logs = network.data("out"), network.logs
-    assert list(data) == sorted(["version", "heights", "rescues", "lasnaRescues", "fleet", "guardian", "quarantine",
-                                 "junkRecovery", "guests", "experiment"])
+    assert sorted(data) == sorted(["version", "heights", "rescues", "lasnaRescues", "latency", "fleet", "guardian",
+                                   "quarantine", "junkRecovery", "guests", "experiment"])
     assert data["version"] == 1
     # `from` is the lowest deployment block that the run uses on the chain; `to` is the head.
     assert data["heights"] == {
@@ -376,6 +376,22 @@ def test_the_data_file_has_the_join_the_fleet_the_cost_and_the_scenarios_from_th
          "gap": {"deadFromBlock": 0, "aliveAtBlock": 1220}},
         {"target": REACTIVE, "rescued": {**ref(logs["rescued reactive"]), "debt": "10", "paid": "110"},
          "gap": {"deadFromBlock": 1498, "aliveAtBlock": 1500}},
+    ]
+
+    # The latency: each rescue that a debt log started, by the block timestamps of the chain of the target.
+    # The mock chains have a block time of one second on lasna and of two seconds on base-sepolia. The second
+    # rescue of the looping canary has no debt log: it is not in the list.
+    assert data["latency"]["byChain"] == {
+        LASNA: {"rescues": 2, "medianSeconds": 1, "largestSeconds": 2, "medianBlocks": 1, "largestBlocks": 2},
+        BASE: {"rescues": 1, "medianSeconds": 10, "largestSeconds": 10, "medianBlocks": 5, "largestBlocks": 5},
+    }
+    assert data["latency"]["rescues"] == [
+        {"chain": LASNA, "target": LOOPING, "deadFromBlock": 1209, "aliveAtBlock": 1210, "blocks": 1, "seconds": 1,
+         "tx": logs["looping 1"]["transactionHash"]},
+        {"chain": LASNA, "target": REACTIVE, "deadFromBlock": 1498, "aliveAtBlock": 1500, "blocks": 2, "seconds": 2,
+         "tx": logs["rescued reactive"]["transactionHash"]},
+        {"chain": BASE, "target": EXECUTOR, "deadFromBlock": 800, "aliveAtBlock": 805, "blocks": 5, "seconds": 10,
+         "tx": logs["result executor"]["transactionHash"]},
     ]
 
     # The fleet: no guest, no fixture. The target with no `setPolicy` in the chain data is left out.
@@ -453,7 +469,8 @@ def test_judge_md_has_the_sections_in_order_and_the_open_request_in_the_open_lis
     assert network.run("out") == 0
     document = network.document("out")
     titles = [line[3:] for line in document.replace(TABLE, "").splitlines() if line.startswith("## ")]
-    assert titles == ["Claim limit", "Heights", "Destination rescues", "Lasna rescues and gaps", "Fleet report",
+    assert titles == ["Claim limit", "Heights", "Destination rescues", "Lasna rescues and gaps", "Rescue latency",
+                      "Fleet report",
                       "Guardian cost", "Three-arm table", "Quarantine", "Junk recovery", "Guests"]
     assert "restores future delivery, not zero loss" in section(document, "Claim limit")
     assert "Do not edit it by hand" in document.split("## Claim limit")[0]
@@ -477,6 +494,10 @@ def test_judge_md_has_the_sections_in_order_and_the_open_request_in_the_open_lis
 
     assert f"| `{REACTIVE}` | 1500<br>`{logs['rescued reactive']['transactionHash']}` | 10 | 110 | 1498 | 1500 |" \
         in section(document, "Lasna rescues and gaps")
+    latency = section(document, "Rescue latency")
+    assert f"| {LASNA} | 2 | 1 | 2 | 1 | 2 |" in latency and f"| {BASE} | 1 | 10 | 10 | 5 | 5 |" in latency
+    assert latency.index(f"| {LASNA} | 2 |") < latency.index(f"| {BASE} | 1 |")
+    assert f"| {BASE} | `{EXECUTOR}` | 800 | 805 | 5 | 10 | `{logs['result executor']['transactionHash']}` |" in latency
     fleet = section(document, "Fleet report")
     assert "### FleetReactive" in fleet and "### FleetExecutor" in fleet and "late canary" not in fleet
     assert "experiment" not in fleet.replace("fixture of the experiment", "")
