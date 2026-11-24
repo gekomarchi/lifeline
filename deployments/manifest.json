@@ -51,7 +51,22 @@
         "address": "0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2",
         "deployBlock": 62488753,
         "deployTx": "0x43fa0f194e66827883979b983183964c5b43f6e2ea242d5c26be1a0b4ab9f05f",
-        "setVaultTx": "0x63c4bb5eafb8cc0dc423f9166b71c1ae6678f03cd24c5c5bfd7c5c75001c0839"
+        "setVaultTx": "0x63c4bb5eafb8cc0dc423f9166b71c1ae6678f03cd24c5c5bfd7c5c75001c0839",
+        "recoveries": [
+          {
+            "deposit": "0x36224a76be7bdcfd0960e296317016046f9bb4dae2637d35bb7054515133b298",
+            "depositBlock": 63038710,
+            "vaultUp": [
+              {
+                "tx": "0x916427a8591de24459f4e4639528a95d6e12fe8cdb6819c958435e2bb397f89e",
+                "block": 9142849,
+                "requestId": "340282366920938463463374607431768211463",
+                "sent": 1,
+                "remaining": 0
+              }
+            ]
+          }
+        ]
       }
     }
   },
@@ -194,6 +209,29 @@
         "readBackBlock": null,
         "enroll": "0xa4538529f12a96807cb7a780b40433fae769f615af0dc3e489151210b94b4f65",
         "enrollBlock": 9051404
+      },
+      "removed": null
+    },
+    {
+      "label": "experiment waiting.callback",
+      "chain": "base-sepolia",
+      "chainId": 84532,
+      "target": "0xC67C2BDE920E75378eB71c9011abd3F4C1775289",
+      "policy": {
+        "low": "0",
+        "high": "50000000000000",
+        "maxDebt": "200000000000000",
+        "dailyCap": "250000000000000",
+        "maxRescues": 2,
+        "window": 3600
+      },
+      "guest": false,
+      "consent": null,
+      "txs": {
+        "setPolicy": "0x3b2b5bf7cf29c6e00711054d606d23f458b2629f5a98feb5d1853a66bb0bebe8",
+        "readBackBlock": 63015438,
+        "enroll": "0x0505e0e79d0aa661a0f837324fe70f41323ce6158327bc256442b119bc1c86c8",
+        "enrollBlock": 9138450
       },
       "removed": null
     }

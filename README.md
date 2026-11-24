@@ -1,31 +1,51 @@
-# lifeline | [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE) ![Solidity](https://img.shields.io/badge/solidity-0.8.30-363636) ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB) ![Network](https://img.shields.io/badge/network-testnet%20only-orange)
+# lifeline | [![live board](https://img.shields.io/badge/live-board-2ea44f)](https://gekomarchi.github.io/lifeline/board/) [![evidence](https://img.shields.io/badge/evidence-JUDGE.md-blue)](JUDGE.md) [![license](https://img.shields.io/badge/license-Apache--2.0-lightgrey)](LICENSE)
 
 **Lifeline: the gas guardian for my reactive automations.** Reactive automations stop without a warning when their gas credit runs out. Lifeline is the guardian I set once: it refuels them across chains inside my budget, and it stops feeding one that breaks.
 
-Testnet only. Entry track: "Set It and Forget It". Each number below is a link to its query result or to [`JUDGE.md`](JUDGE.md).
-
-| Contract | Chain | Address, linked to the verified source on Sourcify | Gas ledger of the chain |
-|---|---|---|---|
-| `LifelineHub` | Lasna ([5318007](JUDGE.md#heights)) | [`0xbba61E507e7CC334e57A62c39A776272DA6b07Dd`](https://repo.sourcify.dev/5318007/0xbba61E507e7CC334e57A62c39A776272DA6b07Dd) | system contract `0x8888888888888888888888888888888888888888` |
-| `LifelineVault` | Unichain Sepolia ([1301](JUDGE.md#heights)) | [`0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26`](https://repo.sourcify.dev/1301/0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26) | callback proxy `0x775c9B990ADe401060B78D0e98684eEf8d2466C1` |
-| `LifelineVault` | Base Sepolia ([84532](JUDGE.md#heights)) | [`0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2`](https://repo.sourcify.dev/84532/0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2) | callback proxy `0x476F44b11F5C942c58f4c8E3d0300E5710743585` |
+Reactive Omni Buildathon, track "Set It and Forget It". Testnet only. Each number in this file is a link to its query result or to [`JUDGE.md`](JUDGE.md), which is generated from chain data.
+<!-- DEMO VIDEO: put the link in the line above when the video is ready. -->
 
 ## Problem
 
-A contract pays each run from its reserves at the gas ledger of its chain. When the reserves are empty, the contract gets no more work, and there is no error. So the builder over-funded the first target, `FastfillReactive`: it holds [60.37 lREACT](evidence/network/table.md) (query `fastfill_reactive_reserves`), and reserves cannot be withdrawn.
+A reactive contract pays each run from its reserves at the gas ledger of its chain. When the reserves are empty, the contract gets no more work, and there is no error.
 
-| On the network, from 2026-11-05 00:00 EET to the [heights](evidence/network/heights.json) | Value | Query in [`data.json`](evidence/network/data.json) |
+- **In this buildathon:** [22 of 75](evidence/network/table.md) submissions have a Lasna contract in debt (query `buildathon_debt`, Lasna block [9140577](evidence/network/table.md); a contract that a repository names can be an old deployment).
+- **On the network since 2026-11-05:** [424](evidence/network/table.md) debt events on Lasna and [66](evidence/network/table.md) on the destination chains. [231 of 306](evidence/network/table.md) Lasna contracts that ran out are still in debt, and [19](evidence/network/table.md) ran out 3 times or more. About [159](evidence/network/table.md) callbacks were dropped (derived from debt intervals, not from observed reverts). The counts include the test canaries of this repository.
+- **The builder's own automation:** `FastfillReactive` holds [60.37 lREACT](evidence/network/table.md) in reserves that cannot be withdrawn, because over-funding was the only protection.
+
+## Proof
+
+One rescue on Base Sepolia, from the origin event to the callback. Nobody sent a transaction after step 1: the network ran steps 2 and 3. The contract was alive again [1 s](JUDGE.md#rescue-latency) after the debt event ([5 blocks](JUDGE.md#rescue-latency)).
+
+| Step | Chain | Transaction |
 |---|---|---|
-| Debt events | Lasna [349](evidence/network/table.md), destination chains [47](evidence/network/table.md) | `lasna_debt_events`, `destination_debt_events` |
-| Contracts with a debt event that are in debt at the end | Lasna [199 of 256](evidence/network/table.md), Base Sepolia [24 of 36](evidence/network/table.md), Unichain Sepolia [8 of 11](evidence/network/table.md) | `stopped_contracts` |
-| Lasna contracts with 3 or more debt events | [14](evidence/network/table.md) | `repeat_debtors` |
-| Dropped callbacks, derived from debt intervals (not observed reverts) | [146](evidence/network/table.md) | `dropped_callbacks` |
+| 1. The callback contract runs out: the callback proxy emits `BlacklistContract(target)` | Base Sepolia | [`0x9bb5e827…5727`](https://base-sepolia.blockscout.com/tx/0x9bb5e827d134906e1ec5f184cd2fecd4a0370974fb8711d2baaabedcb0c15727) |
+| 2. `LifelineHub.react()` sees the debt event and requests a rescue (`Relayed`) | Lasna | [`0x33cc6420…061e`](https://lasna.reactscan.net/tx/0x33cc6420f62ea2653c5fe28ae6b41d572a06405d10fdbc43fa2c9244fc35061e) |
+| 3. Callback: `LifelineVault` pays the debt and refills (`Result: Rescued`, `WhitelistContract`) | Base Sepolia | [`0xd19743a0…1adf`](https://base-sepolia.blockscout.com/tx/0xd19743a00790ed97d97e0a4d830759dbf1293d2257fd61eb0f56f47b25091adf) |
 
-| What Lifeline does for an enrolled automation | Measured on testnet |
+A reactive contract on Lasna needs no callback: the hub pays in its own reaction, [1 block](JUDGE.md#rescue-latency) after the debt event ([`0xeb5f7b5f…b955`](https://lasna.reactscan.net/tx/0xeb5f7b5f092550dc46bb9eee726ac6d0c9bcf0999510209cd32dafb48cb6b955)). Every rescue, with its blocks and hashes, is in [`JUDGE.md`](JUDGE.md#destination-rescues).
+
+| Measured on testnet | Result |
 |---|---|
-| An automation that runs out works again. | Lasna: alive [1 block](JUDGE.md#lasna-rescues-and-gaps) after the debt event, in each of [2 rescues](JUDGE.md#lasna-rescues-and-gaps). Base Sepolia: alive [5 blocks](JUDGE.md#loop-check-canary-base-sepolia) after it, in [1 rescue](JUDGE.md#loop-check-canary-base-sepolia). The time in seconds is not measured yet. |
-| An automation normally does not run out. | A slow gauge refills it first. |
-| A broken automation is cut off. | A canary that reverts in a loop was [quarantined after 2 rescues](JUDGE.md#quarantine), and the hub paid [0 after the quarantine](JUDGE.md#quarantine). |
+| Time from the debt event to the rescue, Lasna | [5 rescues](JUDGE.md#rescue-latency): median [1 s](JUDGE.md#rescue-latency), largest [1 s](JUDGE.md#rescue-latency) |
+| Time from the debt event to the rescue, Base Sepolia | [6 rescues](JUDGE.md#rescue-latency): median [1 s](JUDGE.md#rescue-latency), largest [1 s](JUDGE.md#rescue-latency) |
+| A canary that reverts in a loop | [Quarantined after 2 rescues](JUDGE.md#quarantine); the hub paid [0 after the quarantine](JUDGE.md#quarantine) |
+| A flood of [556 junk callbacks](JUDGE.md#junk-flood) pushed the Base Sepolia vault offline | It took the fee float and [0.000122 ETH](JUDGE.md#junk-flood) of self-care, and no other principal ([0 unexplained](JUDGE.md#junk-flood)). [One deposit brought the vault back, and the hub repeated the waiting rescue](JUDGE.md#junk-recovery) |
+| Tests | 193 Solidity tests on forks of the real ledgers (`forge test`); 217 Python tests of the real commands (`python -m pytest`) |
+
+**Check it yourself.** Open the [live board](https://gekomarchi.github.io/lifeline/board/): it needs no install and reads the three chains in your browser. Or ask the ledger of Lasna for the debt of the hub with Foundry (`0` is the expected answer):
+
+```
+cast call 0x8888888888888888888888888888888888888888 "debt(address)(uint256)" 0xbba61E507e7CC334e57A62c39A776272DA6b07Dd --rpc-url https://lasna-rpc.rnk.dev/
+```
+
+[![The Lifeline board, read from the three chains](board/board.png)](https://gekomarchi.github.io/lifeline/board/)
+
+| Contract | Chain | Address (explorer) | Verified source |
+|---|---|---|---|
+| `LifelineHub` | Lasna | [`0xbba61E507e7CC334e57A62c39A776272DA6b07Dd`](https://lasna.reactscan.net/address/0xbba61E507e7CC334e57A62c39A776272DA6b07Dd) | [Sourcify](https://repo.sourcify.dev/5318007/0xbba61E507e7CC334e57A62c39A776272DA6b07Dd) |
+| `LifelineVault` | Unichain Sepolia | [`0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26`](https://unichain-sepolia.blockscout.com/address/0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26) | [Sourcify](https://repo.sourcify.dev/1301/0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26) |
+| `LifelineVault` | Base Sepolia | [`0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2`](https://base-sepolia.blockscout.com/address/0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2) | [Sourcify](https://repo.sourcify.dev/84532/0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2) |
 
 ## How it works
 
@@ -54,27 +74,46 @@ sequenceDiagram
   V->>L: refills each contract below its low mark
 ```
 
-- **Airbag.** The hub subscribes to the network's own debt event of each enrolled target. The payment is `debt + (high - reserves)`.
-- **Gauge.** On each cron tick (`Cron10000` by default), each target with reserves below `low` is refilled to `high`.
-- **Quarantine.** After `maxRescues` rescues inside `window` seconds, the next debt quarantines the target: no more payment.
-- **Funds.** The principal (the balance) pays the targets, and the owner can withdraw it. Fees come only from a small fee float (the reserves of the contract at its ledger): neither contract has `pay()`. Self-care refills the float from the principal, at most `selfCareDailyCap` for each day.
+- **Airbag.** The hub subscribes to the network's own debt event of each enrolled target, so it works when the application is dead. The payment is `debt + (high - reserves)`.
+- **Gauge.** On each cron tick (`Cron10000` by default), each target with reserves below `low` is refilled to `high`. An automation normally does not run out.
+- **Quarantine.** After `maxRescues` rescues inside `window` seconds, the next debt quarantines the target: a broken automation gets no more payment.
+- **Funds.** The principal pays the targets, and the owner can withdraw it. Fees come only from a small fee float: neither contract has `pay()`.
 - One hub on Lasna, one vault on each destination chain. No server, no bridge, no code in the target.
 
-## Lifeline and Reactivate
+## Lifeline against the alternatives
 
-Reactivate is an earlier project for the same problem.
+Three identical canary automations got the same load at the same time: A has no guardian, B has a cron poller that calls `depositTo`, C is enrolled in Lifeline.
 
-| Against Reactivate | Lifeline |
-|---|---|
-| New | The trigger is the network's own debt event, so the guardian works when the application is dead. |
-| New | `depositTo` needs no code in the target. |
-| New | No server and no deployment for each application. |
-| New | Debt on a destination chain is handled. |
-| New | Budget and quarantine. |
-| New | Principal isolation: the ledger can take only the fee float. |
-| Not new | Threshold top-up (the gauge). |
+| | A: no guardian | B: cron poller | C: Lifeline |
+|---|---|---|---|
+| Trigger events sent | [24](JUDGE.md#three-arm-table) | [24](JUDGE.md#three-arm-table) | [24](JUDGE.md#three-arm-table) |
+| Reactions that ran on Lasna | [7](JUDGE.md#three-arm-table) | [7](JUDGE.md#three-arm-table) | [24](JUDGE.md#three-arm-table) |
+| Callbacks delivered on Base Sepolia | [3](JUDGE.md#three-arm-table) | [3](JUDGE.md#three-arm-table) | [24](JUDGE.md#three-arm-table) |
+| Blocks of downtime on Lasna | [9891](JUDGE.md#three-arm-table) | [6978](JUDGE.md#three-arm-table) | [3](JUDGE.md#three-arm-table) |
+| Blocks of downtime on Base Sepolia | [58884](JUDGE.md#three-arm-table) | [58841](JUDGE.md#three-arm-table) | [20](JUDGE.md#three-arm-table) |
 
-The strongest alternative is a cron poller that calls `depositTo`, or large pre-funding. The experiment runs three identical canary automations side by side: no guardian, cron poller, Lifeline. Result: [the three-arm table](JUDGE.md#three-arm-table). No load is recorded at its heights ([0 pokes for each arm](JUDGE.md#three-arm-table)), so it shows no difference yet.
+- **A** stopped at its first debt and stayed dead to the end.
+- **B** was dead on Lasna for [7369 s](evidence/network/table.md) (query `cron_poller_ward_dead_time`), until the next cron tick. Its callback contract stayed dead: this poller pays only on Lasna.
+- **C** missed nothing. Each debt ended [1 s](JUDGE.md#rescue-latency) later. The [169 blocks](JUDGE.md#three-arm-table) of vault downtime in the full table are the junk flood test, which ran after the load.
+
+Heights, definitions and costs: [the three-arm table](JUDGE.md#three-arm-table).
+
+**Lifeline is not a wallet refiller.** A wallet refiller sends native currency to an account. Lifeline pays the debt of a contract at the gas ledger of Reactive Network: a stopped contract starts again only when that debt is paid.
+
+| | Lifeline | Against Reactivate | Pitstop, a wallet refiller |
+|---|---|---|---|
+| What it refills | Reserves of reactive and callback contracts at the gas ledger, with `depositTo` | - | Native balance of wallets, with a transfer |
+| Trigger | The network's own debt event, so the guardian works when the application is dead | New | A cron tick; each tank compares the balance with a floor |
+| Restarts a stopped reactive contract | Yes | - | No: its source has no `depositTo` and no debt event |
+| Code in the target | None: `depositTo` needs no code in the target | New | None |
+| Infrastructure | No server and no deployment for each application | New | No server |
+| Debt on a destination chain | Handled by the vault of that chain | New | Not handled |
+| Budget | `maxDebt` and `dailyCap` in native units | New | A count of refills for each day |
+| A target that breaks | Quarantine of that one target | New | A freeze stops the refills of every wallet of the tank |
+| Principal isolation | The ledger can take only the fee float | New | A fee reserve that top-ups do not touch |
+| Threshold top-up | The gauge | Not new | Yes |
+
+Reactivate is an earlier project for the same problem. Pitstop is another submission of this buildathon, with a similar pitch and a different job: its column is from its public source at commit [`e06f79e`](https://github.com/0xvikram/pitstop/tree/e06f79e9bd6bce4e91b22718d99d773831e0bcc9). The two can run together. The strongest alternative to Lifeline is the cron poller of arm B, or large pre-funding.
 
 ## Quick start
 
@@ -152,13 +191,25 @@ The end is the same as in the dry run. The canary stays enrolled: remove it with
 
 ## Operator guide
 
+Enroll one contract (example amounts, in the native unit of the chain; for a reactive contract use `--chain lasna` and amounts in lREACT):
+
+```
+python -m lifeline.ops enroll --chain unichain-sepolia --target <address> --label "my callback contract" \
+  --low 0.0005 --high 0.002 --max-debt 0.001 --daily-cap 0.004 --max-rescues 2 --window 3600
+```
+
+Stop it with `python -m lifeline.ops remove --chain <name> --target <address>`. See the state with `python -m lifeline.ops status`.
+
+<details>
+<summary><b>All commands, policy flags, presets and recovery transactions</b></summary>
+
 Each command accepts `--manifest <file>` (default [`deployments/manifest.json`](deployments/manifest.json)) and `--rpc <chain>=<url>`. Chain names: `lasna`, `unichain-sepolia`, `base-sepolia`. `LIFELINE_OWNER_KEY` is the key of the owner; `verify` and `status` need no key. After a failure, run the same command again: it continues. Do not run two commands with one key at the same time.
 
 | Task | Command |
 |---|---|
 | Deploy the hub and the vaults from [`deployments/config.json`](deployments/config.json); write the manifest | `python -m lifeline.ops deploy` |
 | Verify the contracts on Sourcify | `python -m lifeline.ops verify` |
-| Enroll one target | `python -m lifeline.ops enroll`, see "Enroll" |
+| Enroll one target | `python -m lifeline.ops enroll` (see above) |
 | Enroll each `fleet` entry of the configuration | `python -m lifeline.ops fleet` |
 | Remove a target | `python -m lifeline.ops remove --chain <name> --target <address>` |
 | Restore a vault that is in debt | `python -m lifeline.ops recover --chain <name>` |
@@ -166,14 +217,7 @@ Each command accepts `--manifest <file>` (default [`deployments/manifest.json`](
 | Show the full rescue loop with a test target on a destination chain | `python -m lifeline.ops loop-check --chain <name>` |
 | Build the read-only board [`board/index.html`](board/index.html) | `python -m lifeline.board` |
 
-### Enroll
-
-```
-python -m lifeline.ops enroll --chain unichain-sepolia --target <address> --label "my callback contract" \
-  --low 0.0005 --high 0.002 --max-debt 0.001 --daily-cap 0.004 --max-rescues 2 --window 3600
-```
-
-The amounts are examples, not measurements, in the native unit of the chain. For a reactive contract use `--chain lasna` and amounts in lREACT.
+### Policy
 
 | Flag | Meaning |
 |---|---|
@@ -206,37 +250,37 @@ cast send <ledger> "depositTo(address)" <hub or vault> --value 0.2ether --rpc-ur
 cast send <hub> "rearm(uint256,address)" <chainId> <target> --rpc-url <Lasna RPC> --private-key $LIFELINE_OWNER_KEY
 ```
 
+</details>
+
 ## Limits
 
 - **Future delivery, not zero loss.** Lifeline restores future delivery. Work that arrives while a target is in debt is lost. The owner learns what to retry from the `Gap` event of the hub (Lasna target) or from the debt interval at the callback proxy (destination target). `JUDGE.md` lists each gap.
+- **Junk callbacks.** If someone floods a Lifeline vault with junk callbacks, the rescue funds are not spent on them: the proxy can take only the small fee float, and at most `selfCareDailyCap` of principal per day refills that float. The vault can be pushed offline. One transaction, `proxy.depositTo(vault)`, brings it back, and the hub then repeats the rescues that were waiting. The largest loss for each day is the float plus `selfCareDailyCap`. Full prevention needs a platform change.
+
+<details>
+<summary><b>Six more limits</b>: caps, events, sample values, sweep cost, <code>vaultUp</code>, low funds</summary>
+
 - **Calendar-day caps.** Calendar-day caps allow two caps across midnight (UTC).
 - **`PaymentFailure`.** `PaymentFailure` does not always accompany debt. Lifeline listens to `BlacklistContract` only.
 - **Sample values.** [0.0125 lREACT and 7e11 wei](evidence/network/table.md) are samples (the `sampleFeeWei` parameters of the queries), not protocol constants.
 - **A quarantined target in the sweep.** A target that is quarantined on a vault stays in the sweep of the hub until `hub.disarm`. The cost is bounded: one sweep for each vault for each tick while at least one target is enrolled on that chain, plus one storage read and one `Result` event for the quarantined target.
 - **`vaultUp` only after the vault debt is 0.** The hub cannot read the destination ledger. A sweep request to a vault in debt is not delivered, and its targets are not pending any more.
-- **Junk callbacks.** If someone floods a Lifeline vault with junk callbacks, the rescue funds are not spent on them: the proxy can take only the small fee float, and at most `selfCareDailyCap` of principal per day refills that float. The vault can be pushed offline. One transaction, `proxy.depositTo(vault)`, brings it back, and the hub then repeats the rescues that were waiting. The largest loss for each day is the float plus `selfCareDailyCap`. Full prevention needs a platform change.
 - **Low funds.** `HubLow` and `VaultLow` come only when the principal is below `principalFloor`. A hub at its floor goes into debt with no event when its float is empty. `status` warns before that state.
+
+</details>
 
 ## Not built
 
-- Public rescue pool
-- Mutual-guard contract
-- Adaptive cron speed
-- Learned burn rate as a safety rule
-- Quarantine from failure events
-- Replay of work lost in the gap
-- Movement of funds between vaults
-- Automatic recovery of a vault that is in debt
+Public rescue pool; mutual-guard contract; adaptive cron speed; learned burn rate as a safety rule; quarantine from failure events; replay of work lost in the gap; movement of funds between vaults; automatic recovery of a vault that is in debt.
 
 ## Demo versus production
 
-| Demo | Production |
-|---|---|
-| Testnet, one owner, fixed marks, no upgradeability, two destination chains at most. | Audit; a rolling budget window; a price for destination gas; a platform answer to junk callbacks (admission control before the recipient is billed). |
+- **Demo:** testnet, one owner, fixed marks, no upgradeability, two destination chains at most.
+- **Production:** audit; a rolling budget window; a price for destination gas; a platform answer to junk callbacks (admission control before the recipient is billed).
 
 ## Guests
 
-The owner enrolls a contract of another participant on request, with the written consent of the target owner: `enroll --guest --consent <reference>`. Without the reference the command refuses. Status: [no guest enrolled](JUDGE.md#guests). The candidates are in the `guest_candidates` query of [`evidence/network/data.json`](evidence/network/data.json).
+The owner enrolls a contract of another participant on request, with the written consent of the target owner: `enroll --guest --consent <reference>`. Without the reference the command refuses. Status: [no guest enrolled](JUDGE.md#guests). The candidates are in the `guest_candidates` and `buildathon_debt` queries of [`evidence/network/data.json`](evidence/network/data.json).
 
 ## Evidence and reproduction
 
@@ -248,11 +292,18 @@ The three commands need no key and send no transaction. A first run pins the hei
 | Three-arm experiment | `python -m lifeline.experiment measure [--heights <file>]` | [`evidence/experiment/`](evidence/experiment/table.md) |
 | Lifeline's own operation | `python -m lifeline.judge [--heights <file>]` | [`JUDGE.md`](JUDGE.md), [`evidence/judge/`](evidence/judge/data.json) |
 
+<details>
+<summary><b>Run order and experiment drivers</b></summary>
+
 - `JUDGE.md` is generated: do not edit it. Run `measure` first, then `judge`.
-- Not recorded at the committed heights: the load of the three-arm experiment and the junk recovery. The query `cron_poller_ward_dead_time` is not configured, so this file has no number for the cron poller.
 - The experiment drivers send transactions: `python -m lifeline.experiment <driver>`, in this order: `fixtures`, `load --pokes <n> --interval <seconds>`, `quarantine`, `junk --chain <name>`. They need `LIFELINE_FIXTURE_KEY`; `fixtures` and `junk` also need `LIFELINE_OWNER_KEY`.
 
+</details>
+
 ## Development
+
+<details>
+<summary><b>Build and test</b></summary>
 
 Foundry 1.10.0, Solidity 0.8.30. Each node must serve the state of the fork blocks of the tests.
 
@@ -263,6 +314,8 @@ pip install -e ".[test]" && python -m pytest   # the real commands against a loc
 ```
 
 The fork modules (`test_*_forks.py`) repeat the dry run. They need `anvil`, the build output and `UNICHAIN_SEPOLIA_RPC_URL`; without one of them they are skipped. Set `BASE_SEPOLIA_FORK_BLOCK=62527000` and `UNICHAIN_SEPOLIA_FORK_BLOCK=68574000`.
+
+</details>
 
 ## License
 

@@ -1,10 +1,10 @@
 {
  "arms": {
   "A": {
-   "callbacksDropped": 0,
+   "callbacksDropped": 4,
    "capitalLocked": {
-    "callback.reserves": "1452000000000",
-    "reactive.reserves": "80000000000000000"
+    "callback.reserves": "0",
+    "reactive.reserves": "0"
    },
    "capitalShared": [],
    "contracts": {
@@ -12,14 +12,14 @@
     "reactive": "0xacF7a5E9B0e986863579f4E1bA0bd2c54FF7a427"
    },
    "debtIntervals": {
-    "base-sepolia": 0,
-    "lasna": 0
+    "base-sepolia": 1,
+    "lasna": 1
    },
    "downtimeBlocks": {
-    "base-sepolia": 0,
-    "lasna": 0
+    "base-sepolia": 58884,
+    "lasna": 9891
    },
-   "eventsMissed": 0,
+   "eventsMissed": 17,
    "guardian": "none",
    "guardianCost": {
     "feeDetail": {},
@@ -34,17 +34,17 @@
     }
    },
    "guardianDowntimeBlocks": {},
-   "pokes": 0,
-   "pongs": 0,
-   "ticks": 0
+   "pokes": 24,
+   "pongs": 3,
+   "ticks": 7
   },
   "B": {
-   "callbacksDropped": 0,
+   "callbacksDropped": 4,
    "capitalLocked": {
-    "callback.reserves": "1452000000000",
-    "poller.balance": "192000000000000000",
-    "poller.reserves": "320000000000000000",
-    "reactive.reserves": "80000000000000000"
+    "callback.reserves": "0",
+    "poller.balance": "121620000000000000",
+    "poller.reserves": "210133000000000000",
+    "reactive.reserves": "64000000000000000"
    },
    "capitalShared": [],
    "contracts": {
@@ -52,22 +52,22 @@
     "reactive": "0x052BfF110A8d2e36310A23BF2D03CffcA82Ad3F0"
    },
    "debtIntervals": {
-    "base-sepolia": 0,
-    "lasna": 0
+    "base-sepolia": 1,
+    "lasna": 1
    },
    "downtimeBlocks": {
-    "base-sepolia": 0,
-    "lasna": 0
+    "base-sepolia": 58841,
+    "lasna": 6978
    },
-   "eventsMissed": 0,
+   "eventsMissed": 17,
    "guardian": "cron poller",
    "guardianCost": {
     "feeDetail": {
      "lasna": {
-      "closing": "320000000000000000",
+      "closing": "210133000000000000",
       "deposits": "320000000000000000",
       "exact": true,
-      "fees": "0",
+      "fees": "109867000000000000",
       "opening": "0",
       "selfCare": "0",
       "unloggedDeposits": "0"
@@ -76,29 +76,29 @@
     "feeScope": "the poller serves the reactive canary of this arm only; the figure is from its deployment to `to`",
     "fees": {
      "base-sepolia": "0",
-     "lasna": "0"
+     "lasna": "109867000000000000"
     },
     "principal": {
      "base-sepolia": "0",
-     "lasna": "0"
+     "lasna": "70380000000000000"
     }
    },
    "guardianDowntimeBlocks": {
     "lasna": 0
    },
-   "pokes": 0,
-   "pongs": 0,
-   "ticks": 0
+   "pokes": 24,
+   "pongs": 3,
+   "ticks": 7
   },
   "C": {
    "callbacksDropped": 0,
    "capitalLocked": {
-    "callback.reserves": "1452000000000",
-    "hub.balance": "4465672600000000000",
-    "hub.reserves": "178891600000000000",
-    "reactive.reserves": "80000000000000000",
-    "vault.balance": "1948400410800000",
-    "vault.reserves": "199130951600000"
+    "callback.reserves": "1226563800000",
+    "hub.balance": "3770589000000000000",
+    "hub.reserves": "178207400000000000",
+    "reactive.reserves": "64000000000000000",
+    "vault.balance": "1700494312875459",
+    "vault.reserves": "198955926200000"
    },
    "capitalShared": [
     "hub.balance",
@@ -111,53 +111,53 @@
     "reactive": "0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948"
    },
    "debtIntervals": {
-    "base-sepolia": 0,
-    "lasna": 0
+    "base-sepolia": 4,
+    "lasna": 3
    },
    "downtimeBlocks": {
-    "base-sepolia": 0,
-    "lasna": 0
+    "base-sepolia": 20,
+    "lasna": 3
    },
    "eventsMissed": 0,
    "guardian": "Lifeline",
    "guardianCost": {
     "feeDetail": {
      "base-sepolia": {
-      "closing": "199130951600000",
-      "deposits": "0",
-      "exact": true,
-      "fees": "0",
+      "closing": "198955926200000",
+      "deposits": "200011676388108",
+      "exact": false,
+      "fees": "333778670822195",
       "opening": "199130951600000",
-      "selfCare": "0",
+      "selfCare": "133591969034087",
       "unloggedDeposits": "0"
      },
      "lasna": {
-      "closing": "178891600000000000",
+      "closing": "178207400000000000",
       "deposits": "0",
       "exact": true,
-      "fees": "67036500000000000",
+      "fees": "482644300000000000",
       "opening": "179647800000000000",
-      "selfCare": "66280300000000000",
+      "selfCare": "481203900000000000",
       "unloggedDeposits": "0"
      }
     },
     "feeScope": "the hub and the vault serve each enrolled target of the deployment and each scenario; the figures are their whole fee consumption in `from..to`, and no share is estimated",
     "fees": {
-     "base-sepolia": "0",
-     "lasna": "67036500000000000"
+     "base-sepolia": "333778670822195",
+     "lasna": "482644300000000000"
     },
     "principal": {
-     "base-sepolia": "0",
-     "lasna": "0"
+     "base-sepolia": "13194053400000",
+     "lasna": "280160000000000000"
     }
    },
    "guardianDowntimeBlocks": {
-    "base-sepolia": 0,
+    "base-sepolia": 169,
     "lasna": 0
    },
-   "pokes": 0,
-   "pongs": 0,
-   "ticks": 0
+   "pokes": 24,
+   "pongs": 24,
+   "ticks": 24
   }
  },
  "definitions": {
@@ -173,18 +173,31 @@
   "base-sepolia": {
    "chainId": 84532,
    "from": 62552591,
-   "to": 62554317,
-   "toTimestamp": 1795432732
+   "to": 63039082,
+   "toTimestamp": 1795529685
   },
   "lasna": {
    "chainId": 5318007,
    "from": 9051258,
-   "to": 9051573,
-   "toTimestamp": 1795432730
+   "to": 9142906,
+   "toTimestamp": 1795529682
   }
  },
  "junk": {
-  "status": "not recorded"
+  "balanceEnd": "1751053458275459",
+  "balanceStart": "1873018247944628",
+  "callbackFailures": 556,
+  "chain": "base-sepolia",
+  "debtEnd": "11676388108",
+  "endBlock": 63038566,
+  "reservesEnd": "0",
+  "reservesStart": "198831813200000",
+  "resultPaid": "0",
+  "selfCareAdded": "121964789669169",
+  "startBlock": 63015499,
+  "status": "ok",
+  "unexplainedBalanceChange": "0",
+  "vault": "0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2"
  },
  "version": 1
 }

@@ -2,26 +2,26 @@
 
 | Chain | Chain ID | From | To |
 |---|---|---|---|
-| lasna | 5318007 | 9051258 | 9051573 |
-| base-sepolia | 84532 | 62552591 | 62554317 |
+| lasna | 5318007 | 9051258 | 9142906 |
+| base-sepolia | 84532 | 62552591 | 63039082 |
 
 Amounts are in wei of the chain that the row names.
 
 | Metric | A: no guardian | B: cron poller | C: Lifeline |
 |---|---|---|---|
-| Pokes, ticks, pongs | 0, 0, 0 | 0, 0, 0 | 0, 0, 0 |
-| Blocks of downtime, lasna | 0 | 0 | 0 |
-| Blocks of downtime, base-sepolia | 0 | 0 | 0 |
-| Events missed | 0 | 0 | 0 |
-| Callbacks dropped | 0 | 0 | 0 |
-| Guardian cost: principal, lasna | 0 | 0 | 0 |
-| Guardian cost: principal, base-sepolia | 0 | 0 | 0 |
-| Guardian cost: fees (lower bound), lasna | 0 | 0 | 67036500000000000 |
-| Guardian cost: fees (lower bound), base-sepolia | 0 | 0 | 0 |
-| Guardian cost: fee figures that are not exact | none | none | none |
+| Pokes, ticks, pongs | 24, 7, 3 | 24, 7, 3 | 24, 24, 24 |
+| Blocks of downtime, lasna | 9891 | 6978 | 3 |
+| Blocks of downtime, base-sepolia | 58884 | 58841 | 20 |
+| Events missed | 17 | 17 | 0 |
+| Callbacks dropped | 4 | 4 | 0 |
+| Guardian cost: principal, lasna | 0 | 70380000000000000 | 280160000000000000 |
+| Guardian cost: principal, base-sepolia | 0 | 0 | 13194053400000 |
+| Guardian cost: fees (lower bound), lasna | 0 | 109867000000000000 | 482644300000000000 |
+| Guardian cost: fees (lower bound), base-sepolia | 0 | 0 | 333778670822195 |
+| Guardian cost: fee figures that are not exact | none | none | base-sepolia |
 | Guardian cost: fee scope | no guardian | the poller serves the reactive canary of this arm only; the figure is from its deployment to `to` | the hub and the vault serve each enrolled target of the deployment and each scenario; the figures are their whole fee consumption in `from..to`, and no share is estimated |
-| Blocks of guardian downtime | none | lasna 0 | lasna 0<br>base-sepolia 0 |
-| Capital locked | reactive.reserves 80000000000000000<br>callback.reserves 1452000000000 | reactive.reserves 80000000000000000<br>callback.reserves 1452000000000<br>poller.balance 192000000000000000<br>poller.reserves 320000000000000000 | reactive.reserves 80000000000000000<br>callback.reserves 1452000000000<br>hub.balance 4465672600000000000<br>hub.reserves 178891600000000000<br>vault.balance 1948400410800000<br>vault.reserves 199130951600000 |
+| Blocks of guardian downtime | none | lasna 0 | lasna 0<br>base-sepolia 169 |
+| Capital locked | reactive.reserves 0<br>callback.reserves 0 | reactive.reserves 64000000000000000<br>callback.reserves 0<br>poller.balance 121620000000000000<br>poller.reserves 210133000000000000 | reactive.reserves 64000000000000000<br>callback.reserves 1226563800000<br>hub.balance 3770589000000000000<br>hub.reserves 178207400000000000<br>vault.balance 1700494312875459<br>vault.reserves 198955926200000 |
 | Capital shared with the fleet | none | none | hub.balance, hub.reserves, vault.balance, vault.reserves |
 
 ## Definitions
@@ -36,4 +36,18 @@ Amounts are in wei of the chain that the row names.
 
 ## Junk flood
 
-Status: not recorded.
+| Value | Number |
+|---|---|
+| Chain | base-sepolia |
+| Vault | 0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2 |
+| Start block | 63015499 |
+| End block | 63038566 |
+| Balance of the vault at the start block | 1873018247944628 |
+| Balance of the vault at the end block | 1751053458275459 |
+| Sum of `Result.paid` | 0 |
+| Sum of `SelfCare.added` | 121964789669169 |
+| Balance change that the payments do not explain | 0 |
+| Reserves of the vault at the start block | 198831813200000 |
+| Reserves of the vault at the end block | 0 |
+| Debt of the vault at the end block | 11676388108 |
+| `CallbackFailure` logs of the vault | 556 |

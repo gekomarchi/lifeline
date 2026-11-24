@@ -60,5 +60,559 @@
       "hubState": "Quarantined",
       "intact": true
     }
+  },
+  "load": {
+    "chain": "lasna",
+    "addresses": {
+      "armA.reactive": "0xacF7a5E9B0e986863579f4E1bA0bd2c54FF7a427",
+      "armB.reactive": "0x052BfF110A8d2e36310A23BF2D03CffcA82Ad3F0",
+      "armC.reactive": "0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948"
+    },
+    "startBlock": 9131146,
+    "endBlock": 9138358,
+    "steps": [
+      {
+        "step": "start",
+        "chain": "lasna",
+        "block": 9131157,
+        "tx": null
+      },
+      {
+        "step": "poke 1 armA",
+        "chain": "lasna",
+        "block": 9131172,
+        "tx": "0x0b0da27ced61dae535c6b61d931205ed22884562147a63bb854ee0f9858b600c"
+      },
+      {
+        "step": "poke 1 armB",
+        "chain": "lasna",
+        "block": 9131180,
+        "tx": "0xc8681747c413163e2700ad7edd6f93d74372036e49704794f6dbb57e1e675a17"
+      },
+      {
+        "step": "poke 1 armC",
+        "chain": "lasna",
+        "block": 9131188,
+        "tx": "0xd637fabec94519122a4ad7987c2e4d65b9ceeb909bdb1afdc230f2e67ca88ae8"
+      },
+      {
+        "step": "poke 2 armA",
+        "chain": "lasna",
+        "block": 9131458,
+        "tx": "0x60e1bc6db25f9d6c55a7f9e2eb094232064d7fc2fcd70e26765d8fdbc3b1ee35"
+      },
+      {
+        "step": "poke 2 armB",
+        "chain": "lasna",
+        "block": 9131467,
+        "tx": "0xd766af3514cc59b63a0155b0e30f8a27928a5b8f045f3bc1bc3412dcfd658799"
+      },
+      {
+        "step": "poke 2 armC",
+        "chain": "lasna",
+        "block": 9131475,
+        "tx": "0xfa12d79230fe13c6ed8f102f8fa79bf72d050e60009efc063290337827ced9a9"
+      },
+      {
+        "step": "poke 3 armA",
+        "chain": "lasna",
+        "block": 9131776,
+        "tx": "0x712b85838807d52d6e7dcefbe2f09daeeafeb652006ed52b7f6319fc98e075a2"
+      },
+      {
+        "step": "poke 3 armB",
+        "chain": "lasna",
+        "block": 9131784,
+        "tx": "0x4842ee748727b69ff45ce589963ee5e2439ccdb68d0cae9005982c5986abf95a"
+      },
+      {
+        "step": "poke 3 armC",
+        "chain": "lasna",
+        "block": 9131791,
+        "tx": "0x139f9148260003c437d095038b66cfd14cae519d62f9bb29f7282a519a4dcd1a"
+      },
+      {
+        "step": "poke 4 armA",
+        "chain": "lasna",
+        "block": 9132091,
+        "tx": "0xe8e285700c963526025c0177d059ee5f63ce983adbcf4ae038e0f90e43bea77d"
+      },
+      {
+        "step": "poke 4 armB",
+        "chain": "lasna",
+        "block": 9132098,
+        "tx": "0x14d65b24d8153789241606ce6c3e34c5e089df7bbd29af260993e51134bf7b4f"
+      },
+      {
+        "step": "poke 4 armC",
+        "chain": "lasna",
+        "block": 9132105,
+        "tx": "0x364d02f27615805db0dee7d849cb1db64c1d9b270af7cb9ae287215db88ca63f"
+      },
+      {
+        "step": "poke 5 armA",
+        "chain": "lasna",
+        "block": 9132385,
+        "tx": "0x59ed4643d49ebeae0d7061d386ac7348ea7cbc80fa5abad56edbad70c3211f2b"
+      },
+      {
+        "step": "poke 5 armB",
+        "chain": "lasna",
+        "block": 9132393,
+        "tx": "0x8652d937bb35f52ed563ff3de6696a267c536f0c43211ff68afda06918f6df53"
+      },
+      {
+        "step": "poke 5 armC",
+        "chain": "lasna",
+        "block": 9132401,
+        "tx": "0x67d77b8ecabc5c5f2214e4ccaf04eb9ee28f03372c41b27a709b6b0757105c8e"
+      },
+      {
+        "step": "poke 6 armA",
+        "chain": "lasna",
+        "block": 9132700,
+        "tx": "0x9059f3cf5496124382115869dc64bee94455b2ed7b2deae37fb14b522943321b"
+      },
+      {
+        "step": "poke 6 armB",
+        "chain": "lasna",
+        "block": 9132708,
+        "tx": "0x448bbfed855a07947c228cdba297c7896ca3c41b1d9db35b7fe5572dcf8d9b74"
+      },
+      {
+        "step": "poke 6 armC",
+        "chain": "lasna",
+        "block": 9132716,
+        "tx": "0x902d47a52cf31afb59d9c06ac8e0cd1838b60f4c1f1f62834b0b52ebe4ebe103"
+      },
+      {
+        "step": "poke 7 armA",
+        "chain": "lasna",
+        "block": 9133014,
+        "tx": "0xd4d0c5ab36f6710ced408aba6d559efa48f22168b9641b91a473fbf425b53883"
+      },
+      {
+        "step": "poke 7 armB",
+        "chain": "lasna",
+        "block": 9133022,
+        "tx": "0x1e3b7746d53771868d89681a72c6d43145259a57bdeb8c7ca5eeafc847a2f860"
+      },
+      {
+        "step": "poke 7 armC",
+        "chain": "lasna",
+        "block": 9133030,
+        "tx": "0x2826c670678f7236c020813ca33f9a04f3f005dd186ccd446c27c63c2a364f44"
+      },
+      {
+        "step": "poke 8 armA",
+        "chain": "lasna",
+        "block": 9133329,
+        "tx": "0x41c07270374f6687bd0bb27b153f75de572a2ecbe2a639183768c5d336b7981f"
+      },
+      {
+        "step": "poke 8 armB",
+        "chain": "lasna",
+        "block": 9133336,
+        "tx": "0x9413636eddc1e48831c148c244ec23e2e96cd9c549826ecc83517b78d1ff9a26"
+      },
+      {
+        "step": "poke 8 armC",
+        "chain": "lasna",
+        "block": 9133344,
+        "tx": "0x058736907a711ad1ab32c4fbf5011c01b382169d9920c238de41cadf0091ad64"
+      },
+      {
+        "step": "poke 9 armA",
+        "chain": "lasna",
+        "block": 9133636,
+        "tx": "0x5422bd206f07b4ba4acbd11d0f8cf5c3011566aaa9dc054544644d42a9242550"
+      },
+      {
+        "step": "poke 9 armB",
+        "chain": "lasna",
+        "block": 9133644,
+        "tx": "0x0d73c6bd56deafc6c54c4716b948b341b7b69c88e3d0ce6672c92f614610bf06"
+      },
+      {
+        "step": "poke 9 armC",
+        "chain": "lasna",
+        "block": 9133652,
+        "tx": "0x0a3330d0583621642d98f83070dc0dfd30746ec8c7d73802b7754ebae7fb24dd"
+      },
+      {
+        "step": "poke 10 armA",
+        "chain": "lasna",
+        "block": 9133950,
+        "tx": "0x5d7f927622d047b13ea0ee3e576666534aa11be95787c1e0170bf87ff72e14de"
+      },
+      {
+        "step": "poke 10 armB",
+        "chain": "lasna",
+        "block": 9133958,
+        "tx": "0x061deb3174312d198049adf0aa312c271c5c3082e43e558fd6a32ed8bed84f4a"
+      },
+      {
+        "step": "poke 10 armC",
+        "chain": "lasna",
+        "block": 9133965,
+        "tx": "0xe643f6cf47fe775e45e841b733254e5b01e3d4d98332244446491ec0bb61dcde"
+      },
+      {
+        "step": "poke 11 armA",
+        "chain": "lasna",
+        "block": 9134263,
+        "tx": "0x6c10e77b1ff0c57596ae30068afa5763a437f6008bedcb8bdeeb4a9057986b00"
+      },
+      {
+        "step": "poke 11 armB",
+        "chain": "lasna",
+        "block": 9134271,
+        "tx": "0x065937905b4cfd1a3f46dc06b32f71270be84f67683d80a55a869df127c98042"
+      },
+      {
+        "step": "poke 11 armC",
+        "chain": "lasna",
+        "block": 9134279,
+        "tx": "0x8414275a2e9825acaa3eeddb32aa3dcbe3ff24325c4c0dea82e5e2bd805c2082"
+      },
+      {
+        "step": "poke 12 armA",
+        "chain": "lasna",
+        "block": 9134579,
+        "tx": "0xf9ac049896e8130fbda88031a169e5ef9e4ed8e530b6eb402557afb8607d31e8"
+      },
+      {
+        "step": "poke 12 armB",
+        "chain": "lasna",
+        "block": 9134587,
+        "tx": "0x6fed536aea2c870e77bfcd9aea5e26352aa5b12c67c9658220ddfba82bae75e4"
+      },
+      {
+        "step": "poke 12 armC",
+        "chain": "lasna",
+        "block": 9134595,
+        "tx": "0x140ff07344e50d553f9916d3eb3f425034bd5951094ff6027376c02244cfc852"
+      },
+      {
+        "step": "poke 13 armA",
+        "chain": "lasna",
+        "block": 9134896,
+        "tx": "0x86294d500422dcf92ce89657a7c6616c6c730656067a67d6c6a3da523241f057"
+      },
+      {
+        "step": "poke 13 armB",
+        "chain": "lasna",
+        "block": 9134904,
+        "tx": "0x8e155e2c4e80cca4834c72419ec55190046d1ed54c380b81b5035f49ba88e43a"
+      },
+      {
+        "step": "poke 13 armC",
+        "chain": "lasna",
+        "block": 9134912,
+        "tx": "0xf49d68cd0571641ecda45adca17271cda9e3bad44fb7545910c9f3ff4bd0e6af"
+      },
+      {
+        "step": "poke 14 armA",
+        "chain": "lasna",
+        "block": 9135211,
+        "tx": "0xa991755ae18f0f97d46e3e9ffd8f752247fde4afe1180949fb9b03e52d18399e"
+      },
+      {
+        "step": "poke 14 armB",
+        "chain": "lasna",
+        "block": 9135219,
+        "tx": "0x1ba94c48c4d5628d4fcb24c2db5d70bf57f862d62d376b2bf556a4d036f60450"
+      },
+      {
+        "step": "poke 14 armC",
+        "chain": "lasna",
+        "block": 9135227,
+        "tx": "0x68578eb35892b64d5e8bc69d8c14610e43f777070b55b82bc2f1f12020df2cd4"
+      },
+      {
+        "step": "poke 15 armA",
+        "chain": "lasna",
+        "block": 9135526,
+        "tx": "0xbfff659e5e720c6a3d6418eb67e64a062311f3696645568aa6703856b9d07a65"
+      },
+      {
+        "step": "poke 15 armB",
+        "chain": "lasna",
+        "block": 9135534,
+        "tx": "0x61ff33e39d513ae91dec4b19220b5bb6085a34427bdb9e01bf4f8ca8e244a6f0"
+      },
+      {
+        "step": "poke 15 armC",
+        "chain": "lasna",
+        "block": 9135542,
+        "tx": "0x45d9f65088bf0dbacb53347778af477fcc6a01374a220a821584037eb0fa6494"
+      },
+      {
+        "step": "poke 16 armA",
+        "chain": "lasna",
+        "block": 9135842,
+        "tx": "0x9cb66bceee53add2ff6a954644489ee94dd6377386f7ea22840fd246ee88d005"
+      },
+      {
+        "step": "poke 16 armB",
+        "chain": "lasna",
+        "block": 9135849,
+        "tx": "0x14ea4a0e528a00a908267aef782f29372ad2067164e738b552df00c0a3dabb01"
+      },
+      {
+        "step": "poke 16 armC",
+        "chain": "lasna",
+        "block": 9135856,
+        "tx": "0xc534c335b1ea0421b220e3c46650552b69715cfa4c1abd09b48dfd3cb514b388"
+      },
+      {
+        "step": "poke 17 armA",
+        "chain": "lasna",
+        "block": 9136150,
+        "tx": "0xf806aec419d887d5ed7c6e030b18f9e648acafc666d6291442992dc869b62d23"
+      },
+      {
+        "step": "poke 17 armB",
+        "chain": "lasna",
+        "block": 9136157,
+        "tx": "0x3cb5138bcc02efe412a8319fe86be43266a90d7794380b22826e294511740d76"
+      },
+      {
+        "step": "poke 17 armC",
+        "chain": "lasna",
+        "block": 9136165,
+        "tx": "0xfdb674afa03bc327e1819be760fab12dd342520f74096977093c0bf58e6e7ef6"
+      },
+      {
+        "step": "poke 18 armA",
+        "chain": "lasna",
+        "block": 9136463,
+        "tx": "0x1527f7b09c749b67ae3f21c297711c247bbdd42efd3931f65575870be9e31062"
+      },
+      {
+        "step": "poke 18 armB",
+        "chain": "lasna",
+        "block": 9136471,
+        "tx": "0x0b994622b8f16299ab2f50ebf88aa2c3056fe737ccb077c3d82584bbe44ace0e"
+      },
+      {
+        "step": "poke 18 armC",
+        "chain": "lasna",
+        "block": 9136479,
+        "tx": "0x027b573146f4f496494b9c768350525cf5fe97ebe4d0fde4508103873b882939"
+      },
+      {
+        "step": "poke 19 armA",
+        "chain": "lasna",
+        "block": 9136776,
+        "tx": "0x85f27ed4457b68754d4a6395d7284471ec25f5803ae88877e78046476c450441"
+      },
+      {
+        "step": "poke 19 armB",
+        "chain": "lasna",
+        "block": 9136784,
+        "tx": "0x4f43688d7d5a3a147cef78339ed113c9dc70d335b99ef1048cf86a51ec2e2d30"
+      },
+      {
+        "step": "poke 19 armC",
+        "chain": "lasna",
+        "block": 9136792,
+        "tx": "0x91b1122222c01e1310dc1b85822e5ec2dfb9b48377c05fc5724a7fc8f034fa49"
+      },
+      {
+        "step": "poke 20 armA",
+        "chain": "lasna",
+        "block": 9137091,
+        "tx": "0x6d8c5496e888932831ec50e4402e780b9e3115e49cfce6859cf03699f557af08"
+      },
+      {
+        "step": "poke 20 armB",
+        "chain": "lasna",
+        "block": 9137099,
+        "tx": "0xe9fb27a06c39894e2910b5ce9212e8da57e2418d562df0c85e88bb3a145932bc"
+      },
+      {
+        "step": "poke 20 armC",
+        "chain": "lasna",
+        "block": 9137107,
+        "tx": "0x7f66f495672605a7cfb45498b35b65a5c8bbb444c38cb0da1837ef724d15ca02"
+      },
+      {
+        "step": "poke 21 armA",
+        "chain": "lasna",
+        "block": 9137402,
+        "tx": "0x15d207492f023d75c0d9b432b896838844051e4fc4f7e7f9cbdc315af862b349"
+      },
+      {
+        "step": "poke 21 armB",
+        "chain": "lasna",
+        "block": 9137409,
+        "tx": "0x84f2ac445051c8caf14f03ca7e14813c4dcab4177df5d2b594da2512b9b3de09"
+      },
+      {
+        "step": "poke 21 armC",
+        "chain": "lasna",
+        "block": 9137416,
+        "tx": "0x1a39f9f0901b98cf6158946760bd1810f2b13b010640e8f0d014680b07584e44"
+      },
+      {
+        "step": "poke 22 armA",
+        "chain": "lasna",
+        "block": 9137714,
+        "tx": "0xb0f54bc98a4fe173402b01461d6726465f47a301dc5ad9dfdf80d5104ae875e4"
+      },
+      {
+        "step": "poke 22 armB",
+        "chain": "lasna",
+        "block": 9137721,
+        "tx": "0x5db4e4eb5743d4da676ed6fb090944fa44b8f0d1099dd09fc2c99760ec9fb86f"
+      },
+      {
+        "step": "poke 22 armC",
+        "chain": "lasna",
+        "block": 9137729,
+        "tx": "0xea2df221ade71ad61ddf6c872e35ccfa08ac50f7b9548fa9ec5a4242d60a12ed"
+      },
+      {
+        "step": "poke 23 armA",
+        "chain": "lasna",
+        "block": 9138027,
+        "tx": "0x644a30861b42c1fcc48809caf53dbbafcad10382f0423a8796d9c4d91072a160"
+      },
+      {
+        "step": "poke 23 armB",
+        "chain": "lasna",
+        "block": 9138035,
+        "tx": "0xcd0615710867f82a45583b4962c3924b9a0e072bc02c3efbdccbf6f36b3eeb7e"
+      },
+      {
+        "step": "poke 23 armC",
+        "chain": "lasna",
+        "block": 9138043,
+        "tx": "0xa33fdf1e76489ff84fc8785e4d9a26e76d0864087529166600de1741c5e90f47"
+      },
+      {
+        "step": "poke 24 armA",
+        "chain": "lasna",
+        "block": 9138342,
+        "tx": "0xeaa687efefae95f337d7e5f7734b64ec455d57ee38c372e8e3b09b5ef03c5682"
+      },
+      {
+        "step": "poke 24 armB",
+        "chain": "lasna",
+        "block": 9138350,
+        "tx": "0x89f5d679e60a667b3eabe37be86ec54a25f88047e42b5a38f4f242674fbdc5c8"
+      },
+      {
+        "step": "poke 24 armC",
+        "chain": "lasna",
+        "block": 9138358,
+        "tx": "0xe5bb054dbc420872421b1ac116a54ab1c6dc5c7eb11e37386476614cf809dfed"
+      },
+      {
+        "step": "end",
+        "chain": "lasna",
+        "block": 9138358,
+        "tx": null
+      }
+    ]
+  },
+  "junk": {
+    "chain": "base-sepolia",
+    "addresses": {
+      "vault": "0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2",
+      "hub": "0xbba61E507e7CC334e57A62c39A776272DA6b07Dd",
+      "junkRequester": "0xA3EB4E18398ECf26e71604B2D8b39983A08EED5C",
+      "waiting.callback": "0xC67C2BDE920E75378eB71c9011abd3F4C1775289"
+    },
+    "startBlock": 63015499,
+    "endBlock": 63038786,
+    "steps": [
+      {
+        "step": "flood start",
+        "chain": "base-sepolia",
+        "block": 63015499,
+        "tx": null
+      },
+      {
+        "step": "first junk request",
+        "chain": "lasna",
+        "block": 9138466,
+        "tx": "0x68139f247f48961abdd84991c7f1284f61f1ee03dc04f35c6359cda415e6265c"
+      },
+      {
+        "step": "BlacklistContract(vault)",
+        "chain": "base-sepolia",
+        "block": 63038541,
+        "tx": "0x0d376cab18c7c5517f4ad9d30818feb65571a5b5a605be246889f613d414180a"
+      },
+      {
+        "step": "VaultDown",
+        "chain": "lasna",
+        "block": 9142807,
+        "tx": "0x61abedad9eab8ee3ceedd0ebf00220644f1d468a4112150f4b17c942f0fcd6a0"
+      },
+      {
+        "step": "flood end",
+        "chain": "base-sepolia",
+        "block": 63038566,
+        "tx": null
+      },
+      {
+        "step": "pong request 1",
+        "chain": "lasna",
+        "block": 9142826,
+        "tx": "0xd99d395c9831b5ce88651d25c50bf0193a3560d5eacf9392f86f0667e00c3c22"
+      },
+      {
+        "step": "BlacklistContract(waiting.callback)",
+        "chain": "base-sepolia",
+        "block": 63038646,
+        "tx": "0xaec8dfbc5e78ae463cc7f691f611e3459b562289f7c6c43dc11ad4500b7c1735"
+      },
+      {
+        "step": "Pending",
+        "chain": "lasna",
+        "block": 9142827,
+        "tx": "0xe9938f65b4d2989ede98cb3ec5e33cdadeeb50c1caf70cff3a72684b801637b0"
+      },
+      {
+        "step": "recovery deposit",
+        "chain": "base-sepolia",
+        "block": 63038710,
+        "tx": "0x36224a76be7bdcfd0960e296317016046f9bb4dae2637d35bb7054515133b298"
+      },
+      {
+        "step": "VaultUp",
+        "chain": "lasna",
+        "block": 9142849,
+        "tx": "0x916427a8591de24459f4e4639528a95d6e12fe8cdb6819c958435e2bb397f89e"
+      },
+      {
+        "step": "Result(waiting.callback)",
+        "chain": "base-sepolia",
+        "block": 63038773,
+        "tx": "0x77633be6a468669993383edddfe263c025fbcd20e083bcffcfb5964e71453f50"
+      }
+    ],
+    "lasnaStartBlock": 9138451,
+    "floatAtStart": "198831813200000",
+    "junkRequests": 556,
+    "pendingRequests": [],
+    "pongRequests": 1,
+    "lastJunkRequest": {
+      "block": 9142806,
+      "tx": "0xdd215f01c230a5bbdff27daac30d3f3189462bd4e24a25d2d1cb73dfb3445bb3"
+    },
+    "undeliveredAtDebt": 0,
+    "drained": true,
+    "floodEndBlock": 63038566,
+    "requestId": "340282366920938463463374607431768211463",
+    "result": {
+      "outcome": "Rescued",
+      "paid": "50559145400000"
+    },
+    "junkAfterRecovery": 0,
+    "lasnaEndBlock": 9142851
   }
 }
