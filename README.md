@@ -27,8 +27,8 @@ A reactive contract on Lasna needs no callback: the hub pays in its own reaction
 
 | Measured on testnet | Result |
 |---|---|
-| Time from the debt event to the rescue it started, Lasna | [5 rescues](JUDGE.md#rescue-latency): median [1 s](JUDGE.md#rescue-latency), largest [1 s](JUDGE.md#rescue-latency) |
-| Time from the debt event to the rescue it started, Base Sepolia | [6 rescues](JUDGE.md#rescue-latency): median [1 s](JUDGE.md#rescue-latency), largest [1 s](JUDGE.md#rescue-latency) |
+| Time from the debt event to the rescue it started, Lasna | [6 rescues](JUDGE.md#rescue-latency): median [1 s](JUDGE.md#rescue-latency), largest [1 s](JUDGE.md#rescue-latency) |
+| Time from the debt event to the rescue it started, Base Sepolia | [8 rescues](JUDGE.md#rescue-latency): median [1 s](JUDGE.md#rescue-latency), largest [1 s](JUDGE.md#rescue-latency) |
 | A canary that reverts in a loop | [Quarantined after 2 rescues](JUDGE.md#quarantine); the hub paid [0 after the quarantine](JUDGE.md#quarantine) |
 | A flood of [556 junk callbacks](JUDGE.md#junk-flood) pushed the Base Sepolia vault offline | It took the fee float and [0.000122 ETH](JUDGE.md#junk-flood) of self-care, and no other principal ([0 unexplained](JUDGE.md#junk-flood)). [One deposit and one `hub.vaultUp` call of the owner brought the vault back, and the hub then repeated the waiting rescue](JUDGE.md#junk-recovery), [25 s](JUDGE.md#rescue-latency) after its debt event |
 | Tests | 193 Solidity tests on forks of the real ledgers (`forge test`); 217 Python tests of the real commands (`python -m pytest`) |
@@ -285,6 +285,8 @@ The owner enrolls a contract of another participant on request, with the written
 ## Evidence and reproduction
 
 The three commands need no key and send no transaction. A first run pins the heights and writes `heights.json`. A run with `--heights <file>` gives the same files again.
+
+The demo video has its own runbook, with the capture step, the shot list and the build commands: [`DEMO.md`](DEMO.md).
 
 | Evidence | Command | Output |
 |---|---|---|

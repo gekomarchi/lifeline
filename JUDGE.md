@@ -10,9 +10,9 @@ Lifeline restores future delivery, not zero loss. Work that arrives while a targ
 
 | Chain | Chain ID | From | To |
 |---|---|---|---|
-| lasna | 5318007 | 9039165 | 9143104 |
-| base-sepolia | 84532 | 62488753 | 63040152 |
-| unichain-sepolia | 1301 | 68567187 | 68677469 |
+| lasna | 5318007 | 9039165 | 9154148 |
+| base-sepolia | 84532 | 62488753 | 63098650 |
+| unichain-sepolia | 1301 | 68567187 | 68689169 |
 
 Each log query of this run is inside `from..to` of its chain. `from` is the deployment block of the Lifeline contract of that chain: the hub on lasna, the vault on a destination chain. Each state value is read at `to`.
 
@@ -30,6 +30,8 @@ Each row is one relay request of the hub: a `Relayed` log on lasna. The join fin
 | 340282366920938463463374607431768211460 | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 62990196<br>`0x28b5763a5a59adea895ce20903799bced1ae2839b4aa74c4e1cf7c9e26d6913b` | 9133654<br>`0xfce18edfdd39e729b8a62e59a46913b4d2ee9c0ca912309cc08853503ee1d89e` | 62990201<br>`0xb90ce349675071e8172cf7f2ca89e21e2df1425200bb1a80d565c7d84341c422` | Rescued | 3354872400000 | 62990201<br>`0xb90ce349675071e8172cf7f2ca89e21e2df1425200bb1a80d565c7d84341c422` |
 | 340282366920938463463374607431768211461 | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 63000135<br>`0xa87bdab3acd6b05a9085f7d7575b6d973041b7b96c58c3c0c37cb2e4a3e7025a` | 9135544<br>`0xb84178c59a1797a9185891a567d389545ad6c338ba02b613bb8410f836b1d44c` | 63000140<br>`0x06974537ab68e52c24234f03fb7669280a6606bc6ee5826f01fe12e178a22fab` | Rescued | 3354872400000 | 63000140<br>`0x06974537ab68e52c24234f03fb7669280a6606bc6ee5826f01fe12e178a22fab` |
 | 340282366920938463463374607431768211462 | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 63010052<br>`0x528a7a0b51884af383cf9afe4d059df72e2a9d637a1aca7e0f6e7680e40039f9` | 9137418<br>`0xbefa2508186478c660a2c7beff67f9b51c6cbce7075b6f9b42c299eef1099607` | 63010057<br>`0xd32920a1ca3031ba2b5d57ab61b3a3b14f92a63007bf8aad3133ff86e2faf2b8` | Rescued | 3354872400000 | 63010057<br>`0xd32920a1ca3031ba2b5d57ab61b3a3b14f92a63007bf8aad3133ff86e2faf2b8` |
+| 340282366920938463463374607431768211464 | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 63064219<br>`0x8b6117676e082c9b0d0a25fa4a40c302046a0e6ce4604efaa53dec10a4be4508` | 9147641<br>`0x4a4229f2c1a41abe15b8625f8c9ba1656fe7349e67ca0778b43ffcbac0744129` | 63064225<br>`0xa1e5c8ca9894d1fbd880415451639a15535ae891099b5e0ef11050e28071555c` | Rescued | 3354872400000 | 63064225<br>`0xa1e5c8ca9894d1fbd880415451639a15535ae891099b5e0ef11050e28071555c` |
+| 340282366920938463463374607431768211465 | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 63098499<br>`0x622ab7e70837931092c02e94741b66631a4ae78489d4622a8216ec21a3ab58b3` | 9154121<br>`0xd79e28c32f6fd3803faff2f1793acc096b873e4b4cd7e21738a7dca329dd7e26` | 63098504<br>`0x428b5698f2e9ae4d1ea0fe8a1f72f03c3365c2c7b2f2b4676608a7b333ccf502` | Rescued | 3354872400000 | 63098504<br>`0x428b5698f2e9ae4d1ea0fe8a1f72f03c3365c2c7b2f2b4676608a7b333ccf502` |
 
 ### Open
 
@@ -48,6 +50,7 @@ Each row is one `Rescued` log of the hub with the `Gap` log of the same transact
 | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9133032<br>`0x9dd8a1350b7a3216b5e9fbf561373c6e0a1fe4255f65fea54c3c4a3ca13dcf9c` | 6380000000000000 | 70380000000000000 | 9133031 | 9133032 |
 | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9134914<br>`0x50b463025ecadd7c7bfc51231c13746b2c06cf089cb55d431708b3ad4ef1673c` | 10040000000000000 | 74040000000000000 | 9134913 | 9134914 |
 | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9136794<br>`0x81937deca291aea975b223dd2a82ce5acd7e2930efe9442176008612bb9135c3` | 10040000000000000 | 74040000000000000 | 9136793 | 9136794 |
+| `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9154058<br>`0x8be3f95ca06b8abd86f4fdb578a81467b5eb5d91d24416158769c7e9e6c037c8` | 10040000000000000 | 74040000000000000 | 9154057 | 9154058 |
 
 ## Rescue latency
 
@@ -55,8 +58,8 @@ Each row is one rescue that a debt log started: the time from the `BlacklistCont
 
 | Started by | Chain | Rescues | Median seconds | Largest seconds | Median blocks | Largest blocks |
 |---|---|---|---|---|---|---|
-| debt event | lasna | 5 | 1 | 1 | 1 | 1 |
-| debt event | base-sepolia | 6 | 1 | 1 | 5 | 5 |
+| debt event | lasna | 6 | 1 | 1 | 1 | 1 |
+| debt event | base-sepolia | 8 | 1 | 1 | 5 | 6 |
 | sweep | base-sepolia | 1 | 25 | 25 | 127 | 127 |
 
 | Started by | Chain | Target | Debt log block | Rescue block | Blocks | Seconds | Rescue transaction |
@@ -66,6 +69,7 @@ Each row is one rescue that a debt log started: the time from the `BlacklistCont
 | debt event | lasna | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9133031 | 9133032 | 1 | 1 | `0x9dd8a1350b7a3216b5e9fbf561373c6e0a1fe4255f65fea54c3c4a3ca13dcf9c` |
 | debt event | lasna | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9134913 | 9134914 | 1 | 1 | `0x50b463025ecadd7c7bfc51231c13746b2c06cf089cb55d431708b3ad4ef1673c` |
 | debt event | lasna | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9136793 | 9136794 | 1 | 1 | `0x81937deca291aea975b223dd2a82ce5acd7e2930efe9442176008612bb9135c3` |
+| debt event | lasna | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9154057 | 9154058 | 1 | 1 | `0x8be3f95ca06b8abd86f4fdb578a81467b5eb5d91d24416158769c7e9e6c037c8` |
 | debt event | base-sepolia | `0xa462B906917C0372872AD35C0321eB5Daa60692E` | 62489494 | 62489499 | 5 | 1 | `0xd19743a00790ed97d97e0a4d830759dbf1293d2257fd61eb0f56f47b25091adf` |
 | debt event | base-sepolia | `0x81de741ACEd87B5b59770391AE6426333E444dc7` | 62955820 | 62955825 | 5 | 1 | `0x181ec8d0b285d86128797508317365df1eacdfe1d229851e355d461370ed2614` |
 | debt event | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 62980279 | 62980284 | 5 | 1 | `0xca270503967fa43799aa53cddbb9548f6e93331d5b082ce6a6fd5b0a12eb537b` |
@@ -73,6 +77,8 @@ Each row is one rescue that a debt log started: the time from the `BlacklistCont
 | debt event | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 63000135 | 63000140 | 5 | 1 | `0x06974537ab68e52c24234f03fb7669280a6606bc6ee5826f01fe12e178a22fab` |
 | debt event | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 63010052 | 63010057 | 5 | 1 | `0xd32920a1ca3031ba2b5d57ab61b3a3b14f92a63007bf8aad3133ff86e2faf2b8` |
 | sweep | base-sepolia | `0xC67C2BDE920E75378eB71c9011abd3F4C1775289` | 63038646 | 63038773 | 127 | 25 | `0x77633be6a468669993383edddfe263c025fbcd20e083bcffcfb5964e71453f50` |
+| debt event | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 63064219 | 63064225 | 6 | 1 | `0xa1e5c8ca9894d1fbd880415451639a15535ae891099b5e0ef11050e28071555c` |
+| debt event | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 63098499 | 63098504 | 5 | 1 | `0x428b5698f2e9ae4d1ea0fe8a1f72f03c3365c2c7b2f2b4676608a7b333ccf502` |
 
 ## Fleet report
 
@@ -92,7 +98,7 @@ The fleet is each enrollment of the manifest that is not a guest and not a fixtu
 | Principal paid | 0 | from block 9039243 |
 | Low mark of the policy | 50000000000000000 | the enrollment transaction |
 | High mark of the policy | 250000000000000000 | the enrollment transaction |
-| Reserves kept | 60373758200000000000 | at block 9143104 |
+| Reserves kept | 60373758200000000000 | at block 9154148 |
 
 Gaps: none.
 
@@ -110,7 +116,7 @@ Gaps: none.
 | Principal paid | 0 | from block 68567271 |
 | Low mark of the policy | 500000000000000 | the enrollment transaction |
 | High mark of the policy | 2000000000000000 | the enrollment transaction |
-| Reserves kept | 1985547990287874 | at block 68677469 |
+| Reserves kept | 1985547990287874 | at block 68689169 |
 
 Gaps: none.
 
@@ -128,7 +134,7 @@ Gaps: none.
 | Principal paid | 50559145400000 | from block 62489400 |
 | Low mark of the policy | 0 | the enrollment transaction |
 | High mark of the policy | 50000000000000 | the enrollment transaction |
-| Reserves kept | 50000000000000 | at block 63040152 |
+| Reserves kept | 50000000000000 | at block 63098650 |
 
 | Gap: dead from block | Alive at block | Blocks | Transaction that ended the gap |
 |---|---|---|---|
@@ -142,9 +148,9 @@ Each figure counts from the deployment block of the contract to `to`.
 
 | Guardian | Chain | Address | Deployment block | Principal paid | `SelfCare` added | Fee float consumed | Balance | Reserves | Debt | State block |
 |---|---|---|---|---|---|---|---|---|---|---|
-| hub | lasna | `0xbba61E507e7CC334e57A62c39A776272DA6b07Dd` | 9039165 | 305120000000000000 | 724291000000000000 | 546083600000000000 | 3770589000000000000 | 178207400000000000 | 0 | 9143104 |
-| vault of base-sepolia | base-sepolia | `0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2` | 62488753 | 164873274290454 | 334632412834087 | 135676486634087 | 1700494312875459 | 198955926200000 | 0 | 63040152 |
-| vault of unichain-sepolia | unichain-sepolia | `0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26` | 68567187 | 0 | 201706152800000 | 1923414900000 | 4998293847200000 | 199782737900000 | 0 | 68677469 |
+| hub | lasna | `0xbba61E507e7CC334e57A62c39A776272DA6b07Dd` | 9039165 | 379160000000000000 | 804133600000000000 | 627283600000000000 | 3616706400000000000 | 176850000000000000 | 0 | 9154148 |
+| vault of base-sepolia | base-sepolia | `0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2` | 62488753 | 171583019090454 | 337833346834087 | 139002074834087 | 1690583634075459 | 198831272000000 | 0 | 63098650 |
+| vault of unichain-sepolia | unichain-sepolia | `0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26` | 68567187 | 0 | 201923414900000 | 2140677000000 | 4998076585100000 | 199782737900000 | 0 | 68689169 |
 
 The principal paid is the sum of the payment events: `Rescued` and `ToppedUp` of the hub, `Result` of a vault. The fee float consumed is the sum of `SelfCare.added`, minus the reserves at `to`, plus the debt at `to`. A deposit to the float by another account is not visible in these events: it makes the figure too low by its amount.
 
@@ -220,7 +226,7 @@ Amounts are in wei of the chain that the row names.
 | `maxRescues` of the policy | 2 | `hub.enroll` `0xa4538529f12a96807cb7a780b40433fae769f615af0dc3e489151210b94b4f65` |
 | Principal paid from the enrollment to `Quarantined` | 24960000000000000 | before the `Quarantined` log of block 9051488 |
 | `dailyCap` of the policy | 260000000000000000 | `hub.enroll` `0xa4538529f12a96807cb7a780b40433fae769f615af0dc3e489151210b94b4f65` |
-| Principal paid after `Quarantined` | 0 | after the `Quarantined` log of block 9051488, to block 9143104 |
+| Principal paid after `Quarantined` | 0 | after the `Quarantined` log of block 9051488, to block 9154148 |
 
 ## Junk recovery
 

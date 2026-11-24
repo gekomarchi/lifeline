@@ -67,3 +67,7 @@ prompt-count-spec.md
 lifeline-v2-verification-and-spec.md
 *specification*.md
 *.zip
+
+# Demo video: footage, voice clips and build output (the runbook is DEMO.md)
+demo/footage/
+demo/build/

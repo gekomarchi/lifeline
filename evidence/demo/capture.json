@@ -1,0 +1,12 @@
+{
+  "requestId": "340282366920938463463374607431768211465",
+  "chain": "base-sepolia",
+  "chainId": 84532,
+  "target": "0x313496642Ce898F7dD723B6AB6CF4A5891A456ed",
+  "blocks": {
+    "debtEvent": 63098499,
+    "relayed": 9154121,
+    "result": 63098504,
+    "debtZero": 63098504
+  }
+}

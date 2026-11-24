@@ -224,7 +224,7 @@
    "removed": null,
    "rescues": 0,
    "reserves": {
-    "block": 9143104,
+    "block": 9154148,
     "value": "60373758200000000000"
    },
    "target": "0x05a566959544A55c16012aeeF0a09067da1f204f",
@@ -251,7 +251,7 @@
    "removed": null,
    "rescues": 0,
    "reserves": {
-    "block": 68677469,
+    "block": 68689169,
     "value": "1985547990287874"
    },
    "target": "0x916D4d5f9E363CbdFA8C34fB41185a75A6a2E705",
@@ -288,7 +288,7 @@
    },
    "rescues": 1,
    "reserves": {
-    "block": 63040152,
+    "block": 63098650,
     "value": "50000000000000"
    },
    "target": "0xa462B906917C0372872AD35C0321eB5Daa60692E",
@@ -299,63 +299,63 @@
   "hub": {
    "address": "0xbba61E507e7CC334e57A62c39A776272DA6b07Dd",
    "balance": {
-    "block": 9143104,
-    "value": "3770589000000000000"
+    "block": 9154148,
+    "value": "3616706400000000000"
    },
    "chain": "lasna",
    "debt": {
-    "block": 9143104,
+    "block": 9154148,
     "value": "0"
    },
    "deployBlock": 9039165,
-   "floatConsumed": "546083600000000000",
-   "principalPaid": "305120000000000000",
+   "floatConsumed": "627283600000000000",
+   "principalPaid": "379160000000000000",
    "reserves": {
-    "block": 9143104,
-    "value": "178207400000000000"
+    "block": 9154148,
+    "value": "176850000000000000"
    },
-   "selfCareAdded": "724291000000000000"
+   "selfCareAdded": "804133600000000000"
   },
   "vaults": {
    "base-sepolia": {
     "address": "0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2",
     "balance": {
-     "block": 63040152,
-     "value": "1700494312875459"
+     "block": 63098650,
+     "value": "1690583634075459"
     },
     "chain": "base-sepolia",
     "debt": {
-     "block": 63040152,
+     "block": 63098650,
      "value": "0"
     },
     "deployBlock": 62488753,
-    "floatConsumed": "135676486634087",
-    "principalPaid": "164873274290454",
+    "floatConsumed": "139002074834087",
+    "principalPaid": "171583019090454",
     "reserves": {
-     "block": 63040152,
-     "value": "198955926200000"
+     "block": 63098650,
+     "value": "198831272000000"
     },
-    "selfCareAdded": "334632412834087"
+    "selfCareAdded": "337833346834087"
    },
    "unichain-sepolia": {
     "address": "0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26",
     "balance": {
-     "block": 68677469,
-     "value": "4998293847200000"
+     "block": 68689169,
+     "value": "4998076585100000"
     },
     "chain": "unichain-sepolia",
     "debt": {
-     "block": 68677469,
+     "block": 68689169,
      "value": "0"
     },
     "deployBlock": 68567187,
-    "floatConsumed": "1923414900000",
+    "floatConsumed": "2140677000000",
     "principalPaid": "0",
     "reserves": {
-     "block": 68677469,
+     "block": 68689169,
      "value": "199782737900000"
     },
-    "selfCareAdded": "201706152800000"
+    "selfCareAdded": "201923414900000"
    }
   }
  },
@@ -364,20 +364,20 @@
   "base-sepolia": {
    "chainId": 84532,
    "from": 62488753,
-   "to": 63040152,
-   "toTimestamp": 1795529899
+   "to": 63098650,
+   "toTimestamp": 1795541598
   },
   "lasna": {
    "chainId": 5318007,
    "from": 9039165,
-   "to": 9143104,
-   "toTimestamp": 1795529896
+   "to": 9154148,
+   "toTimestamp": 1795541596
   },
   "unichain-sepolia": {
    "chainId": 1301,
    "from": 68567187,
-   "to": 68677469,
-   "toTimestamp": 1795529897
+   "to": 68689169,
+   "toTimestamp": 1795541597
   }
  },
  "junkRecovery": {
@@ -503,23 +503,36 @@
     "tx": "0x81937deca291aea975b223dd2a82ce5acd7e2930efe9442176008612bb9135c3"
    },
    "target": "0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948"
+  },
+  {
+   "gap": {
+    "aliveAtBlock": 9154058,
+    "deadFromBlock": 9154057
+   },
+   "rescued": {
+    "block": 9154058,
+    "debt": "10040000000000000",
+    "paid": "74040000000000000",
+    "tx": "0x8be3f95ca06b8abd86f4fdb578a81467b5eb5d91d24416158769c7e9e6c037c8"
+   },
+   "target": "0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948"
   }
  ],
  "latency": {
   "byChain": {
    "base-sepolia": {
-    "largestBlocks": 5,
+    "largestBlocks": 6,
     "largestSeconds": 1,
     "medianBlocks": 5,
     "medianSeconds": 1,
-    "rescues": 6
+    "rescues": 8
    },
    "lasna": {
     "largestBlocks": 1,
     "largestSeconds": 1,
     "medianBlocks": 1,
     "medianSeconds": 1,
-    "rescues": 5
+    "rescues": 6
    }
   },
   "rescues": [
@@ -572,6 +585,16 @@
     "target": "0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948",
     "trigger": "debt event",
     "tx": "0x81937deca291aea975b223dd2a82ce5acd7e2930efe9442176008612bb9135c3"
+   },
+   {
+    "aliveAtBlock": 9154058,
+    "blocks": 1,
+    "chain": "lasna",
+    "deadFromBlock": 9154057,
+    "seconds": 1,
+    "target": "0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948",
+    "trigger": "debt event",
+    "tx": "0x8be3f95ca06b8abd86f4fdb578a81467b5eb5d91d24416158769c7e9e6c037c8"
    },
    {
     "aliveAtBlock": 62489499,
@@ -642,6 +665,26 @@
     "target": "0xC67C2BDE920E75378eB71c9011abd3F4C1775289",
     "trigger": "sweep",
     "tx": "0x77633be6a468669993383edddfe263c025fbcd20e083bcffcfb5964e71453f50"
+   },
+   {
+    "aliveAtBlock": 63064225,
+    "blocks": 6,
+    "chain": "base-sepolia",
+    "deadFromBlock": 63064219,
+    "seconds": 1,
+    "target": "0x313496642Ce898F7dD723B6AB6CF4A5891A456ed",
+    "trigger": "debt event",
+    "tx": "0xa1e5c8ca9894d1fbd880415451639a15535ae891099b5e0ef11050e28071555c"
+   },
+   {
+    "aliveAtBlock": 63098504,
+    "blocks": 5,
+    "chain": "base-sepolia",
+    "deadFromBlock": 63098499,
+    "seconds": 1,
+    "target": "0x313496642Ce898F7dD723B6AB6CF4A5891A456ed",
+    "trigger": "debt event",
+    "tx": "0x428b5698f2e9ae4d1ea0fe8a1f72f03c3365c2c7b2f2b4676608a7b333ccf502"
    }
   ],
   "sweepByChain": {
@@ -827,6 +870,56 @@
    "whitelist": {
     "block": 63010057,
     "tx": "0xd32920a1ca3031ba2b5d57ab61b3a3b14f92a63007bf8aad3133ff86e2faf2b8"
+   }
+  },
+  {
+   "chain": "base-sepolia",
+   "chainId": 84532,
+   "debtEvent": {
+    "block": 63064219,
+    "tx": "0x8b6117676e082c9b0d0a25fa4a40c302046a0e6ce4604efaa53dec10a4be4508"
+   },
+   "relayed": {
+    "block": 9147641,
+    "tx": "0x4a4229f2c1a41abe15b8625f8c9ba1656fe7349e67ca0778b43ffcbac0744129"
+   },
+   "requestId": "340282366920938463463374607431768211464",
+   "result": {
+    "block": 63064225,
+    "outcome": "Rescued",
+    "paid": "3354872400000",
+    "tx": "0xa1e5c8ca9894d1fbd880415451639a15535ae891099b5e0ef11050e28071555c"
+   },
+   "status": "joined",
+   "target": "0x313496642Ce898F7dD723B6AB6CF4A5891A456ed",
+   "whitelist": {
+    "block": 63064225,
+    "tx": "0xa1e5c8ca9894d1fbd880415451639a15535ae891099b5e0ef11050e28071555c"
+   }
+  },
+  {
+   "chain": "base-sepolia",
+   "chainId": 84532,
+   "debtEvent": {
+    "block": 63098499,
+    "tx": "0x622ab7e70837931092c02e94741b66631a4ae78489d4622a8216ec21a3ab58b3"
+   },
+   "relayed": {
+    "block": 9154121,
+    "tx": "0xd79e28c32f6fd3803faff2f1793acc096b873e4b4cd7e21738a7dca329dd7e26"
+   },
+   "requestId": "340282366920938463463374607431768211465",
+   "result": {
+    "block": 63098504,
+    "outcome": "Rescued",
+    "paid": "3354872400000",
+    "tx": "0x428b5698f2e9ae4d1ea0fe8a1f72f03c3365c2c7b2f2b4676608a7b333ccf502"
+   },
+   "status": "joined",
+   "target": "0x313496642Ce898F7dD723B6AB6CF4A5891A456ed",
+   "whitelist": {
+    "block": 63098504,
+    "tx": "0x428b5698f2e9ae4d1ea0fe8a1f72f03c3365c2c7b2f2b4676608a7b333ccf502"
    }
   }
  ],
