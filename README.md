@@ -244,14 +244,15 @@ python -m lifeline.ops recover --chain <name>
 
 Any account can send `depositTo`. The other functions accept only the owner.
 
+Add `--rpc-url <RPC of the chain> --private-key $LIFELINE_OWNER_KEY` to each line:
+
 ```
-KEY=(--private-key $LIFELINE_OWNER_KEY)
-cast send 0x8888888888888888888888888888888888888888 "depositTo(address)" <hub> --value <amount>ether --rpc-url <Lasna RPC> "${KEY[@]}"
-cast send <proxy> "depositTo(address)" <vault> --value <amount>ether --rpc-url <destination RPC> "${KEY[@]}"
-cast send <hub> "vaultUp(uint256)" <chainId> --rpc-url <Lasna RPC> "${KEY[@]}"
-cast send <hub> "rearm(uint256,address)" <chainId> <target> --rpc-url <Lasna RPC> "${KEY[@]}"
-cast send <hub> "release(address)" <target> --rpc-url <Lasna RPC> "${KEY[@]}"
-cast send <vault> "release(address)" <target> --rpc-url <destination RPC> "${KEY[@]}"
+cast send 0x8888888888888888888888888888888888888888 "depositTo(address)" <hub> --value <amount>ether   # on Lasna
+cast send <proxy> "depositTo(address)" <vault> --value <amount>ether                                      # on the destination chain
+cast send <hub> "vaultUp(uint256)" <chainId>                                                              # on Lasna
+cast send <hub> "rearm(uint256,address)" <chainId> <target>                                               # on Lasna
+cast send <hub> "release(address)" <target>                                                               # on Lasna
+cast send <vault> "release(address)" <target>                                                             # on the destination chain
 ```
 
 ### Funds, status and board
