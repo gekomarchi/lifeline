@@ -521,6 +521,89 @@ Run `measure` of the experiment first, then this command: `JUDGE.md` includes th
 
 `lifeline/tests/test_judge.py` runs the real command and the real reader against a local JSON-RPC server. `lifeline/tests/test_judge_forks.py` is the fork dry run: it runs the command on the events that `loop-check`, `enroll`, `quarantine`, `junk` and `measure` leave on local forks, and compares each figure with a log that it reads from the forks itself. It needs what the fork dry run of the experiment needs, and is skipped without it.
 
+## Board
+
+The board is one static page for the owner. It is read-only: it shows the state of each target, the funds of the hub and of each vault, and the newest Lifeline events, from live RPC reads. It has no wallet action, sends no transaction and enrolls no target.
+
+```
+python -m lifeline.board [--manifest <file>] [--out <file>] [--lookback <blocks>]
+```
+
+| Flag | Meaning |
+|---|---|
+| `--manifest <file>` | The manifest. Default: `deployments/manifest.json`. It is the only input. |
+| `--out <file>` | The output file. Default: `board/index.html`. |
+| `--lookback <blocks>` | The default lookback of the event queries, in blocks. Default: 30,000. From 1 to 5,000,000. |
+
+- Run `forge build` before the first build and after each change of a contract. The build takes each ABI fragment from the build output in `out/` (`LifelineHub`, `LifelineVault`, `ICallbackProxy`) and computes each selector and each topic from it. It needs no package and no key.
+- The source of the page is `board/template.html`: one hand-written file with its script and its style. The build puts into it the manifest content that the page uses (for each chain `chainId`, the ledger and the RPC list; the address and `deployBlock` of the hub and of each vault; the label, the chain and the address of each enrollment), the ABI fragments and the default lookback.
+- The output is one self-contained file. It has no external script, style sheet, font or image, and it reads no local file. It names no URL other than the RPC URLs of the manifest. The same manifest and the same build output give the same bytes. The build refuses a manifest that it cannot show, with exit status 1 and the reason on standard error, and leaves the old file.
+- `board/index.html` in the repository is the build of `deployments/manifest.json`. Build it again after each command that changes the manifest (`deploy`, `enroll`, `fleet`, `remove`).
+
+### Open the page
+
+Open `board/index.html` in a browser: a double click, or the `file://` URL that the build prints. It needs no server. The page sends requests only to the RPC URLs.
+
+### What the page shows
+
+| Part | Content |
+|---|---|
+| Status line | One line with each item that needs the owner: a chain with no answer, a fallback RPC, an override, a contract or a target in debt, a low float, a quarantine, a `HubLow` or `VaultLow` event in the window. A click goes to the part. |
+| Chains and RPC | For each chain: the RPC state (OK, fallback, override, no answer), the latest block, the URL in use, the block window of the event queries, and the field for another RPC URL. |
+| Hub and vault funds | Principal (the balance), the principal floor, the fee float (`reserves` at the ledger: for a vault `proxy.reserves(vault)`), the float target and the debt. For the hub: paused, cron subscribed. For a vault: the up or down state and the pending count of `hub.vaultInfo`, and paused. |
+| Targets | Each target of the hub lists, and each enrollment of the manifest that is in no list: label, chain, state (active, quarantined, parked, disarmed), debt, and reserves against the `low` and `high` marks. The marks come from the hub for a Lasna target and from the vault for a destination target. |
+| Events | `HubLow`, `VaultLow`, `Rescued`, `Gap` and `Result`, newest first. |
+| Diagnostics only | The number of `CallbackFailure` logs of each callback proxy for the vault and for each target of its chain. |
+
+- State. The page reads the head of each chain first. Each `eth_call` and each `eth_getBalance` names that block number, and the page shows it. So each number on the page is the value of a direct read at that block.
+- Amounts. The table shows a short form that is cut and not rounded up. The exact value in the native unit and in wei is the title of the number, and it is in the details of a target row.
+- Warnings. The page marks a contract in debt, a principal at its floor, a float that is empty or below half of its target, a hub that is paused or has no cron subscription, a vault that is down at the hub, pending targets, a target in debt, and reserves below the `low` mark. `python -m lifeline.ops status` has the two checks that need the gas price (the funds for one full trigger); the page does not have them.
+- A destination target that the vault quarantined and that is still in the list of the hub has this note: the hub still has it in the sweep list, and `hub.disarm` stops its sweep cost.
+- Failure counts are diagnostics only. Any caller can make a proxy write a `CallbackFailure` log for a contract (finding F6), so a count is not a state. It changes no target state and no other value on the page. The system contract of Lasna has no such event: the counts are for the destination chains.
+- Filters and order are read-only controls: the state and the chain of the targets, a text for a label or an address, the order of the target table, the type and the chain of the events, and the details of a row. Each one is a button or a field. `R` reads each chain again, and `/` goes to the target filter.
+
+### RPC URLs and fallback
+
+Each chain uses the `rpc` list of the manifest, in order. A request that fails goes to the next URL. Each URL must answer `eth_chainId` with the chain ID of the manifest. When a URL after the first one gives the values, the chain shows "Fallback RPC" with the failure of the first one.
+
+When no URL of a chain gives the full state, the chain shows its error with the failure of each URL. The page removes each number of that chain: it does not keep the last values. The other chains keep their values. A target of that chain keeps the state that the hub gave, with no number.
+
+To set another URL for a chain, type it into the field "Set another RPC URL" of the chain row and press Enter (or "Use"). From then on each request of that chain goes to that URL, with no fallback to the list. The row shows "Override". "Clear" goes back to the list. The node must permit requests from a page (CORS).
+
+### Lookback and block window
+
+The event queries of a chain start at the later of the `deployBlock` of its contract and the head minus the lookback, and end at the head of the state read. They run in chunks of 10,000 blocks at most, the newest chunk first. If a node refuses a range, the page uses the smaller range that the node names. The chain row shows the window that the page used, and "starts at deployBlock" if `deployBlock` is the first block.
+
+To change the lookback, type a number of blocks into the field "Lookback" at the top and press Enter (or "Apply"). The lookback is one number of blocks for each chain, so the time that it covers differs by chain: the chain row shows it. If a node limits the request rate, the page waits (up to about 3 minutes for one window) and continues, and the row says so. If each node refuses the log queries, the chain shows "Event queries failed" and no event number; its state stays.
+
+"Auto read" reads each chain again after 30 s, 1 min or 5 min (default: 1 min) while the page is visible. A later read asks only for the logs of the new blocks.
+
+The page keeps a setting that is not a default in the fragment of its URL, so a reload keeps it: `#lookback=<blocks>&auto=<seconds>&theme=<light|dark>&rpc.<chain>=<url>`.
+
+### Default RPC endpoints
+
+The defaults are the `rpc` lists of the manifest. Each one answered a page opened from `file://` (origin `null`) on 2026-11-24:
+
+| Chain | URL | Largest log range | Note |
+|---|---|---|---|
+| `lasna` | `https://lasna-rpc.rnk.dev/` | 30,000 blocks | The only URL of the list: no fallback. |
+| `unichain-sepolia` | `https://sepolia.unichain.org` | 1,000 blocks | The only URL of the list: no fallback. It permits about 100 calls for each minute; a lookback above 30,000 blocks makes the page wait. |
+| `base-sepolia` | `https://base-sepolia-rpc.publicnode.com` | 50,000 blocks | |
+| `base-sepolia` | `https://base-sepolia.gateway.tenderly.co` | no limit seen | The fallback. It refuses more than about 20 calls in one second with status 429: the page waits and sends smaller batches. |
+
+### Tests
+
+```
+pip install -e ".[test]"
+forge build
+python -m pytest lifeline/tests/test_board.py lifeline/tests/test_board_browser.py
+```
+
+- `test_board.py` checks the build: the same bytes for the same input, no URL other than the RPC URLs, no external resource, each selector and each topic against the build output, and each refusal.
+- `test_board_browser.py` opens the built file from `file://` in a real browser (Chrome or Chromium on the path, or a running one with `LIFELINE_CDP_URL=<DevTools address>`). A local JSON-RPC server holds a known fleet, records each request and takes URLs out of service: values, the network log, fallback, the error state, the override, the log bounds, the note about `hub.disarm`, the disarmed state and the failure counts. Without a browser the module is skipped.
+- `test_board_forks.py` is the fork dry run: it deploys with the real commands on local forks, builds the board from that manifest and compares each number of the page with a direct read at the block that the page shows. It needs what the fork dry run of the operator commands needs, and a browser.
+- `LIFELINE_BOARD_LIVE=1 python -m pytest lifeline/tests/test_board_live.py` does the same comparison for the deployed fleet, and opens the page one time for each default RPC URL as the only URL of its chain. It sends read requests to the public nodes.
+
 ## Development
 
 The contracts are one Foundry project at the repository root: `src/`, `test/`, `lib/`.

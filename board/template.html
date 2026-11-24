@@ -1,0 +1,2259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Lifeline board</title>
+<!--
+  Lifeline board: the source of one static, read-only monitoring page.
+
+  `python -m lifeline.board` puts the manifest data and the ABI fragments into the element `board-config`
+  and writes `board/index.html`. This file has no external script, style sheet, font or image, and it names
+  no URL: the built page sends requests only to the RPC URLs of the manifest, or to a URL that the owner
+  sets in the page. Each style value below is a token of the UI kit of the project (compact density).
+-->
+<script>
+/* The theme before the first paint: `theme=` of the URL fragment, or the setting of the system. */
+(function () {
+  var choice = null;
+  try { choice = new URLSearchParams(location.hash.slice(1)).get("theme"); } catch (error) { /* system */ }
+  var dark = choice === "dark" || (choice !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+})();
+</script>
+<style>
+/* ---------------------------------------------------------------------------------------------
+   Tokens of the UI kit: OKLCH channels, primitive scales, semantic roles. Light theme.
+   --------------------------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+  --h-neutral: 265; --c-neutral: 0.004;
+  --h-accent: 263; --c-accent: 0.2; --l-accent: 62%;
+  --h-success: 147; --h-danger: 26; --h-warning: 56; --h-info: 257;
+  --ink-l: 53%; --sem-l-shift: 0%;
+
+  --gray-0: oklch(100% 0 0);
+  --gray-50: oklch(98.5% calc(var(--c-neutral) * .5) var(--h-neutral));
+  --gray-100: oklch(97% calc(var(--c-neutral) * .6) var(--h-neutral));
+  --gray-150: oklch(95% calc(var(--c-neutral) * .8) var(--h-neutral));
+  --gray-300: oklch(87% var(--c-neutral) var(--h-neutral));
+  --gray-400: oklch(76% var(--c-neutral) var(--h-neutral));
+  --gray-500: oklch(64% calc(var(--c-neutral) * 2) var(--h-neutral));
+  --gray-600: oklch(51% calc(var(--c-neutral) * 2) var(--h-neutral));
+  --gray-700: oklch(44% calc(var(--c-neutral) * 2) var(--h-neutral));
+  --gray-800: oklch(37% calc(var(--c-neutral) * 1.8) var(--h-neutral));
+  --gray-900: oklch(27% var(--c-neutral) var(--h-neutral));
+  --gray-925: oklch(22% var(--c-neutral) var(--h-neutral));
+  --gray-950: oklch(19% var(--c-neutral) var(--h-neutral));
+  --gray-975: oklch(16% var(--c-neutral) var(--h-neutral));
+  --gray-1000: oklch(0% 0 0);
+  --accent-400: oklch(calc(var(--l-accent) + 9%) calc(var(--c-accent) * .85) var(--h-accent));
+  --accent-500: oklch(var(--l-accent) var(--c-accent) var(--h-accent));
+
+  --canvas: var(--gray-150);
+  --surface-1: var(--gray-0);
+  --surface-sunken: var(--gray-100);
+  --surface-inverse: var(--gray-950);
+  --ink-1: var(--gray-950);
+  --ink-2: var(--gray-800);
+  --ink-3: var(--gray-600);
+  --ink-4: var(--gray-400);
+  --ink-inverse: var(--gray-0);
+  --line-1: color-mix(in oklch, var(--ink-1) 7%, transparent);
+  --line-2: color-mix(in oklch, var(--ink-1) 13%, transparent);
+  --line-3: color-mix(in oklch, var(--ink-1) 22%, transparent);
+  --fill-1: color-mix(in oklch, var(--gray-600) 10%, transparent);
+  --fill-2: color-mix(in oklch, var(--gray-600) 17%, transparent);
+  --fill-3: color-mix(in oklch, var(--gray-600) 24%, transparent);
+  --accent: var(--accent-500);
+  --accent-soft: color-mix(in oklch, var(--accent-500) 12%, transparent);
+  --accent-ink: oklch(var(--ink-l) calc(var(--c-accent) * 1.05) var(--h-accent));
+  --success: oklch(calc(73% + var(--sem-l-shift)) 0.19 var(--h-success));
+  --success-ink: oklch(var(--ink-l) 0.15 var(--h-success));
+  --success-soft: color-mix(in oklch, var(--success) 14%, transparent);
+  --danger: oklch(calc(65% + var(--sem-l-shift)) 0.23 var(--h-danger));
+  --danger-ink: oklch(var(--ink-l) 0.20 var(--h-danger));
+  --danger-soft: color-mix(in oklch, var(--danger) 13%, transparent);
+  --warning: oklch(calc(75% + var(--sem-l-shift)) 0.17 var(--h-warning));
+  --warning-ink: oklch(var(--ink-l) 0.14 var(--h-warning));
+  --warning-soft: color-mix(in oklch, var(--warning) 16%, transparent);
+  --info: oklch(calc(62% + var(--sem-l-shift)) 0.21 var(--h-info));
+  --info-ink: oklch(var(--ink-l) 0.18 var(--h-info));
+  --info-soft: color-mix(in oklch, var(--info) 12%, transparent);
+  --hover: color-mix(in oklch, var(--ink-1) 4.5%, transparent);
+  --press: color-mix(in oklch, var(--ink-1) 8.5%, transparent);
+  --focus-ring: 0 0 0 3px color-mix(in oklch, var(--accent-500) 40%, transparent);
+  --ring: inset 0 0 0 .5px var(--line-2);
+  --disabled-opacity: .45;
+
+  --font-sans: "Inter", "Inter Variable", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --w-regular: 400; --w-medium: 500; --w-semibold: 600; --w-bold: 700;
+  --text-title-3: 16px; --text-body: 14.5px; --text-callout: 13.5px; --text-footnote: 12.5px;
+  --text-caption: 11.5px; --text-label: 11px; --text-mono: 12.5px;
+  --tr-title-3: -0.01em; --tr-body: -0.006em; --tr-label: 0.06em;
+
+  --sp-05: 2px; --sp-1: 4px; --sp-15: 6px; --sp-2: 8px; --sp-25: 10px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
+  --r-xs: 6px; --r-sm: 10px; --r-pill: 999px;
+  --radius-panel: var(--r-sm);
+  --radius-control: 8px;
+  --control-h-sm: 28px; --control-h-xs: 24px; --topbar-h: 52px;
+  --page-max: 1480px;
+
+  --dur-2: 140ms; --dur-3: 180ms;
+  --ease-standard: cubic-bezier(.25, .1, .25, 1);
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --c-neutral: 0.002; --ink-l: 78%; --sem-l-shift: 2%;
+  --canvas: var(--gray-975);
+  --surface-1: var(--gray-925);
+  --surface-sunken: oklch(13% var(--c-neutral) var(--h-neutral));
+  --surface-inverse: var(--gray-100);
+  --ink-1: oklch(98.5% 0 0);
+  --ink-2: var(--gray-300);
+  --ink-3: var(--gray-500);
+  --ink-4: var(--gray-700);
+  --ink-inverse: var(--gray-950);
+  --line-1: color-mix(in oklch, var(--ink-1) 8%, transparent);
+  --line-2: color-mix(in oklch, var(--ink-1) 14%, transparent);
+  --line-3: color-mix(in oklch, var(--ink-1) 24%, transparent);
+  --fill-1: color-mix(in oklch, var(--gray-400) 13%, transparent);
+  --fill-2: color-mix(in oklch, var(--gray-400) 20%, transparent);
+  --fill-3: color-mix(in oklch, var(--gray-400) 28%, transparent);
+  --accent: var(--accent-400);
+  --accent-soft: color-mix(in oklch, var(--accent-400) 18%, transparent);
+  --hover: color-mix(in oklch, var(--ink-1) 5%, transparent);
+  --press: color-mix(in oklch, var(--ink-1) 10%, transparent);
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  min-height: 100vh; background: var(--canvas); color: var(--ink-1);
+  font-family: var(--font-sans); font-size: var(--text-callout); line-height: 1.4; letter-spacing: var(--tr-body);
+  font-feature-settings: "cv11" 1; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+button, input, select { font: inherit; color: inherit; letter-spacing: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
+button:disabled { cursor: default; }
+:focus { outline: none; }
+:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+::selection { background: color-mix(in oklch, var(--accent) 26%, transparent); }
+[hidden] { display: none !important; }
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* Numbers, addresses and blocks: same digit width in each row. */
+.num, .mono, td, th, input { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--font-mono); font-size: var(--text-mono); letter-spacing: 0; font-feature-settings: normal; }
+.unit { color: var(--ink-3); font-weight: var(--w-regular); margin-left: .3em; }
+.dim { color: var(--ink-3); }
+.cap { display: block; font-size: var(--text-caption); line-height: 1.35; color: var(--ink-3); letter-spacing: .004em; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.strong { font-weight: var(--w-semibold); }
+
+/* Icon: one 16-unit grid, 1.6 stroke, currentColor. */
+.ico { display: inline-flex; flex: none; width: 1em; height: 1em; font-size: 14px; }
+.ico svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------------------------------------------------------------------------------------------
+   Top bar
+   --------------------------------------------------------------------------------------------- */
+.bar {
+  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: var(--sp-4);
+  min-height: var(--topbar-h); padding: var(--sp-2) var(--sp-4); flex-wrap: wrap;
+  background: var(--surface-1); box-shadow: inset 0 -.5px 0 var(--line-2);
+}
+.bar__id { display: flex; align-items: center; gap: var(--sp-25); min-width: 0; margin-right: auto; }
+.bar__mark { font-size: 20px; color: var(--accent-ink); }
+.bar__title { font-size: var(--text-title-3); line-height: 1.25; letter-spacing: var(--tr-title-3); font-weight: var(--w-semibold); }
+.bar__controls { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.control { display: inline-flex; align-items: center; gap: var(--sp-15); }
+.control__label {
+  font-size: var(--text-label); font-weight: var(--w-semibold); letter-spacing: var(--tr-label);
+  text-transform: uppercase; color: var(--ink-3); white-space: nowrap;
+}
+
+/* Field, button, chip, tag, kbd: the atoms of the kit in the small sizes. */
+.field {
+  height: var(--control-h-sm); min-width: 0; padding: 0 var(--sp-25); border: 0; border-radius: var(--radius-control);
+  background: var(--fill-1); color: var(--ink-1); font-size: var(--text-callout);
+  box-shadow: inset 0 0 0 1px transparent; appearance: none; -webkit-appearance: none;
+  transition: background var(--dur-3) var(--ease-standard), box-shadow var(--dur-3) var(--ease-standard);
+}
+.field::placeholder { color: var(--ink-3); }
+.field:hover { background: var(--fill-2); }
+.field:focus, .field:focus-visible { background: var(--surface-1); box-shadow: inset 0 0 0 2px var(--accent); }
+.field[aria-invalid="true"] { box-shadow: inset 0 0 0 1.5px var(--danger); }
+.field--num { width: 104px; text-align: right; }
+select.field { padding-right: var(--sp-2); cursor: pointer; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-15); height: var(--control-h-sm);
+  padding: 0 var(--sp-3); border-radius: var(--radius-control); background: var(--fill-1); color: var(--ink-1);
+  font-size: var(--text-footnote); font-weight: var(--w-semibold); line-height: 1; white-space: nowrap; user-select: none;
+  transition: background var(--dur-3) var(--ease-standard), color var(--dur-3) var(--ease-standard);
+}
+.btn:hover { background: var(--fill-2); }
+.btn:active { background: var(--fill-3); }
+.btn:disabled { opacity: var(--disabled-opacity); pointer-events: none; }
+.btn--tonal { background: var(--accent-soft); color: var(--accent-ink); }
+.btn--tonal:hover { background: color-mix(in oklch, var(--accent) 18%, transparent); }
+.btn--tonal:active { background: color-mix(in oklch, var(--accent) 24%, transparent); }
+.btn--icon { width: var(--control-h-sm); padding: 0; }
+.btn--ghost { background: transparent; color: var(--ink-3); }
+.btn--ghost:hover { background: var(--hover); color: var(--ink-1); }
+.btn--xs { height: var(--control-h-xs); padding: 0 var(--sp-2); font-size: var(--text-caption); border-radius: var(--r-xs); }
+.btn--xs.btn--icon { width: var(--control-h-xs); padding: 0; }
+.kbd {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 5px;
+  background: var(--surface-1); box-shadow: var(--ring), 0 1px 0 var(--line-2); font-family: var(--font-mono);
+  font-size: 10.5px; font-weight: var(--w-medium); color: var(--ink-2); line-height: 1;
+}
+.chip {
+  display: inline-flex; align-items: center; gap: var(--sp-15); height: var(--control-h-xs); padding: 0 var(--sp-25);
+  border-radius: var(--r-pill); background: var(--fill-1); color: var(--ink-1); font-size: var(--text-caption);
+  font-weight: var(--w-medium); line-height: 1; white-space: nowrap;
+  transition: background var(--dur-3) var(--ease-standard), box-shadow var(--dur-3) var(--ease-standard);
+}
+.chip:hover { background: var(--fill-2); }
+.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.chip:focus-visible { box-shadow: var(--focus-ring); }
+.chip[aria-pressed="true"]:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent), var(--focus-ring); }
+.chip__n { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="true"] .chip__n { color: inherit; }
+.chips { display: flex; align-items: center; gap: var(--sp-15); flex-wrap: wrap; }
+.tag {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: var(--r-xs);
+  font-size: var(--text-caption); font-weight: var(--w-semibold); line-height: 1; letter-spacing: .01em;
+  background: var(--fill-1); color: var(--ink-2); white-space: nowrap; vertical-align: middle;
+}
+.tag .ico { font-size: 12px; }
+.tag--success { background: var(--success-soft); color: var(--success-ink); }
+.tag--warning { background: var(--warning-soft); color: var(--warning-ink); }
+.tag--danger { background: var(--danger-soft); color: var(--danger-ink); }
+.tag--info { background: var(--info-soft); color: var(--info-ink); }
+.tag--outline { background: transparent; box-shadow: inset 0 0 0 1px var(--line-3); color: var(--ink-3); }
+.tags { display: flex; align-items: center; gap: var(--sp-1); flex-wrap: wrap; }
+.spinner {
+  width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--fill-3); border-top-color: var(--accent);
+  animation: spin .85s linear infinite; flex: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.skel { display: inline-block; height: .9em; width: var(--w, 8ch); border-radius: .3em; background: var(--fill-2); vertical-align: -.09em; animation: skel 1.4s var(--ease-standard) infinite; }
+@keyframes skel { 50% { opacity: .45; } }
+
+/* ---------------------------------------------------------------------------------------------
+   Page, status line, panels
+   --------------------------------------------------------------------------------------------- */
+.page { max-width: var(--page-max); margin: 0 auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-4); }
+@media (min-width: 900px) { .page { padding: var(--sp-5) var(--sp-6) var(--sp-8); } }
+
+/* The state rail: a 3px edge that has the tone of the worst state of its row or block. */
+.rail { --tone: transparent; box-shadow: inset 3px 0 0 var(--tone); }
+[data-sev="3"] > .rail, .rail[data-sev="3"] { --tone: var(--danger); }
+[data-sev="2"] > .rail, .rail[data-sev="2"] { --tone: var(--warning); }
+[data-sev="1"] > .rail, .rail[data-sev="1"] { --tone: var(--success); }
+[data-sev="info"] > .rail, .rail[data-sev="info"] { --tone: var(--info); }
+
+.verdict {
+  display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; min-height: 44px;
+  padding: var(--sp-2) var(--sp-4); background: var(--surface-1); border-radius: var(--radius-panel);
+  box-shadow: inset 3px 0 0 var(--tone), var(--ring);
+}
+.verdict__head { font-weight: var(--w-semibold); font-size: var(--text-body); margin-right: var(--sp-1); }
+.verdict__items { display: flex; align-items: center; gap: var(--sp-15); flex-wrap: wrap; min-width: 0; }
+.verdict__item { cursor: pointer; height: auto; min-height: 22px; padding-block: 4px; max-width: 100%; white-space: normal; line-height: 1.25; }
+.verdict__item:hover { filter: brightness(.97); }
+.verdict__item:focus-visible { box-shadow: var(--focus-ring); }
+
+.panel { min-width: 0; background: var(--surface-1); box-shadow: var(--ring); border-radius: var(--radius-panel); overflow: hidden; }
+.panel__header {
+  display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; min-height: 44px;
+  padding: var(--sp-2) var(--sp-4); box-shadow: inset 0 -.5px 0 var(--line-2);
+}
+.panel__title { font-size: var(--text-body); font-weight: var(--w-semibold); letter-spacing: var(--tr-body); white-space: nowrap; }
+.panel__meta { font-size: var(--text-footnote); color: var(--ink-3); min-width: 0; }
+.panel__tools { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-left: auto; }
+.panel__body { overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--fill-3) transparent; }
+.panel__foot { padding: var(--sp-2) var(--sp-4); box-shadow: inset 0 .5px 0 var(--line-2); font-size: var(--text-footnote); color: var(--ink-3); }
+/* Diagnostics: the counts at the left, the statement of what they are at the right. */
+.aside { display: flex; align-items: flex-start; flex-wrap: wrap; }
+.aside > .panel__body { flex: 0 1 auto; max-width: 100%; }
+.aside > .panel__body .table { width: auto; }
+.aside__note { flex: 1 1 280px; max-width: 60ch; padding: var(--sp-3) var(--sp-4); font-size: var(--text-footnote); line-height: 1.45; color: var(--ink-2); }
+
+/* ---------------------------------------------------------------------------------------------
+   Tables
+   --------------------------------------------------------------------------------------------- */
+.table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--text-callout); line-height: 1.35; }
+.table th {
+  padding: var(--sp-2) var(--sp-3); text-align: left; background: var(--surface-1); color: var(--ink-3);
+  font-size: var(--text-label); font-weight: var(--w-semibold); letter-spacing: var(--tr-label);
+  text-transform: uppercase; white-space: nowrap; box-shadow: inset 0 -.5px 0 var(--line-2);
+}
+.table td { padding: var(--sp-2) var(--sp-3); box-shadow: inset 0 -.5px 0 var(--line-1); vertical-align: top; white-space: nowrap; }
+.table td.wrap { white-space: normal; min-width: 24ch; }
+.table tbody tr:last-child > td { box-shadow: none; }
+.table tbody tr:last-child > td.rail { box-shadow: inset 3px 0 0 var(--tone); }
+.table td.rail { box-shadow: inset 3px 0 0 var(--tone), inset 0 -.5px 0 var(--line-1); padding-left: var(--sp-4); }
+.table th:first-child { padding-left: var(--sp-4); }
+.table th:last-child, .table td:last-child { padding-right: var(--sp-4); }
+.table .r { text-align: right; }
+.table tbody tr.row:hover > td { background: var(--hover); }
+.table tr.is-muted > td { color: var(--ink-3); }
+.table tr.is-muted .strong { font-weight: var(--w-medium); }
+.th-sort { display: inline-flex; align-items: center; gap: 3px; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; border-radius: 4px; }
+.th-sort:hover { color: var(--ink-1); }
+.th-sort .ico { font-size: 11px; opacity: .45; }
+th[aria-sort="ascending"] .th-sort, th[aria-sort="descending"] .th-sort { color: var(--ink-1); }
+th[aria-sort="ascending"] .th-sort .ico, th[aria-sort="descending"] .th-sort .ico { opacity: 1; }
+th[aria-sort="descending"] .th-sort .ico { transform: rotate(180deg); }
+.note { display: block; margin-top: 3px; font-size: var(--text-caption); line-height: 1.35; color: var(--ink-2); width: max-content; max-width: 44ch; white-space: normal; }
+.note--warning { color: var(--warning-ink); }
+.note--danger { color: var(--danger-ink); }
+.empty { padding: var(--sp-5) var(--sp-4); color: var(--ink-3); font-size: var(--text-callout); }
+.nodata { color: var(--ink-4); }
+
+.addr { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; }
+.copy { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; color: var(--ink-4); }
+.copy:hover { color: var(--ink-1); background: var(--hover); }
+.copy .ico { font-size: 12px; }
+.copy[data-done] { color: var(--success-ink); }
+.expander { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 5px; color: var(--ink-3); }
+.expander:hover { background: var(--hover); color: var(--ink-1); }
+.expander .ico { font-size: 12px; transition: transform var(--dur-3) var(--ease-standard); }
+.expander[aria-expanded="true"] .ico { transform: rotate(90deg); }
+
+/* Detail row: a sunken block below its row. */
+.table tr.detail > td { padding: 0; white-space: normal; background: var(--surface-sunken); box-shadow: inset 0 -.5px 0 var(--line-1), inset 0 .5px 0 var(--line-1); }
+.detail__body { padding: var(--sp-3) var(--sp-4); display: grid; gap: var(--sp-2) var(--sp-6); grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.kv { min-width: 0; }
+.kv dt { font-size: var(--text-label); font-weight: var(--w-semibold); letter-spacing: var(--tr-label); text-transform: uppercase; color: var(--ink-3); }
+.kv dd { font-size: var(--text-footnote); overflow-wrap: anywhere; }
+.urls { grid-column: 1 / -1; display: grid; gap: var(--sp-1); }
+.urls li { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--text-footnote); }
+.urls ol { list-style: none; padding: 0; display: grid; gap: var(--sp-1); }
+
+.notice {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--sp-25); align-items: start;
+  padding: var(--sp-25) var(--sp-3); border-radius: var(--radius-control); background: var(--danger-soft);
+  font-size: var(--text-footnote); line-height: 1.4;
+}
+.notice > .ico { color: var(--danger-ink); margin-top: 2px; }
+.notice__title { font-weight: var(--w-semibold); font-size: var(--text-callout); }
+.notice ul { padding-left: 1.2em; margin-top: 2px; color: var(--ink-2); overflow-wrap: anywhere; }
+.notice--warning { background: var(--warning-soft); }
+.notice--warning > .ico { color: var(--warning-ink); }
+.table tr.alert > td { padding: 0 var(--sp-4) var(--sp-25) var(--sp-4); white-space: normal; }
+
+/* Gauge: a level on a track, with a tick at each mark. */
+.gauge { position: relative; height: 6px; min-width: 96px; margin: 6px 0 5px; border-radius: var(--r-pill); background: var(--fill-2); }
+.gauge__fill { position: absolute; inset: 0 auto 0 0; width: var(--v, 0%); border-radius: inherit; background: var(--tone, var(--ink-3)); transition: width var(--dur-3) var(--ease-standard); }
+.gauge__tick { position: absolute; top: -3px; bottom: -3px; left: var(--at); width: 1.5px; margin-left: -.75px; border-radius: 1px; background: var(--ink-2); }
+.gauge[data-tone="ok"] { --tone: var(--success); }
+.gauge[data-tone="low"] { --tone: var(--warning); }
+.gauge[data-tone="bad"] { --tone: var(--danger); }
+.gauge[data-tone="off"] { --tone: var(--ink-4); }
+.progress { position: relative; height: 3px; margin-top: 5px; border-radius: var(--r-pill); background: var(--fill-2); overflow: hidden; }
+.progress > i { position: absolute; inset: 0 auto 0 0; width: var(--v, 0%); background: var(--accent); border-radius: inherit; transition: width var(--dur-3) var(--ease-standard); }
+
+/* Chains table */
+.over { display: flex; align-items: center; gap: var(--sp-15); }
+.over .field { flex: 1 1 auto; width: 100%; min-width: 150px; }
+.blockno { font-size: var(--text-body); font-weight: var(--w-semibold); }
+
+.foot { display: flex; gap: var(--sp-2) var(--sp-5); flex-wrap: wrap; align-items: center; color: var(--ink-3); font-size: var(--text-footnote); padding: 0 var(--sp-1); }
+.foot span { display: inline-flex; align-items: center; gap: var(--sp-15); }
+
+@media (max-width: 899px) {
+  .bar { position: static; }
+  .bar__controls { width: 100%; }
+  .panel__tools { margin-left: 0; width: 100%; }
+  /* A wide table scrolls inside its panel, and its first column stays in view. */
+  .table th:first-child, .table td.rail { position: sticky; left: 0; z-index: 1; background: var(--surface-1); }
+  .table tr.alert > td, .table tr.detail > td { white-space: normal; }
+  .detail__body, .notice { max-width: calc(100vw - 2 * var(--sp-4)); position: sticky; left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}
+</style>
+</head>
+<body data-phase="start">
+
+<!-- Marks: one stroke style. Each mark names a state; no mark is an ornament. -->
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-mark" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h3.3l1.4-2.8 3 5.6L11 8h3.2"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 16 16"><path d="M3.2 8.6l3 3 6.4-7.2"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2.4 14.2 13H1.8Z"/><path d="M8 6.6v3M8 11.3v.1"/></symbol>
+  <symbol id="i-error" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M5.7 5.7l4.6 4.6M10.3 5.7l-4.6 4.6"/></symbol>
+  <symbol id="i-fallback" viewBox="0 0 16 16"><circle cx="4" cy="4" r="2.2"/><path d="M4 7v3.4A1.6 1.6 0 0 0 5.6 12H9"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/></symbol>
+  <symbol id="i-override" viewBox="0 0 16 16"><rect x="2.3" y="2.3" width="11.4" height="11.4" rx="2.6"/><circle cx="8" cy="8" r="1.9" fill="currentColor"/></symbol>
+  <symbol id="i-quarantine" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M3.7 12.3 12.3 3.7"/></symbol>
+  <symbol id="i-parked" viewBox="0 0 16 16"><rect x="2.3" y="2.3" width="11.4" height="11.4" rx="2.6"/><path d="M6.4 5.8v4.4M9.6 5.8v4.4"/></symbol>
+  <symbol id="i-disarmed" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" stroke-dasharray="2.6 2.3"/></symbol>
+  <symbol id="i-debt" viewBox="0 0 16 16"><path d="M8 2.4v8.2M4.7 7.5 8 10.8l3.3-3.3M3 13.6h10"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5.6" y="5.6" width="8" height="8" rx="1.8"/><path d="M3.6 10.4h-.3a.9.9 0 0 1-.9-.9V3.3a.9.9 0 0 1 .9-.9h6.2a.9.9 0 0 1 .9.9v.3"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.8M13.3 2.6v2.8h-2.8"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 16 16"><path d="M8 12.5v-9M4.6 6.9 8 3.5l3.4 3.4"/></symbol>
+  <symbol id="i-theme" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8"/><path d="M8 2.2a5.8 5.8 0 0 1 0 11.6Z" fill="currentColor"/></symbol>
+</svg>
+
+<header class="bar">
+  <div class="bar__id">
+    <span class="ico bar__mark" aria-hidden="true"><svg viewBox="0 0 16 16"><use href="#i-mark"/></svg></span>
+    <div>
+      <h1 class="bar__title">Lifeline board</h1>
+      <span class="cap" id="bar-sub">Read-only. State by eth_call at the latest block of each chain.</span>
+    </div>
+  </div>
+  <div class="bar__controls">
+    <form class="control" id="lookback-form" novalidate>
+      <label class="control__label" for="lookback">Lookback</label>
+      <input class="field field--num" id="lookback" inputmode="numeric" autocomplete="off" spellcheck="false"
+             aria-describedby="lookback-unit lookback-error">
+      <span class="dim" id="lookback-unit">blocks</span>
+      <button class="btn" type="submit" id="lookback-apply">Apply</button>
+      <span class="note note--danger" id="lookback-error" role="alert" hidden></span>
+    </form>
+    <div class="control">
+      <label class="control__label" for="auto">Auto read</label>
+      <select class="field" id="auto">
+        <option value="0">Off</option>
+        <option value="30">30 s</option>
+        <option value="60">1 min</option>
+        <option value="300">5 min</option>
+      </select>
+    </div>
+    <button class="btn btn--tonal" type="button" id="refresh" title="Read each chain again (R)">
+      <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16"><use href="#i-refresh"/></svg></span>
+      Read again <span class="kbd" aria-hidden="true">R</span>
+    </button>
+    <button class="btn btn--icon btn--ghost" type="button" id="theme" aria-label="Switch between the light and the dark theme" title="Light or dark theme">
+      <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16"><use href="#i-theme"/></svg></span>
+    </button>
+  </div>
+</header>
+
+<main class="page" id="page">
+  <section class="verdict" id="verdict" aria-label="Fleet status"></section>
+
+  <section class="panel" id="chains" aria-labelledby="chains-title">
+    <div class="panel__header">
+      <h2 class="panel__title" id="chains-title">Chains and RPC</h2>
+      <span class="panel__meta">A request that fails goes to the next URL of the chain. A chain with no answer shows no number.</span>
+    </div>
+    <div class="panel__body" id="chains-body"></div>
+  </section>
+
+  <section class="panel" id="funds" aria-labelledby="funds-title">
+    <div class="panel__header">
+      <h2 class="panel__title" id="funds-title">Hub and vault funds</h2>
+      <span class="panel__meta">Principal is the balance of the contract. The fee float is its reserves at the ledger of its chain.</span>
+    </div>
+    <div class="panel__body" id="funds-body"></div>
+  </section>
+
+  <section class="panel" id="targets" aria-labelledby="targets-title">
+    <div class="panel__header">
+      <h2 class="panel__title" id="targets-title">Targets</h2>
+      <span class="panel__meta" id="targets-meta"></span>
+      <div class="panel__tools">
+        <div class="chips" id="targets-state" role="group" aria-label="Filter the targets by state"></div>
+        <div class="chips" id="targets-chain" role="group" aria-label="Filter the targets by chain"></div>
+        <label class="visually-hidden" for="targets-text">Filter the targets by label or address</label>
+        <input class="field" id="targets-text" type="search" placeholder="Label or address" autocomplete="off" spellcheck="false" title="Filter by label or address (/)">
+      </div>
+    </div>
+    <div class="panel__body" id="targets-body"></div>
+  </section>
+
+  <section class="panel" id="events" aria-labelledby="events-title">
+    <div class="panel__header">
+      <h2 class="panel__title" id="events-title">Events</h2>
+      <span class="panel__meta" id="events-meta">Newest first, inside the block window of each chain.</span>
+      <div class="panel__tools">
+        <div class="chips" id="events-type" role="group" aria-label="Filter the events by type"></div>
+        <div class="chips" id="events-chain" role="group" aria-label="Filter the events by chain"></div>
+      </div>
+    </div>
+    <div class="panel__body" id="events-body"></div>
+    <div class="panel__foot" id="events-foot" hidden></div>
+  </section>
+
+  <section class="panel" id="diag" aria-labelledby="diag-title">
+    <div class="panel__header">
+      <h2 class="panel__title" id="diag-title">Diagnostics only</h2>
+      <span class="panel__meta">CallbackFailure counts of the callback proxies, inside the same block windows.</span>
+    </div>
+    <div class="aside">
+      <div class="panel__body" id="diag-body"></div>
+      <p class="aside__note">Any caller can make a proxy write a CallbackFailure log for a contract: an
+        unauthorized callback is enough. So a count here is not a state. It changes no target state and no
+        other value on this page.</p>
+    </div>
+  </section>
+
+  <footer class="foot" id="foot"></footer>
+</main>
+
+<div class="visually-hidden" id="live" role="status" aria-live="polite"></div>
+
+<script id="board-config" type="application/json">__BOARD_CONFIG__</script>
+<script>
+(() => {
+"use strict";
+
+// ---------------------------------------------------------------------------------------------
+// Inlined data of the build
+// ---------------------------------------------------------------------------------------------
+
+let CONFIG;
+try {
+  CONFIG = JSON.parse(document.getElementById("board-config").textContent);
+} catch (error) {
+  document.getElementById("page").textContent =
+    "This file is the template of the board. Build the page: python -m lifeline.board";
+  return;
+}
+
+const ABI = CONFIG.abi;
+const TIMEOUT_MS = 12000;      // one request to one URL
+const MAX_BATCH = 20;          // calls in one POST
+const MIN_BATCH = 5;           // the smallest batch for a node that refuses larger ones because of a limit
+const POST_WAITS = [1200, 2400, 4800]; // waits of one request that a node refused because of a limit
+const SCAN_WORKERS = 3;        // log requests of one chain at the same time
+const MAX_LOG_REQUESTS = 600;  // log requests of one chain for one window
+const MAX_TARGETS = 400;       // targets of one hub list that the page reads
+const MAX_EVENT_ROWS = 300;    // rows of the event table before "Show more"
+const DEFAULT_AUTO = 60;       // seconds between two reads; 0 is off
+const AUTO_CHOICES = [0, 30, 60, 300];
+const REQUEST_ID_BASE = 1n << 128n; // a `requestId` of the hub is above it; a `tickId` is a block number
+const WEI = 10n ** 18n;
+
+// ---------------------------------------------------------------------------------------------
+// Numbers, addresses, DOM
+// ---------------------------------------------------------------------------------------------
+
+const NUMBER = new Intl.NumberFormat("en-US");
+const fmtInt = (value) => NUMBER.format(value);
+const hex = (value) => "0x" + BigInt(value).toString(16);
+const lower = (address) => String(address).toLowerCase();
+const short = (address) => address.slice(0, 6) + "\u2026" + address.slice(-4);
+
+/** The full decimal value of an amount in the native unit, with no rounding. */
+function exact(wei) {
+  const fraction = (wei % WEI).toString().padStart(18, "0").replace(/0+$/, "");
+  return NUMBER.format(wei / WEI) + (fraction ? "." + fraction : "");
+}
+
+/** A short form of an amount, cut and never rounded up: [text, unit]. */
+function brief(wei, unit) {
+  if (wei === 0n) return ["0", unit];
+  if (wei < 10n ** 9n) return [NUMBER.format(wei), "wei"];
+  const whole = wei / WEI, fraction = (wei % WEI).toString().padStart(18, "0");
+  if (whole > 0n) return [NUMBER.format(whole) + "." + fraction.slice(0, 4), unit];
+  const first = fraction.search(/[1-9]/);
+  return ["0." + fraction.slice(0, first + 4).replace(/0+$/, ""), unit];
+}
+
+function host(url) {
+  try { return new URL(url).host || url; } catch (error) { return url; }
+}
+
+/** Creates an element. Text goes in as text nodes: no value of a chain or of the manifest is parsed as markup. */
+function h(tag, attributes, ...children) {
+  const element = document.createElement(tag);
+  for (const [name, value] of Object.entries(attributes || {})) {
+    if (value === null || value === undefined || value === false) continue;
+    if (name === "class") element.className = value;
+    else if (name === "data") {
+      for (const [key, entry] of Object.entries(value)) if (entry !== null && entry !== undefined) element.dataset[key] = entry;
+    }
+    else if (name.startsWith("on")) element.addEventListener(name.slice(2), value);
+    else element.setAttribute(name, value === true ? "" : value);
+  }
+  for (const child of children.flat(Infinity)) {
+    if (child === null || child === undefined || child === false) continue;
+    element.append(child.nodeType ? child : document.createTextNode(String(child)));
+  }
+  return element;
+}
+
+const ICONS = new Set(["mark", "ok", "warn", "error", "fallback", "override", "quarantine", "parked", "disarmed",
+  "debt", "copy", "chevron", "refresh", "sort", "theme"]);
+
+function icon(name) {
+  const holder = h("span", { class: "ico", "aria-hidden": "true" });
+  if (ICONS.has(name)) holder.innerHTML = `<svg viewBox="0 0 16 16"><use href="#i-${name}"/></svg>`;
+  return holder;
+}
+
+function tag(tone, text, mark, extra) {
+  return h("span", { class: "tag" + (tone ? " tag--" + tone : ""), ...(extra || {}) }, mark && icon(mark), text);
+}
+
+/** An amount with its exact value as the title and as `data-raw`, for a check against a direct read. */
+function amount(wei, unit, field) {
+  if (wei === null || wei === undefined) return noData(field);
+  const [text, shown] = brief(wei, unit);
+  return h("span", { class: "num", title: `${exact(wei)} ${unit} (${wei} wei)`, data: { field, raw: String(wei) } },
+    text, h("span", { class: "unit" }, shown));
+}
+
+function noData(field, text) {
+  return h("span", { class: "nodata", data: { field, raw: "" }, title: "No data: the chain did not answer" },
+    text || "no data");
+}
+
+function skeleton(width) {
+  return h("span", { class: "skel", style: `--w:${width || "8ch"}`, "aria-label": "Reading" });
+}
+
+function address(value, field) {
+  return h("span", { class: "addr" },
+    h("span", { class: "mono", title: value, data: { field, raw: value } }, short(value)),
+    h("button", { class: "copy", type: "button", "aria-label": `Copy the address ${value}`, title: "Copy the address",
+      data: { fk: "copy:" + (field || value) }, onclick: (event) => copy(value, event.currentTarget) }, icon("copy")));
+}
+
+let liveText = "";
+function announce(text) {
+  if (text === liveText) return;
+  liveText = text;
+  document.getElementById("live").textContent = text;
+}
+
+async function copy(text, button) {
+  let done = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    done = true;
+  } catch (error) {
+    const area = h("textarea", { class: "visually-hidden", "aria-hidden": "true" });
+    area.value = text;
+    document.body.append(area);
+    area.select();
+    try { done = document.execCommand("copy"); } catch (failure) { done = false; }
+    area.remove();
+    button.focus();
+  }
+  announce(done ? `Copied ${text}` : "The browser refused the copy");
+  if (!done) return;
+  button.dataset.done = "";
+  button.replaceChildren(icon("ok"));
+  setTimeout(() => { delete button.dataset.done; button.replaceChildren(icon("copy")); }, 1200);
+}
+
+// ---------------------------------------------------------------------------------------------
+// ABI: call data, return values and logs. Each value type is one 32-byte word.
+// ---------------------------------------------------------------------------------------------
+
+function word(kind, value) {
+  if (kind === "address") return lower(value).slice(2).padStart(64, "0");
+  if (kind === "bool") return (value ? "1" : "0").padStart(64, "0");
+  return BigInt(value).toString(16).padStart(64, "0");
+}
+
+function fromWord(kind, digits) {
+  if (kind === "address") return "0x" + digits.slice(24);
+  const value = BigInt("0x" + digits);
+  if (kind === "bool") return value !== 0n;
+  return /^uint(8|16|24|32|40|48)$/.test(kind) ? Number(value) : value;
+}
+
+function callData(fragment, args) {
+  return fragment.selector + fragment.inputs.map((kind, index) => word(kind, args[index])).join("");
+}
+
+/** The values of a word list by name. "policy.low" goes to `policy.low`. One word alone is the value. */
+function decodeWords(spec, data, what) {
+  const digits = typeof data === "string" && data.startsWith("0x") ? data.slice(2) : "";
+  if (digits.length < spec.length * 64) {
+    throw new RpcFailure("rpc", `${what} gave no data: no such contract at this address on this node`);
+  }
+  if (spec.length === 1) return fromWord(spec[0][1], digits.slice(0, 64));
+  const values = {};
+  spec.forEach(([name, kind], index) => {
+    const path = name.split("."), value = fromWord(kind, digits.slice(index * 64, index * 64 + 64));
+    let holder = values;
+    for (const part of path.slice(0, -1)) holder = holder[part] = holder[part] || {};
+    holder[path[path.length - 1]] = value;
+  });
+  return values;
+}
+
+function topicOf(address) {
+  return "0x" + word("address", address);
+}
+
+// Topic 0 of each event that the page reads, with its source.
+const EVENTS = new Map();
+for (const source of ["hub", "vault", "ledger"]) {
+  for (const [name, fragment] of Object.entries(ABI[source].events)) EVENTS.set(fragment.topic, { source, name, fragment });
+}
+
+function decodeLog(log) {
+  const event = EVENTS.get(log.topics[0]);
+  if (!event) return null;
+  const args = {};
+  event.fragment.indexed.forEach(([name, kind], index) => {
+    args[name] = fromWord(kind, (log.topics[index + 1] || "0x").slice(2).padStart(64, "0"));
+  });
+  if (event.fragment.data.length) Object.assign(args, decodeWords(event.fragment.data, log.data, event.name));
+  return {
+    name: event.name, source: event.source, args,
+    block: Number(BigInt(log.blockNumber)), index: Number(BigInt(log.logIndex || "0x0")),
+    tx: log.transactionHash || "", time: log.blockTimestamp ? Number(BigInt(log.blockTimestamp)) : null,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// JSON-RPC over fetch. No request has a body other than read methods: the page sends no transaction.
+// ---------------------------------------------------------------------------------------------
+
+class RpcFailure extends Error {
+  /**
+   * kind "transport": the URL gave no JSON-RPC answer. kind "rpc": the node answered with an error.
+   * `limited`: the node refused the request because of its request rate limit.
+   */
+  constructor(kind, message, limited) {
+    super(message);
+    this.kind = kind;
+    this.limited = Boolean(limited);
+  }
+}
+class Cancelled extends Error {}
+
+const RATE_LIMIT = /rate limit|too many requests|request limit|throttl|quota|capacity|credits/i;
+const isLimit = (error, status) => status === 429 || RATE_LIMIT.test((error && error.message) || "");
+
+/** Waits, and stops with `Cancelled` when a newer read of the chain starts. */
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal && signal.aborted) return reject(new Cancelled());
+    const timer = setTimeout(resolve, ms);
+    if (signal) signal.addEventListener("abort", () => { clearTimeout(timer); reject(new Cancelled()); }, { once: true });
+  });
+}
+
+const READ_METHODS = new Set(["eth_chainId", "eth_blockNumber", "eth_call", "eth_getBalance", "eth_getLogs",
+  "eth_getBlockByNumber"]);
+const batchSize = new Map(); // the most calls in one POST for a URL that refused a larger batch
+let requestId = 0;
+
+function describe(error) {
+  const text = error && typeof error.message === "string" ? error.message : JSON.stringify(error);
+  return `${text}${error && error.code !== undefined ? ` (code ${error.code})` : ""}`.slice(0, 220);
+}
+
+async function send(url, payload, signal) {
+  const own = new AbortController();
+  const timer = setTimeout(() => own.abort(), TIMEOUT_MS);
+  const stop = () => own.abort();
+  if (signal) signal.addEventListener("abort", stop, { once: true });
+  let response, text;
+  try {
+    response = await fetch(url, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload),
+      signal: own.signal, cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer",
+    });
+    text = await response.text();
+  } catch (error) {
+    if (signal && signal.aborted) throw new Cancelled();
+    throw new RpcFailure("transport", own.signal.aborted
+      ? `no answer in ${TIMEOUT_MS / 1000} s`
+      : "no answer: the URL is not reachable, or it refuses a request of a page");
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", stop);
+  }
+  try {
+    return { status: response.status, body: JSON.parse(text) };
+  } catch (error) {
+    throw new RpcFailure(response.status === 429 ? "rpc" : "transport",
+      `status ${response.status}, and the answer is not JSON-RPC`, response.status === 429);
+  }
+}
+
+/**
+ * Sends read calls to one URL. Returns one `{result}` or `{error}` for each call, in order. The calls go
+ * out in batches. A node that takes no batch gets one call for each request. A node that refuses calls
+ * because of a limit gets a short wait and smaller batches: some public nodes permit only a number of
+ * calls for each second. After three waits the refusal goes to the caller.
+ */
+async function post(url, calls, signal) {
+  for (const call of calls) {
+    if (!READ_METHODS.has(call.method)) throw new Error(`the page does not send ${call.method}`);
+  }
+  const answers = [];
+  let waits = 0;
+  for (let start = 0; start < calls.length;) {
+    const items = calls.slice(start, start + (batchSize.get(url) || MAX_BATCH))
+      .map((call) => ({ jsonrpc: "2.0", id: ++requestId, method: call.method, params: call.params }));
+    let status = 0, body = null, refusal = null;
+    try {
+      ({ status, body } = await send(url, items.length === 1 ? items[0] : items, signal));
+    } catch (error) {
+      if (!(error instanceof RpcFailure) || !error.limited) throw error;
+      refusal = error;
+    }
+    const list = Array.isArray(body) ? body : [body];
+    if (!refusal && items.length > 1 && !Array.isArray(body)) {
+      if (!isLimit(body && body.error, status)) {
+        batchSize.set(url, 1); // one object for a batch, and no limit: the node takes no batch
+        continue;
+      }
+      refusal = new RpcFailure("rpc", "the node limits the request rate", true);
+    }
+    const limited = refusal || list.every((item) => item && item.error && isLimit(item.error, status));
+    if (limited && waits < POST_WAITS.length) {
+      if (items.length > MIN_BATCH) batchSize.set(url, Math.max(MIN_BATCH, Math.ceil(items.length / 2)));
+      await sleep(POST_WAITS[waits++], signal);
+      continue;
+    }
+    if (refusal) throw refusal;
+    const byId = new Map(list.filter((item) => item && typeof item === "object").map((item) => [item.id, item]));
+    for (const item of items) {
+      const answer = byId.get(item.id) || (items.length === 1 ? list[0] : null);
+      if (answer && Object.prototype.hasOwnProperty.call(answer, "result") && !answer.error) {
+        answers.push({ result: answer.result });
+      } else if (answer && answer.error) {
+        answers.push({ error: answer.error, status });
+      } else {
+        throw new RpcFailure(status === 429 ? "rpc" : "transport", `status ${status}, and no JSON-RPC answer`, status === 429);
+      }
+    }
+    start += items.length;
+  }
+  return answers;
+}
+
+function need(answer, what) {
+  if (answer.error) throw new RpcFailure("rpc", `${what}: ${describe(answer.error)}`, isLimit(answer.error, answer.status));
+  return answer.result;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Settings: the URL fragment holds each value that is not a default, so a reload keeps it.
+//   #lookback=<blocks>&auto=<seconds>&theme=<light|dark>&rpc.<chain>=<url>
+// ---------------------------------------------------------------------------------------------
+
+const S = { lookback: CONFIG.lookback, auto: DEFAULT_AUTO, theme: null, reading: 0, lastRead: 0 };
+
+const CHAINS = CONFIG.chains.map((cfg) => ({
+  cfg, override: null, urls: cfg.rpc.slice(), gen: 0, abort: null,
+  phase: "loading",   // loading | ok | error
+  busy: false,        // a read is in flight
+  attempts: [],       // one entry for each URL of the last read: { url, state: untried|ok|failed, ms, error }
+  used: null, head: null, headTime: null, readAt: null, failedAt: null, data: null,
+  events: null, chunk: CONFIG.chunk, times: new Map(), open: false,
+}));
+const HUB = CHAINS.find((chain) => chain.cfg.role === "hub");
+const byName = new Map(CHAINS.map((chain) => [chain.cfg.name, chain]));
+const ENROLLED = new Map(CONFIG.enrollments.map((entry) => [entry.chain + "|" + lower(entry.target), entry]));
+const keyOf = (chain, target) => chain + "|" + lower(target);
+
+function parseLookback(text) {
+  const digits = String(text).replace(/[,\s_]/g, "");
+  if (!/^\d+$/.test(digits)) return null;
+  const value = Number(digits);
+  return value >= 1 && value <= CONFIG.maxLookback ? value : null;
+}
+
+/** A URL for an override, or null. `fetch` refuses each scheme that is not a web scheme. */
+function parseRpcUrl(text) {
+  try {
+    const url = new URL(String(text).trim());
+    return url.host && /^[a-z]{4,5}:$/.test(url.protocol) ? url.href : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function readSettings() {
+  let params;
+  try { params = new URLSearchParams(location.hash.slice(1)); } catch (error) { params = new URLSearchParams(); }
+  const lookback = parseLookback(params.get("lookback") || "");
+  const auto = Number(params.get("auto"));
+  const theme = params.get("theme");
+  return {
+    lookback: lookback || CONFIG.lookback,
+    auto: params.has("auto") && AUTO_CHOICES.includes(auto) ? auto : DEFAULT_AUTO,
+    theme: theme === "light" || theme === "dark" ? theme : null,
+    rpc: new Map(CHAINS.map((chain) => [chain.cfg.name, parseRpcUrl(params.get("rpc." + chain.cfg.name) || "")])),
+  };
+}
+
+function writeSettings() {
+  const params = new URLSearchParams();
+  if (S.lookback !== CONFIG.lookback) params.set("lookback", String(S.lookback));
+  if (S.auto !== DEFAULT_AUTO) params.set("auto", String(S.auto));
+  if (S.theme) params.set("theme", S.theme);
+  for (const chain of CHAINS) if (chain.override) params.set("rpc." + chain.cfg.name, chain.override);
+  const fragment = params.toString();
+  if (fragment === location.hash.slice(1)) return;
+  try {
+    history.replaceState(null, "", fragment ? "#" + fragment : location.pathname + location.search);
+  } catch (error) {
+    location.hash = fragment;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// State reads. One read of a chain uses one URL and one block: the head that this URL reports. Each
+// `eth_call` and each `eth_getBalance` names that block number, so each value on the page is the value
+// of a direct read at the block that the page shows.
+// ---------------------------------------------------------------------------------------------
+
+const call = (source, to, name, ...args) => ({
+  what: `${source}.${name}`, method: "eth_call", to, fragment: ABI[source].functions[name], args,
+});
+const balance = (of) => ({ what: "eth_getBalance", method: "eth_getBalance", of });
+const header = (number) => ({ what: "eth_getBlockByNumber", method: "eth_getBlockByNumber", number, optional: true });
+
+async function runReads(url, block, reads, signal) {
+  if (!reads.length) return [];
+  const tagOf = hex(block);
+  const answers = await post(url, reads.map((read) => {
+    if (read.method === "eth_call") {
+      return { method: read.method, params: [{ to: read.to, data: callData(read.fragment, read.args) }, tagOf] };
+    }
+    if (read.method === "eth_getBalance") return { method: read.method, params: [read.of, tagOf] };
+    return { method: read.method, params: [hex(read.number), false] };
+  }), signal);
+  return answers.map((answer, index) => {
+    const read = reads[index];
+    if (read.optional) return answer.error || !answer.result ? null : answer.result;
+    const result = need(answer, read.what);
+    if (read.method === "eth_getBalance") {
+      if (typeof result !== "string" || !/^0x[0-9a-fA-F]+$/.test(result)) {
+        throw new RpcFailure("rpc", "eth_getBalance gave no number");
+      }
+      return BigInt(result);
+    }
+    return decodeWords(read.fragment.outputs, result, read.what);
+  });
+}
+
+const timeOf = (block) => (block && block.timestamp ? Number(BigInt(block.timestamp)) : null);
+
+/** The targets of a chain that the page reads: the enrollments of the manifest and the list of the hub. */
+function targetsOf(chain) {
+  const found = new Map();
+  for (const entry of CONFIG.enrollments) if (entry.chain === chain.cfg.name) found.set(lower(entry.target), entry.target);
+  const lists = HUB.data ? HUB.data.lists[chain.cfg.name] || [] : [];
+  for (const target of lists) if (!found.has(lower(target))) found.set(lower(target), target);
+  return [...found.values()];
+}
+
+async function readHub(chain, url, head, signal) {
+  const { contract: hub, ledger } = chain.cfg;
+  const vaults = CHAINS.filter((other) => other.cfg.role === "vault");
+  const first = await runReads(url, head, [
+    balance(hub), call("ledger", ledger, "reserves", hub), call("ledger", ledger, "debt", hub),
+    call("hub", hub, "paused"), call("hub", hub, "cronSubscribed"), call("hub", hub, "principalFloor"),
+    call("hub", hub, "selfReserveTarget"), header(head),
+    ...CHAINS.map((other) => call("hub", hub, "targetCount", other.cfg.chainId)),
+    ...vaults.map((other) => call("hub", hub, "vaultInfo", other.cfg.chainId)),
+  ], signal);
+  const [principal, float, debt, paused, cron, floor, floatTarget, headBlock] = first;
+  const counts = first.slice(8, 8 + CHAINS.length).map(Number);
+  const infos = first.slice(8 + CHAINS.length);
+  if (counts.some((count) => count > MAX_TARGETS)) {
+    throw new RpcFailure("rpc", `the hub lists more than ${MAX_TARGETS} targets on one chain`);
+  }
+
+  const places = CHAINS.flatMap((other, at) => Array.from({ length: counts[at] }, (_, index) => [other, index]));
+  const listed = await runReads(url, head,
+    places.map(([other, index]) => call("hub", hub, "targetAt", other.cfg.chainId, index)), signal);
+  const lists = Object.fromEntries(CHAINS.map((other) => [other.cfg.name, []]));
+  places.forEach(([other], at) => lists[other.cfg.name].push(listed[at]));
+
+  // The state of each target of a list and of each enrollment of the manifest; the ledger of the Lasna ones.
+  const targets = new Map();
+  for (const entry of CONFIG.enrollments) targets.set(keyOf(entry.chain, entry.target), [byName.get(entry.chain), entry.target]);
+  for (const other of CHAINS) {
+    for (const target of lists[other.cfg.name]) {
+      if (!targets.has(keyOf(other.cfg.name, target))) targets.set(keyOf(other.cfg.name, target), [other, target]);
+    }
+  }
+  const reads = [], slots = [];
+  for (const [key, [other, target]] of targets) {
+    slots.push([key, "info"]);
+    reads.push(call("hub", hub, "targetInfo", other.cfg.chainId, target));
+    if (other === chain) {
+      slots.push([key, "debt"], [key, "reserves"]);
+      reads.push(call("ledger", ledger, "debt", target), call("ledger", ledger, "reserves", target));
+    }
+  }
+  const values = await runReads(url, head, reads, signal);
+  const info = {};
+  slots.forEach(([key, field], at) => { (info[key] = info[key] || {})[field] = values[at]; });
+
+  return {
+    headTime: timeOf(headBlock),
+    data: {
+      contract: { principal, float, debt, paused, cron, floor, floatTarget },
+      vaultInfo: Object.fromEntries(vaults.map((other, at) => [other.cfg.name, infos[at]])),
+      lists, info,
+    },
+  };
+}
+
+async function readVault(chain, url, head, signal) {
+  const { contract: vault, ledger } = chain.cfg;
+  const targets = targetsOf(chain);
+  const values = await runReads(url, head, [
+    balance(vault), call("ledger", ledger, "reserves", vault), call("ledger", ledger, "debt", vault),
+    call("vault", vault, "paused"), call("vault", vault, "principalFloor"), call("vault", vault, "selfReserveTarget"),
+    header(head),
+    ...targets.flatMap((target) => [
+      call("vault", vault, "hasPolicy", target), call("vault", vault, "policyOf", target),
+      call("vault", vault, "quarantined", target), call("ledger", ledger, "debt", target),
+      call("ledger", ledger, "reserves", target),
+    ]),
+  ], signal);
+  const [principal, float, debt, paused, floor, floatTarget, headBlock] = values;
+  const records = {};
+  targets.forEach((target, at) => {
+    const [hasPolicy, policy, quarantined, targetDebt, reserves] = values.slice(7 + at * 5, 12 + at * 5);
+    records[lower(target)] = { hasPolicy, policy, quarantined, debt: targetDebt, reserves };
+  });
+  return {
+    headTime: timeOf(headBlock),
+    data: { contract: { principal, float, debt, paused, floor, floatTarget }, targets: records },
+  };
+}
+
+/** One read through one URL: the chain ID, the head, then each value at that head. */
+async function snapshot(chain, url, signal) {
+  const first = await post(url, [{ method: "eth_chainId", params: [] }, { method: "eth_blockNumber", params: [] }], signal);
+  const id = Number(BigInt(need(first[0], "eth_chainId")));
+  if (id !== chain.cfg.chainId) {
+    throw new RpcFailure("rpc", `the URL answers for chain ${id}, and the manifest has ${chain.cfg.chainId}`);
+  }
+  const head = Number(BigInt(need(first[1], "eth_blockNumber")));
+  const read = chain.cfg.role === "hub" ? readHub : readVault;
+  return { head, ...(await read(chain, url, head, signal)) };
+}
+
+const STATE_WAITS = [6000, 15000];              // waits of a state read that a rate limit refused
+const LOG_WAITS = [5000, 10000, 20000, 40000, 60000, 60000]; // waits of the log queries of one window
+const BLOCK_NOT_READY = /header not found|unknown block|block not found|not available|not yet|ahead of|out of range/i;
+
+/**
+ * Reads the state of a chain: the first URL, and after a failure the next one. If no URL gives the full
+ * state, the chain goes into its error state and each of its numbers is removed. A node that refuses the
+ * read only because of its request rate limit gets two more tries, after a wait.
+ * Returns true after a read, false after the failure of each URL, null if a newer read took over.
+ */
+async function loadState(chain) {
+  if (chain.abort) chain.abort.abort();
+  const control = chain.abort = new AbortController();
+  const gen = ++chain.gen;
+  chain.busy = true;
+  chain.waitUntil = null;
+  let attempts;
+  try {
+    for (let pass = 0; ; pass++) {
+      // A chain with values keeps the record of its last read on the page until this read ends.
+      attempts = chain.urls.map((url) => ({ url, state: "untried" }));
+      if (chain.phase !== "ok") chain.attempts = attempts;
+      render();
+      let limited = false;
+      for (let index = 0; index < chain.urls.length; index++) {
+        const attempt = attempts[index];
+        for (let round = 0; ; round++) {
+          const started = performance.now();
+          try {
+            const result = await snapshot(chain, chain.urls[index], control.signal);
+            if (gen !== chain.gen) return null;
+            Object.assign(attempt, { state: "ok", ms: Math.round(performance.now() - started), error: null });
+            const wasError = chain.phase === "error";
+            Object.assign(chain, {
+              phase: "ok", busy: false, attempts, used: index, head: result.head, headTime: result.headTime,
+              data: result.data, readAt: Date.now(), failedAt: null,
+            });
+            if (index > 0) announce(`${chain.cfg.name}: URL ${index + 1} of ${chain.urls.length} is in use`);
+            else if (wasError) announce(`${chain.cfg.name}: the chain answers again`);
+            render();
+            return true;
+          } catch (error) {
+            if (error instanceof Cancelled || gen !== chain.gen) return null;
+            const known = error instanceof RpcFailure;
+            // A node behind a balancer can report a head that its next answer does not have yet: one more try.
+            if (round === 0 && known && error.kind === "rpc" && BLOCK_NOT_READY.test(error.message)) {
+              await sleep(600, control.signal);
+              continue;
+            }
+            Object.assign(attempt, { state: "failed", error: known ? error.message : String(error) });
+            if (!known) console.error(error);
+            limited = limited || (known && error.limited);
+            render();
+            break;
+          }
+        }
+      }
+      if (!limited || pass >= STATE_WAITS.length) break;
+      chain.waitUntil = Date.now() + STATE_WAITS[pass];
+      render();
+      await sleep(STATE_WAITS[pass], control.signal);
+      chain.waitUntil = null;
+    }
+  } catch (error) {
+    if (error instanceof Cancelled) return null;
+    throw error;
+  }
+  // No URL answered: no stale number stays on the page.
+  failChain(chain, attempts);
+  return false;
+}
+
+/** The error state of a chain: no URL answered, and no number of the chain stays on the page. */
+function failChain(chain, attempts) {
+  Object.assign(chain, {
+    phase: "error", busy: false, attempts, used: null, head: null, headTime: null, data: null, events: null,
+    readAt: null, failedAt: Date.now(), waitUntil: null,
+  });
+  announce(`${chain.cfg.name}: no RPC URL answered. The numbers of this chain are removed.`);
+  render();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Events. The window of a chain is [max(deployBlock, head - lookback), head], with the head of the state
+// read. The requests go from the newest chunk to the oldest one, and no request is wider than the chunk.
+// ---------------------------------------------------------------------------------------------
+
+class Narrower extends Error {
+  constructor(size) { super("narrower"); this.size = size; }
+}
+
+/** A smaller block range for a node that refused `span` blocks, or 0 if the error is not about the range. */
+function narrower(error, span) {
+  const text = `${error.message || ""} ${error.data ? JSON.stringify(error.data) : ""}`;
+  if (/rate|too many requests|throttl|quota|credit|capacity/i.test(text)) return 0;
+  if (!/range|limit|exceed|more than|max|too large|too many|size|10000 results/i.test(text) || span <= 1) return 0;
+  const named = (text.replace(/(\d)[,_](?=\d{3})/g, "$1").match(/\d+/g) || []).map(Number)
+    .filter((value) => value >= 1 && value < span);
+  return named.length ? Math.max(...named) : Math.floor(span / 2);
+}
+
+/**
+ * Sends the log queries of one block range. The URL of the state read is first. Another URL must answer
+ * for the same chain and must have the last block of the range.
+ */
+async function logRequest(chain, queries, from, to, signal) {
+  const order = [chain.used, ...chain.urls.map((_, index) => index).filter((index) => index !== chain.used)];
+  const reasons = new Map();
+  let answered = false, limited = false;
+  for (const index of order) {
+    const url = chain.urls[index], checked = index === chain.used;
+    const calls = queries.map((query) => ({
+      method: "eth_getLogs", params: [{ ...query, fromBlock: hex(from), toBlock: hex(to) }],
+    }));
+    if (!checked) calls.unshift({ method: "eth_chainId", params: [] }, { method: "eth_blockNumber", params: [] });
+    try {
+      const answers = await post(url, calls, signal);
+      answered = true;
+      if (!checked) {
+        if (Number(BigInt(need(answers[0], "eth_chainId"))) !== chain.cfg.chainId) {
+          throw new RpcFailure("rpc", "the URL answers for another chain");
+        }
+        if (Number(BigInt(need(answers[1], "eth_blockNumber"))) < to) {
+          throw new RpcFailure("rpc", `the node does not have block ${fmtInt(to)} yet`);
+        }
+        answers.splice(0, 2);
+      }
+      const refused = answers.find((answer) => answer.error);
+      if (refused) {
+        const size = narrower(refused.error, to - from + 1);
+        if (size) throw new Narrower(size);
+        throw new RpcFailure("rpc", "eth_getLogs: " + describe(refused.error), isLimit(refused.error, refused.status));
+      }
+      if (answers.some((answer) => !Array.isArray(answer.result))) throw new RpcFailure("rpc", "eth_getLogs gave no list");
+      if (!checked && chain.attempts[index]) Object.assign(chain.attempts[index], { state: "ok", error: null, logsOnly: true });
+      return answers.map((answer) => answer.result);
+    } catch (error) {
+      if (error instanceof Cancelled || error instanceof Narrower) throw error;
+      if (!(error instanceof RpcFailure)) throw error;
+      if (error.kind === "rpc") answered = true;
+      limited = limited || error.limited;
+      reasons.set(url, error.message);
+    }
+  }
+  const failure = new RpcFailure(answered ? "rpc" : "transport",
+    [...reasons].map(([url, reason]) => `${host(url)}: ${reason}`).join("; "), limited);
+  failure.reasons = reasons;
+  throw failure;
+}
+
+/** The block time of each row that has none, with one header request for each block. A failure leaves no time. */
+async function fillTimes(chain, rows, signal) {
+  const wanted = [...new Set(rows.filter((row) => row.time === null && !chain.times.has(row.block)).map((row) => row.block))]
+    .slice(0, MAX_BATCH);
+  if (wanted.length) {
+    try {
+      const answers = await post(chain.urls[chain.used],
+        wanted.map((block) => ({ method: "eth_getBlockByNumber", params: [hex(block), false] })), signal);
+      answers.forEach((answer, at) => {
+        const time = timeOf(answer.result);
+        if (time !== null) chain.times.set(wanted[at], time);
+      });
+    } catch (error) {
+      if (error instanceof Cancelled) throw error;
+    }
+  }
+  for (const row of rows) if (row.time === null && chain.times.has(row.block)) row.time = chain.times.get(row.block);
+}
+
+async function scanEvents(chain) {
+  const gen = chain.scanned = chain.gen, signal = chain.abort.signal, cfg = chain.cfg;
+  const to = chain.head, from = Math.max(cfg.deployBlock, to - S.lookback);
+  const recipients = cfg.role === "vault" ? [cfg.contract, ...targetsOf(chain)] : [];
+  const queries = cfg.role === "hub"
+    ? [{ address: cfg.contract, topics: [Object.values(ABI.hub.events).map((event) => event.topic)] }]
+    : [{ address: cfg.contract, topics: [Object.values(ABI.vault.events).map((event) => event.topic)] },
+       { address: cfg.ledger, topics: [[ABI.ledger.events.CallbackFailure.topic], recipients.map(topicOf)] }];
+  const key = [S.lookback, chain.urls.join(" "), recipients.map(lower).join(" ")].join("|");
+  const previous = chain.events;
+  const events = chain.events = {
+    key, from, to, phase: "scanning", rows: [], failures: [], error: null, blocks: 0, left: 0,
+    clamped: from === cfg.deployBlock, empty: from > to, fromTime: null, waitUntil: null, waits: 0,
+  };
+  const pending = [];
+  if (previous && previous.phase === "done" && previous.key === key && previous.to <= to && previous.to + 1 >= from) {
+    // The window moved with the head: keep the rows that it still has, and read only the new blocks.
+    events.rows = previous.rows.filter((row) => row.block >= from);
+    events.failures = previous.failures.filter((failure) => failure.block >= from);
+    if (previous.to < to) pending.push([previous.to + 1, to]);
+  } else if (!events.empty) {
+    pending.push([from, to]);
+  }
+  events.blocks = events.left = pending.reduce((sum, [low, high]) => sum + high - low + 1, 0);
+  render();
+  if (!events.empty) {
+    // The time of the first block of the window, to show how long the window is. A failure shows no time.
+    post(chain.urls[chain.used], [{ method: "eth_getBlockByNumber", params: [hex(from), false] }], signal)
+      .then(([answer]) => { if (chain.events === events) { events.fromTime = timeOf(answer.result); render(); } })
+      .catch(() => {});
+  }
+
+  const take = () => {
+    if (!pending.length) return null;
+    const range = pending[0], high = range[1], low = Math.max(range[0], high - chain.chunk + 1);
+    if (low === range[0]) pending.shift(); else range[1] = low - 1;
+    return [low, high];
+  };
+  const worker = async () => {
+    for (let range; (range = take());) {
+      const [low, high] = range;
+      if (Math.ceil(events.left / chain.chunk) > MAX_LOG_REQUESTS) {
+        throw new RpcFailure("rpc", `the node gives ${fmtInt(chain.chunk)} blocks for each log request, so this `
+          + `window needs more than ${MAX_LOG_REQUESTS} requests. Make the lookback smaller, or set another RPC URL.`);
+      }
+      let results;
+      try {
+        if (events.waitUntil) await sleep(Math.max(0, events.waitUntil - Date.now()), signal);
+        results = await logRequest(chain, queries, low, high, signal);
+        events.waitUntil = null;
+      } catch (error) {
+        const limited = error instanceof RpcFailure && error.limited;
+        if (!(error instanceof Narrower) && !limited) throw error;
+        if (limited) {
+          // Each node that answers refuses the rate: the workers wait, then this range goes out again.
+          if (!events.waitUntil || events.waitUntil <= Date.now()) {
+            if (events.waits >= LOG_WAITS.length) throw error;
+            events.waitUntil = Date.now() + LOG_WAITS[events.waits++];
+            render();
+          }
+        } else {
+          chain.chunk = Math.min(chain.chunk, error.size);
+        }
+        pending.push([low, high]);
+        pending.sort((a, b) => b[1] - a[1]); // the newest range is the next one
+        continue;
+      }
+      if (gen !== chain.gen) throw new Cancelled();
+      const rows = [];
+      for (const log of results.flat()) {
+        const row = decodeLog(log);
+        if (!row) continue;
+        if (row.name === "CallbackFailure") events.failures.push({ recipient: lower(row.args.target_), block: row.block });
+        else rows.push(row);
+      }
+      await fillTimes(chain, rows, signal);
+      if (gen !== chain.gen) throw new Cancelled();
+      events.rows.push(...rows);
+      events.left -= high - low + 1;
+      render();
+    }
+  };
+  try {
+    await Promise.all(Array.from({ length: SCAN_WORKERS }, worker));
+    if (gen !== chain.gen) return;
+    events.rows.sort((a, b) => b.block - a.block || b.index - a.index);
+    events.phase = "done";
+  } catch (error) {
+    if (error instanceof Cancelled || gen !== chain.gen) return;
+    if (!(error instanceof RpcFailure)) console.error(error);
+    if (error instanceof RpcFailure && error.kind === "transport") {
+      // No URL of the chain answers any more: the chain has no number that the page can stand for.
+      chain.abort.abort();
+      chain.gen++;
+      failChain(chain, chain.urls.map((url) => ({
+        url, state: "failed", error: (error.reasons && error.reasons.get(url)) || error.message,
+      })));
+    } else {
+      // The nodes answer, and they refuse the log queries: the chain has its state and no event number.
+      Object.assign(events, { phase: "error", rows: [], failures: [], error: error.message || String(error) });
+      announce(`${chain.cfg.name}: the event queries failed`);
+    }
+  }
+  render();
+}
+
+/**
+ * Reads one chain: its state, then its events. The event queries of a vault chain name the targets of the
+ * hub list, so they start when the read of the hub ended: one scan for each read.
+ */
+async function loadChain(chain) {
+  const read = await loadState(chain);
+  if (read === null) return; // a newer read of this chain took over
+  const missing = (other) => targetsOf(other).some((target) => !other.data.targets[lower(target)]);
+  if (chain === HUB) {
+    for (const other of CHAINS) {
+      if (other === HUB || other.phase !== "ok" || other.busy) continue;
+      // A hub list can name a target that the read of the vault chain did not have: read that chain again.
+      if (missing(other)) loadChain(other).catch(console.error);
+      else if (other.scanned !== other.gen) scanEvents(other).catch(console.error);
+    }
+    if (read) await scanEvents(chain);
+    return;
+  }
+  if (!read || HUB.busy) return;
+  if (missing(chain)) return loadChain(chain);
+  await scanEvents(chain);
+}
+
+async function readAll() {
+  S.reading++;
+  render();
+  try {
+    await Promise.all(CHAINS.map((chain) => loadChain(chain)));
+  } finally {
+    S.reading--;
+    S.lastRead = Date.now();
+    render();
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Derived rows. A severity is 0 (not managed), 1 (as it must be), 2 (the owner must look), 3 (failure).
+// ---------------------------------------------------------------------------------------------
+
+const UI = {
+  targets: { state: "all", chain: "all", text: "", sort: "attention", dir: "desc", open: new Set() },
+  events: { type: "all", chain: "all", more: false },
+};
+
+/** The funds of the hub and of each vault: one row for each contract. */
+function fundRows() {
+  return CHAINS.map((chain) => {
+    const row = { chain, role: chain.cfg.role, unit: chain.cfg.unit, flags: [], sev: 1, values: null, hubView: null };
+    if (chain.phase !== "ok") {
+      row.sev = chain.phase === "error" ? 3 : 1;
+      return row;
+    }
+    const v = row.values = chain.data.contract;
+    const flag = (sev, tone, text, mark) => { row.flags.push({ tone, text, mark }); row.sev = Math.max(row.sev, sev); };
+    if (v.debt > 0n) flag(3, "danger", "In debt", "debt");
+    if (row.role === "hub") {
+      if (v.paused) flag(2, "warning", "Paused", "parked");
+      if (!v.cron) flag(2, "warning", "Cron not subscribed", "warn");
+    } else {
+      const view = HUB.phase === "ok" ? HUB.data.vaultInfo[chain.cfg.name] : null;
+      row.hubView = view;
+      if (view) {
+        if (lower(view.vault) !== lower(chain.cfg.contract)) flag(3, "danger", "Hub has another vault", "error");
+        else if (!view.up) flag(3, "danger", "Down at the hub", "error");
+        if (view.pending > 0n) flag(2, "warning", `${fmtInt(view.pending)} pending`, "warn");
+      }
+      if (v.paused) flag(2, "warning", "Paused", "parked");
+    }
+    if (v.principal <= v.floor) flag(3, "danger", "Principal at the floor", "warn");
+    if (v.debt === 0n && v.float === 0n) flag(3, "danger", "Float empty", "warn");
+    else if (v.debt === 0n && v.float * 2n < v.floatTarget) flag(2, "warning", "Float low", "warn");
+    return row;
+  });
+}
+
+/** One row for each target of a hub list and for each enrollment of the manifest. */
+function targetRows() {
+  const hub = HUB.phase === "ok" ? HUB.data : null;
+  const rows = new Map();
+  for (const entry of CONFIG.enrollments) {
+    rows.set(keyOf(entry.chain, entry.target), {
+      key: keyOf(entry.chain, entry.target), chain: byName.get(entry.chain), address: entry.target,
+      label: entry.label, guest: entry.guest, removed: entry.removed, manifest: true, listed: null,
+    });
+  }
+  if (hub) {
+    for (const row of rows.values()) row.listed = false;
+    for (const chain of CHAINS) {
+      for (const target of hub.lists[chain.cfg.name]) {
+        const key = keyOf(chain.cfg.name, target);
+        if (!rows.has(key)) {
+          rows.set(key, { key, chain, address: target, label: null, guest: false, removed: false, manifest: false });
+        }
+        rows.get(key).listed = true;
+      }
+    }
+  }
+
+  for (const row of rows.values()) {
+    const info = hub ? hub.info[row.key] : null;
+    const onHubChain = row.chain === HUB;
+    const record = !onHubChain && row.chain.phase === "ok" ? row.chain.data.targets[lower(row.address)] : null;
+    row.hubState = info ? CONFIG.targetStates[info.info.state] || `state ${info.info.state}` : null;
+    row.hubPolicy = info ? info.info.policy : null;
+    row.vault = record || null;
+    row.known = onHubChain ? Boolean(info) : Boolean(record);  // the ledger and the marks of the chain of the target
+    row.loading = (onHubChain ? HUB : row.chain).phase === "loading";
+    row.hubLoading = HUB.phase === "loading";
+    row.debt = onHubChain ? (info ? info.debt : null) : record ? record.debt : null;
+    row.reserves = onHubChain ? (info ? info.reserves : null) : record ? record.reserves : null;
+    // The marks: the policy of the hub for a Lasna target, the policy of the vault for a destination target.
+    const policy = onHubChain ? row.hubPolicy : record && record.hasPolicy ? record.policy : null;
+    const enrolled = onHubChain ? row.hubState && row.hubState !== "None" : Boolean(policy);
+    row.policy = enrolled ? policy : null;
+    row.low = row.policy ? row.policy.low : null;
+    row.high = row.policy ? row.policy.high : null;
+    row.vaultQuarantine = Boolean(record && record.quarantined);
+
+    row.tags = [];
+    row.notes = [];
+    row.sev = 1;
+    row.cat = "other";
+    const mark = (sev, tone, text, glyph) => { row.tags.push({ tone, text, mark: glyph }); row.sev = Math.max(row.sev, sev); };
+    const managed = row.hubState !== "Disarmed" && row.hubState !== "None";
+    if (row.hubState === null) {
+      if (!row.loading && HUB.phase === "error") mark(2, "outline", "Hub state not known", null);
+    } else if (row.hubState === "Active") {
+      row.cat = "active";
+      if (row.vaultQuarantine) {
+        row.cat = "quarantined";
+        mark(2, "warning", "Quarantined on the vault", "quarantine");
+        row.tags.push({ tone: "outline", text: "Active on the hub" });
+      } else {
+        mark(1, "success", "Active", "ok");
+      }
+    } else if (row.hubState === "Quarantined") {
+      row.cat = "quarantined";
+      mark(2, "warning", "Quarantined", "quarantine");
+      row.notes.push(["warning", "The hub pays no rescue for it. hub.release ends the quarantine."]);
+    } else if (row.hubState === "Parked") {
+      row.cat = "parked";
+      mark(2, "warning", "Parked", "parked");
+      if (row.vaultQuarantine) row.tags.push({ tone: "warning", text: "Quarantined on the vault", mark: "quarantine" });
+      row.notes.push(["warning", "The relay limit is reached: the hub sends no relay for it. hub.rearm starts it again."]);
+    } else if (row.hubState === "Disarmed") {
+      row.cat = "disarmed";
+      row.sev = 0;
+      row.tags.push({ tone: "", text: "Disarmed", mark: "disarmed" });
+      if (row.vaultQuarantine) row.tags.push({ tone: "outline", text: "Quarantined on the vault" });
+    } else {
+      row.sev = row.removed ? 0 : 2;
+      row.tags.push({ tone: "outline", text: "Not enrolled at the hub" });
+      if (!row.removed) row.notes.push(["warning", "The manifest has this enrollment, and the hub has no record of it."]);
+    }
+    // Count change 8: the hub sweeps a listed target until hub.disarm, also when the vault quarantined it.
+    row.sweepNote = Boolean(row.vaultQuarantine && row.listed);
+    if (row.sweepNote) {
+      row.notes.unshift(["warning", "The hub still has it in the sweep list of this chain. hub.disarm stops its sweep cost."]);
+    }
+    if (managed && !onHubChain && record && !record.hasPolicy) {
+      mark(2, "warning", "No vault policy", "warn");
+      row.notes.push(["warning", "The vault answers NoPolicy for it until vault.setPolicy."]);
+    }
+    if (managed && row.known) {
+      if (row.debt > 0n) mark(3, "danger", "In debt", "debt");
+      else if (row.low !== null && row.reserves < row.low) mark(2, "warning", "Below the low mark", "warn");
+    }
+    if (!row.known && !row.loading && managed) row.sev = Math.max(row.sev, 2);
+  }
+  return [...rows.values()];
+}
+
+function eventRows() {
+  const rows = [];
+  for (const chain of CHAINS) {
+    if (!chain.events) continue;
+    for (const row of chain.events.rows) rows.push({ ...row, chain });
+  }
+  // One order for each chain: block, then log index. Rows of two chains compare by their block time.
+  const timed = rows.every((row) => row.time !== null);
+  rows.sort((a, b) => {
+    if (a.chain === b.chain) return b.block - a.block || b.index - a.index;
+    if (timed && a.time !== b.time) return b.time - a.time;
+    return CHAINS.indexOf(a.chain) - CHAINS.indexOf(b.chain);
+  });
+  return { rows, timed };
+}
+
+const LOW_EVENTS = new Set(["HubLow", "VaultLow"]);
+const PAID_OUTCOMES = new Set(["Rescued", "ToppedUp"]);
+
+function labelOf(chain, target) {
+  const entry = ENROLLED.get(keyOf(chain.cfg.name, target));
+  if (entry) return entry.label;
+  return lower(target) === lower(chain.cfg.contract) ? (chain.cfg.role === "hub" ? "Hub" : "Vault") : null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Render
+// ---------------------------------------------------------------------------------------------
+
+const $ = (id) => document.getElementById(id);
+let queued = false;
+
+function render() {
+  if (queued) return;
+  queued = true;
+  setTimeout(draw, 30);
+}
+
+function isBusy() {
+  return S.reading > 0 || CHAINS.some((chain) => chain.busy || (chain.events && chain.events.phase === "scanning"));
+}
+
+function draw() {
+  queued = false;
+  const active = document.activeElement, focusKey = active && active.dataset ? active.dataset.fk : null;
+  const funds = fundRows(), targets = targetRows(), events = eventRows();
+  drawVerdict(funds, targets);
+  drawChains();
+  drawFunds(funds);
+  drawTargets(targets);
+  drawEvents(events);
+  drawDiagnostics(targets);
+  drawControls();
+  if (focusKey && document.activeElement !== active) {
+    const again = [...document.querySelectorAll("[data-fk]")].find((element) => element.dataset.fk === focusKey);
+    if (again) again.focus({ preventScroll: true });
+  }
+  document.body.dataset.phase = isBusy() ? "reading" : "idle";
+}
+
+function chips(holder, group, choices, current, pick) {
+  holder.replaceChildren(...choices.map(([value, text, count]) =>
+    h("button", {
+      class: "chip", type: "button", "aria-pressed": String(value === current), data: { fk: `${group}:${value}` },
+      onclick: () => { pick(value); render(); },
+    }, text, count === undefined ? null : h("span", { class: "chip__n" }, fmtInt(count)))));
+}
+
+function table(kind, caption, head, body) {
+  return h("table", { class: `table table--${kind}` },
+    h("caption", { class: "visually-hidden" }, caption),
+    h("thead", null, h("tr", null, head)), h("tbody", null, body));
+}
+
+const th = (text, right, extra) => h("th", { scope: "col", class: right ? "r" : null, ...(extra || {}) }, text);
+
+function gauge(tone, level, ticks, label) {
+  return h("div", { class: "gauge", "data-tone": tone, role: "img", "aria-label": label, title: label,
+    style: `--v:${Math.max(0, Math.min(100, level)).toFixed(1)}%` },
+    h("span", { class: "gauge__fill" }),
+    ticks.map((at) => h("span", { class: "gauge__tick", style: `--at:${at.toFixed(1)}%` })));
+}
+
+/** value / scale in percent, for wei values. */
+function percent(value, scale) {
+  return scale > 0n ? Number((value * 10000n) / scale) / 100 : 0;
+}
+
+function ago(at) {
+  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (seconds < 90) return `${seconds} s ago`;
+  if (seconds < 5400) return `${Math.round(seconds / 60)} min ago`;
+  return `${Math.round(seconds / 3600)} h ago`;
+}
+
+function clock(at) {
+  return new Date(at).toLocaleTimeString("en-GB", { hour12: false });
+}
+
+function span(seconds) {
+  if (seconds < 90) return `${Math.round(seconds)} s`;
+  if (seconds < 5400) return `${Math.round(seconds / 60)} min`;
+  if (seconds < 172800) return `${(seconds / 3600).toFixed(1)} h`;
+  return `${(seconds / 86400).toFixed(1)} d`;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function utc(seconds) {
+  const date = new Date(seconds * 1000), two = (value) => String(value).padStart(2, "0");
+  return `${MONTHS[date.getUTCMonth()]} ${two(date.getUTCDate())} ${two(date.getUTCHours())}:`
+    + `${two(date.getUTCMinutes())}:${two(date.getUTCSeconds())}`;
+}
+
+// Fleet status ---------------------------------------------------------------------------------
+
+function drawVerdict(funds, targets) {
+  const items = [];
+  const add = (sev, tone, text, mark, section) => items.push({ sev, tone, text, mark, section });
+  const count = (list, text) => `${list.length} ${text}${list.length === 1 ? "" : "s"}`;
+  const names = (list) => list.map((chain) => chain.cfg.name).join(", ");
+
+  const failed = CHAINS.filter((chain) => chain.phase === "error");
+  const first = CHAINS.filter((chain) => chain.phase === "loading");
+  const fallback = CHAINS.filter((chain) => chain.phase === "ok" && !chain.override && chain.used > 0);
+  const overridden = CHAINS.filter((chain) => chain.override);
+  const noEvents = CHAINS.filter((chain) => chain.phase === "ok" && chain.events && chain.events.phase === "error");
+  if (failed.length) add(3, "danger", `No answer: ${names(failed)}`, "error", "chains");
+  if (fallback.length) add(2, "warning", `Fallback RPC: ${names(fallback)}`, "fallback", "chains");
+  if (overridden.length) add(1, "info", `RPC override: ${names(overridden)}`, "override", "chains");
+  if (noEvents.length) add(2, "warning", `Event queries failed: ${names(noEvents)}`, "warn", "chains");
+
+  for (const row of funds) {
+    const name = row.role === "hub" ? "Hub" : `Vault ${row.chain.cfg.name}`;
+    for (const flag of row.flags) add(flag.tone === "danger" ? 3 : 2, flag.tone, `${name}: ${flag.text}`, flag.mark, "funds");
+  }
+
+  const group = (test, sev, tone, text, mark) => {
+    const list = targets.filter(test);
+    if (list.length) add(sev, tone, count(list, text), mark, "targets");
+  };
+  const managed = (row) => row.hubState !== "Disarmed" && row.hubState !== "None";
+  group((row) => managed(row) && row.known && row.debt > 0n, 3, "danger", "target in debt", "debt");
+  group((row) => row.sweepNote, 2, "warning", "target quarantined on a vault and still swept by the hub", "quarantine");
+  group((row) => row.hubState === "Quarantined", 2, "warning", "target quarantined by the hub", "quarantine");
+  group((row) => row.hubState === "Parked", 2, "warning", "target parked", "parked");
+  group((row) => managed(row) && row.known && row.debt === 0n && row.low !== null && row.reserves < row.low, 2, "warning",
+    "target below its low mark", "warn");
+  group((row) => row.tags.some((entry) => entry.text === "No vault policy"), 2, "warning", "target with no vault policy", "warn");
+
+  for (const chain of CHAINS) {
+    if (!chain.events) continue;
+    const low = chain.events.rows.filter((row) => LOW_EVENTS.has(row.name));
+    if (low.length) add(3, "danger", `${low[0].name} in the window: ${low.length}`, "warn", "events");
+  }
+
+  const worst = items.reduce((sev, item) => Math.max(sev, item.sev), 0);
+  const waiting = first.length > 0;
+  const head = worst === 3 ? "Alert" : worst === 2 ? "Attention" : waiting ? "Reading" : "No alert";
+  const tone = worst === 3 ? "var(--danger)" : worst === 2 ? "var(--warning)" : waiting ? "var(--line-3)" : "var(--success)";
+  const holder = $("verdict");
+  holder.style.setProperty("--tone", tone);
+  holder.dataset.state = head;
+  const answered = CHAINS.filter((chain) => chain.phase === "ok").length;
+  holder.replaceChildren(
+    h("span", { class: "verdict__head" }, head),
+    h("span", { class: "dim" }, `${answered} of ${CHAINS.length} chains read`,
+      waiting ? `, ${first.length} in progress` : ""),
+    h("span", { class: "verdict__items" }, items.sort((a, b) => b.sev - a.sev).map((item, index) =>
+      h("button", { class: `tag tag--${item.tone} verdict__item`, type: "button", data: { fk: `verdict:${item.text}` },
+        title: "Show the section", onclick: () => $(item.section).scrollIntoView({ behavior: "smooth", block: "start" }) },
+        item.mark && icon(item.mark), item.text))));
+}
+
+// Chains ---------------------------------------------------------------------------------------
+
+function buildChains() {
+  const rows = [];
+  for (const chain of CHAINS) {
+    const name = chain.cfg.name;
+    const input = h("input", {
+      class: "field", type: "url", id: `rpc-${name}`, placeholder: "URL of another node", autocomplete: "off",
+      spellcheck: "false", "aria-label": `Another RPC URL for ${name}`, "aria-describedby": `rpc-error-${name}`,
+    });
+    const use = h("button", { class: "btn", type: "submit" }, "Use");
+    const clear = h("button", { class: "btn btn--ghost", type: "button", hidden: true,
+      onclick: () => setOverride(chain, null) }, "Clear");
+    const error = h("span", { class: "note note--danger", id: `rpc-error-${name}`, role: "alert", hidden: true });
+    const form = h("form", { class: "over", novalidate: true, onsubmit: (event) => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text) return setOverride(chain, null);
+      const url = parseRpcUrl(text);
+      error.hidden = Boolean(url);
+      input.setAttribute("aria-invalid", String(!url));
+      if (!url) { error.textContent = "This is not a URL of a node."; return; }
+      setOverride(chain, url);
+    } }, input, use, clear);
+    input.addEventListener("input", () => { error.hidden = true; input.removeAttribute("aria-invalid"); });
+
+    const expander = h("button", { class: "expander", type: "button", "aria-expanded": "false",
+      "aria-controls": `chain-detail-${name}`, "aria-label": `Details of ${name}`,
+      onclick: () => { chain.open = !chain.open; render(); } }, icon("chevron"));
+    const cells = { status: h("td"), block: h("td", { class: "r" }), rpc: h("td"), window: h("td") };
+    const row = h("tr", { class: "row", data: { chain: name } },
+      h("td", { class: "rail" }, h("div", { style: "display:flex;gap:6px;align-items:flex-start" }, expander,
+        h("div", null, h("span", { class: "strong" }, name),
+          h("span", { class: "cap" }, `chain ${chain.cfg.chainId} \u00b7 ${chain.cfg.role} \u00b7 ${chain.cfg.unit}`)))),
+      cells.status, cells.block, cells.rpc, cells.window, h("td", null, form, error));
+    const alert = h("tr", { class: "alert", hidden: true }, h("td", { colspan: 6 }));
+    const detail = h("tr", { class: "detail", id: `chain-detail-${name}`, hidden: true }, h("td", { colspan: 6 }));
+    chain.el = { row, cells, input, clear, alert, detail, expander, error };
+    rows.push(row, alert, detail);
+  }
+  $("chains-body").replaceChildren(table("chains", "The chains, their RPC state, their latest block and their event window", [
+    th("Chain"), th("RPC state"), th("Latest block", true), th("RPC in use"), th("Event window (blocks)"),
+    th("Set another RPC URL"),
+  ], rows));
+}
+
+function chainStatus(chain) {
+  const busy = chain.busy ? [h("span", { class: "spinner", role: "img", "aria-label": "Reading" }),
+    chain.waitUntil && h("span", { class: "cap" }, `rate limit: next try at ${clock(chain.waitUntil)}`)] : null;
+  if (chain.phase === "loading") return [0, h("span", { class: "tags" }, tag("", "Reading"), busy)];
+  if (chain.phase === "error") {
+    return [3, [h("span", { class: "tags" }, tag("danger", "No answer", "error"), busy),
+      h("span", { class: "note note--danger" }, "The numbers of this chain are removed.")]];
+  }
+  const firstFailure = chain.attempts.find((attempt) => attempt.state === "failed");
+  if (chain.override) {
+    return ["info", [h("span", { class: "tags" }, tag("info", "Override", "override"), busy),
+      h("span", { class: "note" }, "Each request of this chain goes to the URL that you set. The list of the manifest is not in use.")]];
+  }
+  if (chain.used > 0) {
+    return [2, [h("span", { class: "tags" }, tag("warning", "Fallback RPC", "fallback"), busy),
+      h("span", { class: "note note--warning" },
+        `URL ${chain.used + 1} of ${chain.urls.length} answers. ${firstFailure ? `URL 1: ${firstFailure.error}` : ""}`)]];
+  }
+  return [1, h("span", { class: "tags" }, tag("success", "OK", "ok"), busy)];
+}
+
+function chainWindow(chain) {
+  const events = chain.events;
+  if (chain.phase === "loading") return skeleton("18ch");
+  if (chain.phase === "error" || !events) return noData(`window:${chain.cfg.name}`);
+  if (events.empty) {
+    return [h("span", { data: { field: `window:${chain.cfg.name}`, from: "", to: "" } }, "No query"),
+      h("span", { class: "cap" }, `The head is below deployBlock ${fmtInt(chain.cfg.deployBlock)}.`)];
+  }
+  const blocks = events.to - events.from + 1;
+  const seconds = chain.headTime !== null && events.fromTime !== null ? chain.headTime - events.fromTime : null;
+  const parts = [`${fmtInt(blocks)} blocks`];
+  if (seconds !== null && seconds >= 0) parts.push(`about ${span(seconds)}`);
+  parts.push(events.clamped ? "starts at deployBlock" : `lookback ${fmtInt(S.lookback)}`);
+  const done = events.blocks ? 100 - (events.left / events.blocks) * 100 : 100;
+  return [
+    h("span", { class: "num", data: { field: `window:${chain.cfg.name}`, from: String(events.from), to: String(events.to), phase: events.phase } },
+      `${fmtInt(events.from)} \u2013 ${fmtInt(events.to)}`),
+    h("span", { class: "cap" }, parts.join(" \u00b7 ")),
+    events.phase === "scanning" && [
+      h("div", { class: "progress", role: "progressbar", "aria-label": `Event queries of ${chain.cfg.name}`,
+        "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.round(done)), style: `--v:${done.toFixed(1)}%` }, h("i")),
+      h("span", { class: "cap" }, `Reading the logs: ${Math.round(done)}%`),
+      events.waitUntil && h("span", { class: "note note--warning" },
+        `The node limits the request rate. The next request goes out at ${clock(events.waitUntil)}.`)],
+    events.phase === "error" && [h("span", { class: "tags", style: "margin-top:4px" }, tag("warning", "Event queries failed", "warn")),
+      h("span", { class: "note note--warning" }, events.error)],
+  ];
+}
+
+function drawChains() {
+  for (const chain of CHAINS) {
+    const { row, cells, input, clear, alert, detail, expander } = chain.el;
+    const name = chain.cfg.name;
+    const [sev, status] = chainStatus(chain);
+    row.dataset.sev = String(sev);
+    row.dataset.state = chain.phase === "ok" ? (chain.override ? "override" : chain.used > 0 ? "fallback" : "ok") : chain.phase;
+    cells.status.replaceChildren(...[status].flat());
+
+    if (chain.phase === "ok") {
+      cells.block.replaceChildren(
+        h("span", { class: "num blockno", data: { field: `block:${name}`, raw: String(chain.head) } }, fmtInt(chain.head)),
+        h("span", { class: "cap age", data: { at: String(chain.readAt) } }, `read ${ago(chain.readAt)}`));
+      const attempt = chain.attempts[chain.used] || {};
+      cells.rpc.replaceChildren(
+        h("span", { class: "mono truncate", title: chain.override ? "The URL that you set" : chain.urls[chain.used],
+          data: { field: `rpc:${name}`, raw: chain.urls[chain.used] } }, host(chain.urls[chain.used])),
+        h("span", { class: "cap" }, chain.override ? "set in this page"
+          : `URL ${chain.used + 1} of ${chain.urls.length}`, attempt.ms !== undefined ? ` \u00b7 ${fmtInt(attempt.ms)} ms` : ""));
+    } else if (chain.phase === "loading") {
+      cells.block.replaceChildren(skeleton("9ch"));
+      cells.rpc.replaceChildren(skeleton("16ch"));
+    } else {
+      cells.block.replaceChildren(noData(`block:${name}`));
+      cells.rpc.replaceChildren(h("span", { class: "nodata" }, "none"),
+        h("span", { class: "cap" }, `${chain.urls.length} URL${chain.urls.length === 1 ? "" : "s"} tried`));
+    }
+    cells.window.replaceChildren(...[chainWindow(chain)].flat(Infinity).filter(Boolean));
+
+    if (document.activeElement !== input) input.value = chain.override || "";
+    clear.hidden = !chain.override;
+
+    alert.hidden = chain.phase !== "error";
+    if (chain.phase === "error") {
+      alert.firstChild.replaceChildren(h("div", { class: "notice", role: "alert" }, icon("error"),
+        h("div", null,
+          h("div", { class: "notice__title" }, `No RPC URL of ${name} answered. The page shows no number of this chain.`),
+          h("ul", null, chain.attempts.map((attempt) => h("li", null, `${host(attempt.url)}: ${attempt.error || "not tried"}`))),
+          h("span", { class: "cap" }, `Last try at ${clock(chain.failedAt)}. Set another RPC URL in this row, or read again.`)),
+        h("button", { class: "btn", type: "button", data: { fk: `retry:${name}` }, disabled: chain.busy,
+          onclick: () => loadChain(chain).catch(console.error) }, "Read again")));
+    }
+
+    expander.setAttribute("aria-expanded", String(chain.open));
+    detail.hidden = !chain.open;
+    if (chain.open) {
+      const kv = (term, value) => h("div", { class: "kv" }, h("dt", null, term), h("dd", null, value));
+      detail.firstChild.replaceChildren(h("dl", { class: "detail__body" },
+        kv(chain.cfg.role === "hub" ? "Hub" : "Vault", address(chain.cfg.contract, `contract:${name}`)),
+        kv("deployBlock", h("span", { class: "num" }, fmtInt(chain.cfg.deployBlock))),
+        kv(chain.cfg.role === "hub" ? "System contract (ledger)" : "Callback proxy (ledger)", address(chain.cfg.ledger, `ledger:${name}`)),
+        kv("Log request", `${fmtInt(chain.chunk)} blocks at most`),
+        h("div", { class: "kv urls" }, h("dt", null, chain.override ? "RPC URL set in this page" : "RPC URLs of the manifest, in order"),
+          h("dd", null, h("ol", null, chain.attempts.map((attempt, index) => h("li", null,
+            h("span", { class: "dim num" }, `${index + 1}.`),
+            h("span", { class: "mono", title: chain.override ? null : attempt.url }, host(attempt.url)),
+            attempt.state === "ok" ? tag("success", index === chain.used ? `in use${attempt.ms !== undefined ? ` \u00b7 ${fmtInt(attempt.ms)} ms` : ""}` : "answers")
+              : attempt.state === "failed" ? [tag("danger", "failed"), h("span", { class: "dim" }, attempt.error)]
+                : tag("outline", "not tried"))))))));
+    }
+  }
+}
+
+// Funds ----------------------------------------------------------------------------------------
+
+function drawFunds(rows) {
+  const body = rows.map((row) => {
+    const chain = row.chain, name = chain.cfg.name, v = row.values, field = (key) => `funds:${name}.${key}`;
+    const loading = chain.phase === "loading";
+    const cell = (value, key) => h("td", { class: "r" }, loading ? skeleton("9ch") : amount(value, row.unit, field(key)));
+    let state;
+    if (loading) state = skeleton("12ch");
+    else if (!v) state = h("span", { class: "tags" }, tag("danger", "No data", "error"));
+    else {
+      const quiet = [];
+      if (row.role === "hub") {
+        if (!v.paused) quiet.push("Not paused");
+        if (v.cron) quiet.push("cron subscribed");
+      } else {
+        if (row.hubView && row.hubView.up && lower(row.hubView.vault) === lower(chain.cfg.contract)) quiet.push("Up at the hub");
+        if (row.hubView && row.hubView.pending === 0n) quiet.push("0 pending");
+        if (!v.paused) quiet.push("not paused");
+      }
+      state = [
+        row.flags.length ? h("span", { class: "tags" }, row.flags.map((flag) => tag(flag.tone, flag.text, flag.mark))) : null,
+        quiet.length ? h("span", { class: row.flags.length ? "cap" : null }, quiet.join(" \u00b7 ")) : null,
+        row.role === "vault" && !row.hubView && h("span", { class: "cap" },
+          HUB.phase === "loading" ? "Reading the hub view" : "Up or down state not known: the hub chain gave no answer"),
+        h("span", { hidden: true, data: { field: field("paused"), raw: String(v.paused) } }),
+        row.role === "hub" ? h("span", { hidden: true, data: { field: field("cron"), raw: String(v.cron) } }) : null,
+        row.hubView ? [h("span", { hidden: true, data: { field: field("up"), raw: String(row.hubView.up) } }),
+          h("span", { hidden: true, data: { field: field("pending"), raw: String(row.hubView.pending) } })] : null,
+      ];
+    }
+    let level;
+    if (loading) level = skeleton("12ch");
+    else if (!v) level = noData();
+    else {
+      const share = percent(v.float, v.floatTarget);
+      const tone = v.debt > 0n || v.float === 0n ? "bad" : v.float * 2n < v.floatTarget ? "low" : "ok";
+      level = [gauge(tone, share, [50], `Fee float: ${share.toFixed(0)}% of the target. The tick is half of the target.`),
+        h("span", { class: "cap num" }, v.floatTarget > 0n ? `${share.toFixed(0)}% of the target` : "no target")];
+    }
+    return h("tr", { class: "row", data: { sev: String(row.sev >= 2 ? row.sev : 0), funds: name } },
+      h("td", { class: "rail" }, h("span", { class: "strong" }, row.role === "hub" ? "Hub" : "Vault"),
+        h("span", { class: "cap" }, name), address(chain.cfg.contract, `funds:${name}.address`)),
+      h("td", null, state),
+      cell(v && v.principal, "principal"), cell(v && v.floor, "floor"),
+      cell(v && v.float, "float"), cell(v && v.floatTarget, "floatTarget"),
+      h("td", null, level),
+      h("td", { class: "r" }, loading ? skeleton("6ch") : amount(v && v.debt, row.unit, field("debt"))));
+  });
+  $("funds-body").replaceChildren(table("funds", "The funds and the state of the hub and of each vault", [
+    th("Contract"), th("State"), th("Principal (balance)", true), th("Principal floor", true),
+    th("Fee float (reserves)", true), th("Float target", true), th("Float level"), th("Debt", true),
+  ], body));
+}
+
+// Targets --------------------------------------------------------------------------------------
+
+const TARGET_SORTS = {
+  attention: (row) => row.sev,
+  label: (row) => (row.label || "\uffff").toLowerCase(),
+  chain: (row) => CHAINS.indexOf(row.chain),
+  debt: (row) => row.debt,
+  reserves: (row) => row.reserves,
+};
+
+function sortTargets(rows) {
+  const { sort, dir } = UI.targets, value = TARGET_SORTS[sort], sign = dir === "asc" ? 1 : -1;
+  const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  return rows.slice().sort((a, b) => {
+    const x = value(a), y = value(b);
+    if (x === null || y === null) { if (x !== y) return x === null ? 1 : -1; }  // no data: last in each order
+    else if (compare(x, y)) return sign * compare(x, y);
+    return CHAINS.indexOf(a.chain) - CHAINS.indexOf(b.chain) || compare((a.label || "").toLowerCase(), (b.label || "").toLowerCase())
+      || compare(lower(a.address), lower(b.address));
+  });
+}
+
+function targetDetail(row, unit) {
+  const kv = (term, value) => h("div", { class: "kv" }, h("dt", null, term), h("dd", null, value));
+  const wei = (value) => (value === null || value === undefined ? "no data" : `${exact(value)} ${unit} (${value} wei)`);
+  const p = row.policy;
+  const origin = row.manifest
+    ? `Manifest enrollment${row.removed ? ", removed" : ""}${row.guest ? ", guest" : ""}`
+    : "Not in the manifest";
+  return h("dl", { class: "detail__body" },
+    kv("Address", h("span", { class: "mono" }, row.address)),
+    kv("Source", `${origin}. ${row.listed === null ? "Hub list not known" : row.listed ? "In the hub list" : "Not in the hub list"}.`),
+    kv("Hub state", row.hubState || "not known"),
+    row.chain !== HUB && kv("Vault record", row.vault
+      ? `${row.vault.hasPolicy ? "policy set" : "no policy"}, ${row.vault.quarantined ? "quarantined" : "not quarantined"}` : "no data"),
+    kv("Debt", wei(row.debt)), kv("Reserves", wei(row.reserves)),
+    kv(`Marks (${row.chain === HUB ? "hub policy" : "vault policy"})`, p ? `low ${wei(p.low)}; high ${wei(p.high)}` : "no policy"),
+    p && kv("Limits", `maxDebt ${wei(p.maxDebt)}; dailyCap ${wei(p.dailyCap)}`),
+    p && kv("Quarantine rule", `${p.maxRescues} rescue${p.maxRescues === 1 ? "" : "s"} in ${fmtInt(p.window)} s`),
+    row.chain !== HUB && row.hubPolicy && kv("Hub relay rule", `maxRescues ${row.hubPolicy.maxRescues}, window ${fmtInt(row.hubPolicy.window)} s`));
+}
+
+function drawTargets(all) {
+  const T = UI.targets;
+  const categories = [["all", "All", all.length], ["attention", "Attention", all.filter((row) => row.sev >= 2).length],
+    ...["active", "quarantined", "parked", "disarmed"].map((cat) =>
+      [cat, cat[0].toUpperCase() + cat.slice(1), all.filter((row) => row.cat === cat).length])];
+  chips($("targets-state"), "tstate", categories, T.state, (value) => { T.state = value; });
+  chips($("targets-chain"), "tchain", [["all", "All chains"], ...CHAINS.map((chain) => [chain.cfg.name, chain.cfg.name])],
+    T.chain, (value) => { T.chain = value; });
+
+  const text = T.text.trim().toLowerCase();
+  const shown = sortTargets(all.filter((row) =>
+    (T.state === "all" || (T.state === "attention" ? row.sev >= 2 : row.cat === T.state))
+    && (T.chain === "all" || row.chain.cfg.name === T.chain)
+    && (!text || (row.label || "").toLowerCase().includes(text) || lower(row.address).includes(text))));
+  $("targets-meta").textContent = shown.length === all.length ? `${all.length} in the hub lists and in the manifest`
+    : `${shown.length} of ${all.length} shown`;
+
+  const sortHead = (key, text, right) => {
+    const on = T.sort === key;
+    return h("th", { scope: "col", class: right ? "r" : null, "aria-sort": on ? (T.dir === "asc" ? "ascending" : "descending") : null },
+      h("button", { class: "th-sort", type: "button", data: { fk: `tsort:${key}` }, title: `Sort by ${text.toLowerCase()}`,
+        onclick: () => {
+          if (on) T.dir = T.dir === "asc" ? "desc" : "asc";
+          else { T.sort = key; T.dir = key === "label" || key === "chain" ? "asc" : "desc"; }
+          render();
+        } }, text, icon("sort")));
+  };
+
+  const body = shown.flatMap((row) => {
+    const unit = row.chain.cfg.unit, base = `target:${row.key}`, open = T.open.has(row.key);
+    const numbers = (value, key) => h("td", { class: "r" },
+      row.loading ? skeleton("8ch") : row.known ? (value === null ? h("span", { class: "nodata", data: { field: `${base}.${key}`, raw: "" } }, "\u2014")
+        : amount(value, unit, `${base}.${key}`)) : noData(`${base}.${key}`));
+    let level;
+    if (row.loading) level = skeleton("12ch");
+    else if (!row.known) level = noData();
+    else if (row.high === null || row.high === 0n) level = h("span", { class: "nodata" }, "no marks");
+    else {
+      // The scale ends at 125% of the high mark: a level above it fills the track.
+      const scale = (row.high * 5n) / 4n;
+      const tone = row.sev === 0 ? "off" : row.debt > 0n ? "bad" : row.reserves < row.low ? "low" : "ok";
+      const text = row.debt > 0n ? "In debt" : row.reserves < row.low ? "Below the low mark"
+        : row.reserves >= row.high ? "At or above the high mark" : "Between the marks";
+      level = [gauge(tone, percent(row.reserves, scale), [percent(row.low, scale), 80], `${text}. The ticks are the low and the high mark.`),
+        h("span", { class: "cap" }, text)];
+    }
+    const main = h("tr", { class: "row" + (row.sev === 0 ? " is-muted" : ""), data: { sev: String(row.sev >= 2 ? row.sev : 0), target: row.key, state: row.hubState || "" } },
+      h("td", { class: "rail" }, h("div", { style: "display:flex;gap:6px;align-items:flex-start" },
+        h("button", { class: "expander", type: "button", "aria-expanded": String(open), "aria-label": `Details of ${row.label || row.address}`,
+          data: { fk: `texp:${row.key}` }, onclick: () => { if (open) T.open.delete(row.key); else T.open.add(row.key); render(); } }, icon("chevron")),
+        h("div", { style: "min-width:0" },
+          h("span", { class: (row.label ? "strong" : "dim") + " truncate", style: "display:block;max-width:30ch",
+            title: row.label || "No label: the manifest has no enrollment of this address" }, row.label || "No label"),
+          address(row.address, `${base}.address`), row.guest && tag("outline", "guest")))),
+      h("td", null, row.chain.cfg.name),
+      h("td", null,
+        row.hubLoading ? skeleton("10ch") : h("span", { class: "tags", data: { field: `${base}.state`, raw: row.hubState || "" } },
+          row.tags.map((entry) => tag(entry.tone, entry.text, entry.mark))),
+        h("span", { hidden: true, data: { field: `${base}.vaultQuarantine`, raw: row.vault ? String(row.vault.quarantined) : "" } }),
+        row.notes.map(([tone, text]) => h("span", { class: `note note--${tone}`, data: row.sweepNote && text.includes("hub.disarm") ? { note: "disarm" } : null }, text))),
+      numbers(row.debt, "debt"), numbers(row.reserves, "reserves"),
+      h("td", null, level), numbers(row.low, "low"), numbers(row.high, "high"));
+    return open ? [main, h("tr", { class: "detail" }, h("td", { colspan: 8 }, targetDetail(row, unit)))] : [main];
+  });
+
+  const holder = $("targets-body");
+  if (!all.length) {
+    holder.replaceChildren(h("p", { class: "empty" }, HUB.phase === "loading" ? "Reading the hub lists."
+      : "The manifest has no enrollment, and the hub lists no target."));
+    return;
+  }
+  holder.replaceChildren(table("targets", "The targets, their state, their debt and their reserves against the marks", [
+    sortHead("label", "Target"), sortHead("chain", "Chain"), sortHead("attention", "State"), sortHead("debt", "Debt", true),
+    sortHead("reserves", "Reserves", true), th("Level against the marks"), th("Low mark", true), th("High mark", true),
+  ], body.length ? body : h("tr", null, h("td", { colspan: 8, class: "empty" }, "No target has this state, this chain and this text."))));
+}
+
+// Events ---------------------------------------------------------------------------------------
+
+function eventCells(row) {
+  const chain = row.chain, unit = chain.cfg.unit, a = row.args;
+  const subject = (target) => {
+    const label = labelOf(chain, target);
+    return [label ? h("span", { class: "strong truncate", style: "display:block;max-width:24ch", title: label }, label) : null, address(target)];
+  };
+  const own = [h("span", { class: "strong" }, chain.cfg.role === "hub" ? "Hub" : "Vault")];
+  switch (row.name) {
+    case "HubLow": case "VaultLow":
+      return { tone: "danger", name: "danger", subject: own, paid: null,
+        detail: ["balance ", amount(a.balance, unit), " below the floor ", amount(a.principalFloor, unit)] };
+    case "Rescued":
+      return { tone: "info", name: "info", subject: subject(a.target), paid: a.paid, detail: ["cleared the debt ", amount(a.debt, unit)] };
+    case "Gap":
+      return { tone: "warning", name: "warning", subject: subject(a.target), paid: null,
+        detail: `in debt from block ${fmtInt(a.deadFromBlock)} to block ${fmtInt(a.aliveAtBlock)}: ${fmtInt(a.aliveAtBlock - a.deadFromBlock)} blocks` };
+    default: {
+      const outcome = CONFIG.outcomes[a.outcome] || `outcome ${a.outcome}`;
+      const id = a.id === 0n ? "setPolicy" : a.id >= REQUEST_ID_BASE ? `request ${fmtInt(a.id - REQUEST_ID_BASE)}` : `sweep of tick ${fmtInt(a.id)}`;
+      const tone = PAID_OUTCOMES.has(outcome) ? "info" : outcome === "NoNeed" ? "" : "warning";
+      return { tone, name: "", subject: subject(a.target), paid: a.paid, outcome, detail: [tag(tone, outcome), " ", h("span", { class: "dim" }, id)] };
+    }
+  }
+}
+
+function drawEvents({ rows, timed }) {
+  const E = UI.events;
+  const types = [["all", "All"], ["low", "HubLow, VaultLow"], ["Rescued", "Rescued"], ["Gap", "Gap"], ["Result", "Result"]];
+  const isType = (row, type) => type === "all" || (type === "low" ? LOW_EVENTS.has(row.name) : row.name === type);
+  const inChain = rows.filter((row) => E.chain === "all" || row.chain.cfg.name === E.chain);
+  chips($("events-type"), "etype", types.map(([type, text]) => [type, text, inChain.filter((row) => isType(row, type)).length]),
+    E.type, (value) => { E.type = value; E.more = false; });
+  chips($("events-chain"), "echain", [["all", "All chains"], ...CHAINS.map((chain) => [chain.cfg.name, chain.cfg.name])],
+    E.chain, (value) => { E.chain = value; E.more = false; });
+
+  const shown = inChain.filter((row) => isType(row, E.type));
+  const visible = E.more ? shown : shown.slice(0, MAX_EVENT_ROWS);
+  const scanning = CHAINS.filter((chain) => chain.events && chain.events.phase === "scanning");
+  const absent = CHAINS.filter((chain) => chain.phase === "error" || (chain.events && chain.events.phase === "error"));
+  $("events-meta").textContent = "Newest first, inside the block window of each chain."
+    + (timed ? "" : " Chains are in the order of the list above: a block time is not known.");
+
+  const body = visible.map((row) => {
+    const cells = eventCells(row);
+    return h("tr", { class: "row", data: { sev: cells.tone === "danger" ? "3" : "0", event: row.name, chain: row.chain.cfg.name,
+      block: String(row.block), index: String(row.index), tx: row.tx, outcome: cells.outcome || "" } },
+      h("td", { class: "rail num", title: row.time === null ? "Block time not known" : `${ago(row.time * 1000)}` },
+        row.time === null ? h("span", { class: "nodata" }, "\u2014") : utc(row.time)),
+      h("td", { class: "r num" }, fmtInt(row.block)),
+      h("td", null, row.chain.cfg.name),
+      h("td", null, tag(cells.name, row.name)),
+      h("td", null, cells.subject), h("td", { class: "wrap" }, cells.detail),
+      h("td", { class: "r" }, cells.paid === null ? h("span", { class: "nodata" }, "\u2014") : amount(cells.paid, row.chain.cfg.unit)));
+  });
+
+  const holder = $("events-body"), foot = $("events-foot");
+  const notes = [];
+  if (scanning.length) notes.push(`Reading the logs of ${scanning.map((chain) => chain.cfg.name).join(", ")}: more rows can come.`);
+  if (absent.length) notes.push(`No events of ${absent.map((chain) => chain.cfg.name).join(", ")}: see the error in "Chains and RPC".`);
+  if (shown.length > visible.length) notes.push(`${fmtInt(visible.length)} of ${fmtInt(shown.length)} rows shown.`);
+  foot.hidden = !notes.length;
+  foot.replaceChildren(h("span", null, notes.join(" "), shown.length > visible.length
+    && h("button", { class: "btn btn--xs", type: "button", style: "margin-left:8px", data: { fk: "emore" }, onclick: () => { E.more = true; render(); } }, "Show each row")));
+
+  if (!body.length) {
+    const reading = CHAINS.some((chain) => chain.phase === "loading") || scanning.length;
+    holder.replaceChildren(h("p", { class: "empty", data: { empty: "events" } }, reading ? "Reading the logs."
+      : rows.length ? "No event has this type and this chain."
+        : absent.length === CHAINS.length ? "No chain gave its events." : "No event in the block window of each chain that answered."));
+    return;
+  }
+  holder.replaceChildren(table("events", "The events of the hub and of the vaults, newest first", [
+    th("Time (UTC)"), th("Block", true), th("Chain"), th("Event"), th("Contract or target"), th("Values"), th("Paid", true),
+  ], body));
+}
+
+// Diagnostics ----------------------------------------------------------------------------------
+
+function drawDiagnostics(targets) {
+  const body = [];
+  for (const chain of CHAINS) {
+    if (chain.cfg.role !== "vault") continue;
+    const name = chain.cfg.name, events = chain.events;
+    const counted = new Map();
+    for (const failure of events ? events.failures : []) {
+      const entry = counted.get(failure.recipient) || { count: 0, last: 0 };
+      entry.count++;
+      entry.last = Math.max(entry.last, failure.block);
+      counted.set(failure.recipient, entry);
+    }
+    const recipients = [[chain.cfg.contract, "Vault"], ...targets.filter((row) => row.chain === chain)
+      .filter((row) => counted.has(lower(row.address))).map((row) => [row.address, row.label || "No label"])];
+    for (const [recipient, label] of recipients) {
+      const entry = counted.get(lower(recipient)) || { count: 0, last: 0 };
+      const field = `failures:${name}|${lower(recipient)}`;
+      let count, last = h("span", { class: "nodata" }, "\u2014");
+      if (chain.phase === "loading") count = skeleton("4ch");
+      else if (chain.phase === "error" || !events || events.phase === "error") count = noData(field);
+      else {
+        count = [h("span", { class: "num strong", data: { field, raw: String(entry.count), phase: events.phase } }, fmtInt(entry.count)),
+          events.phase === "scanning" ? h("span", { class: "cap" }, "so far") : null];
+        if (entry.count) last = h("span", { class: "num" }, fmtInt(entry.last));
+      }
+      body.push(h("tr", { class: "row" },
+        h("td", { class: "rail" }, h("span", { class: "strong truncate", style: "display:block;max-width:22ch", title: label }, label), address(recipient)),
+        h("td", null, name), h("td", { class: "r" }, count), h("td", { class: "r" }, last)));
+    }
+  }
+  $("diag-body").replaceChildren(body.length
+    ? table("diag", "CallbackFailure counts in the block window of each chain. Diagnostics only.", [
+      th("Callback recipient"), th("Chain"), th("Failures in the window", true), th("Last block", true)], body)
+    : h("p", { class: "empty" }, "The manifest has no vault: no callback proxy to read."));
+}
+
+// Controls, footer, timers ---------------------------------------------------------------------
+
+function drawControls() {
+  const input = $("lookback");
+  if (document.activeElement !== input) input.value = fmtInt(S.lookback);
+  $("auto").value = String(S.auto);
+  const busy = isBusy();
+  $("refresh").setAttribute("aria-busy", String(busy));
+  const hub = HUB.cfg;
+  $("foot").replaceChildren(
+    h("span", null, "Read-only: no wallet, no transaction, no enrollment."),
+    h("span", null, "Hub ", h("span", { class: "mono", title: hub.contract }, short(hub.contract))),
+    CONFIG.cronTopic && h("span", null, `Cron topic ${CONFIG.cronTopic}`),
+    h("span", null, "Build ", h("span", { class: "mono", data: { field: "build", raw: CONFIG.build } }, CONFIG.build)),
+    h("span", null, h("span", { class: "kbd" }, "R"), " read again"),
+    h("span", null, h("span", { class: "kbd" }, "/"), " filter the targets"));
+}
+
+function setOverride(chain, url) {
+  if (url === chain.override) return;
+  chain.override = url;
+  chain.urls = url ? [url] : chain.cfg.rpc.slice();
+  // The values on the page came from another node: remove them before the first answer of the new one.
+  if (chain.abort) chain.abort.abort();
+  chain.gen++;
+  Object.assign(chain, { phase: "loading", busy: false, used: null, head: null, headTime: null,
+    data: null, events: null, readAt: null, failedAt: null, chunk: CONFIG.chunk, attempts: [] });
+  chain.times.clear();
+  chain.el.input.value = url || "";
+  chain.el.error.hidden = true;
+  chain.el.input.removeAttribute("aria-invalid");
+  writeSettings();
+  announce(url ? `${chain.cfg.name}: each request goes to the URL that you set` : `${chain.cfg.name}: the URL list of the manifest is in use`);
+  render();
+  loadChain(chain).catch(console.error);
+  // The targets of a destination chain depend on the hub lists: read them again from the new hub node.
+  if (chain === HUB) for (const other of CHAINS) if (other !== HUB && other.phase !== "loading") loadChain(other).catch(console.error);
+}
+
+function setLookback(value) {
+  if (value === S.lookback) return;
+  S.lookback = value;
+  writeSettings();
+  // The window of each chain changes: the events of the old window go, the state stays.
+  for (const chain of CHAINS) {
+    if (chain.phase !== "ok") continue;
+    chain.gen++;
+    if (chain.abort) chain.abort.abort();
+    chain.abort = new AbortController();
+    chain.busy = false;
+    chain.events = null;
+    scanEvents(chain).catch(console.error);
+  }
+  render();
+}
+
+function applyTheme() {
+  const dark = S.theme ? S.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+}
+
+function applySettings(first) {
+  const next = readSettings();
+  S.auto = next.auto;
+  S.theme = next.theme;
+  applyTheme();
+  if (first) {
+    S.lookback = next.lookback;
+    for (const chain of CHAINS) {
+      chain.override = next.rpc.get(chain.cfg.name);
+      if (chain.override) chain.urls = [chain.override];
+    }
+    return;
+  }
+  for (const chain of CHAINS) setOverride(chain, next.rpc.get(chain.cfg.name));
+  setLookback(next.lookback);
+  render();
+}
+
+function start() {
+  applySettings(true);
+  buildChains();
+
+  $("lookback-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("lookback"), error = $("lookback-error"), value = parseLookback(input.value);
+    error.hidden = value !== null;
+    input.setAttribute("aria-invalid", String(value === null));
+    if (value === null) { error.textContent = `A number of blocks from 1 to ${fmtInt(CONFIG.maxLookback)}.`; return; }
+    input.value = fmtInt(value);
+    input.blur();
+    setLookback(value);
+  });
+  $("lookback").addEventListener("input", () => { $("lookback-error").hidden = true; $("lookback").removeAttribute("aria-invalid"); });
+  $("auto").addEventListener("change", (event) => { S.auto = Number(event.target.value); writeSettings(); });
+  $("refresh").addEventListener("click", () => readAll().catch(console.error));
+  $("theme").addEventListener("click", () => {
+    const system = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    S.theme = next === system ? null : next;
+    applyTheme();
+    writeSettings();
+  });
+  $("targets-text").addEventListener("input", (event) => { UI.targets.text = event.target.value; render(); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+  window.addEventListener("hashchange", () => applySettings(false));
+
+  document.addEventListener("keydown", (event) => {
+    const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName);
+    if (event.key === "Escape" && event.target.id === "targets-text") {
+      event.target.value = UI.targets.text = "";
+      event.target.blur();
+      render();
+    }
+    if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key === "r" || event.key === "R") { event.preventDefault(); readAll().catch(console.error); }
+    if (event.key === "/") { event.preventDefault(); $("targets-text").focus(); }
+  });
+
+  // Each second: the age of each read, and the next automatic read when it is due.
+  setInterval(() => {
+    for (const element of document.querySelectorAll(".age")) element.textContent = `read ${ago(Number(element.dataset.at))}`;
+    if (S.auto > 0 && !document.hidden && !isBusy() && S.lastRead && Date.now() - S.lastRead >= S.auto * 1000) {
+      readAll().catch(console.error);
+    }
+  }, 1000);
+
+  render();
+  readAll().catch(console.error);
+}
+
+start();
+})();
+</script>
+</body>
+</html>
