@@ -530,7 +530,6 @@ const SCAN_WORKERS = 3;        // log requests of one chain at the same time
 const MAX_LOG_REQUESTS = 600;  // log requests of one chain for one window
 const MAX_TARGETS = 400;       // targets of one hub list that the page reads
 const MAX_EVENT_ROWS = 300;    // rows of the event table before "Show each row"
-const MAX_TIME_READS = 200;    // block headers that one log request can ask for
 const DEFAULT_AUTO = 60;       // seconds between two reads; 0 is off
 const AUTO_CHOICES = [0, 30, 60, 300];
 const REQUEST_ID_BASE = 1n << 128n; // a `requestId` of the hub is above it; a `tickId` is a block number
@@ -1204,8 +1203,7 @@ async function logRequest(chain, queries, from, to, signal) {
 
 /** The block time of each row that has none, with one header request for each block. A failure leaves no time. */
 async function fillTimes(chain, rows, signal) {
-  const wanted = [...new Set(rows.filter((row) => row.time === null && !chain.times.has(row.block)).map((row) => row.block))]
-    .slice(0, MAX_TIME_READS);
+  const wanted = [...new Set(rows.filter((row) => row.time === null && !chain.times.has(row.block)).map((row) => row.block))];
   if (wanted.length) {
     try {
       const answers = await post(chain.urls[chain.used],
@@ -1250,8 +1248,10 @@ async function scanEvents(chain) {
     events.rows = previous.rows.filter((row) => row.block >= from);
     events.failures = previous.failures.filter((failure) => failure.block >= from);
     if (previous.to < to) pending.push([previous.to + 1, to]);
-  } else if (!events.empty) {
-    pending.push([from, to]);
+  } else {
+    // A full read of the window: after a reorganization a block number can have another block time.
+    chain.times.clear();
+    if (!events.empty) pending.push([from, to]);
   }
   events.blocks = events.left = pending.reduce((sum, [low, high]) => sum + high - low + 1, 0);
   render();

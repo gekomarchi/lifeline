@@ -662,6 +662,7 @@ def test_a_reorganization_makes_the_page_read_the_window_again(fleet, page, bloc
     chain = fleet.chains[LASNA]
     chain.logs = [log for log in chain.logs if int(log["blockNumber"], 16) != head - 10]
     chain.head += blocks
+    chain.genesis_time += 3_600  # the blocks of the new history have other times
     fleet.forks[LASNA] += 1
     mark = fleet.gate.mark()
     page.click("#refresh")
@@ -674,16 +675,20 @@ def test_a_reorganization_makes_the_page_read_the_window_again(fleet, page, bloc
     assert min(low for low, _ in ranges) == head + blocks - board.DEFAULT_LOOKBACK
     assert max(high for _, high in ranges) == head + blocks
     assert "HubLow in the window" not in page.evaluate("document.getElementById('verdict').innerText")
+    # Each row has the block time of the new history, not the time that the page had for that block number.
+    shown = page.evaluate(f"[...document.querySelectorAll('#events-body tr[data-chain=\"{LASNA}\"]')]"
+                          f".map((row) => row.cells[0].textContent)")
+    assert shown[0] == time.strftime("%b %d %H:%M:%S", time.gmtime(chain.timestamp(head - 2_000)))
 
 
 def test_each_event_block_gets_its_time(fleet, page):
-    """More event blocks than one batch of header requests: each row has a time, and the order is by time."""
-    for index in range(45):
+    """Many more event blocks than one batch of header requests: each row has a time, and the order is by time."""
+    for index in range(230):
         fleet.log(UNI, "vault", "Result", HEADS[UNI] - 100 - 3 * index, [0, T_LOW], [ops.OUTCOMES.index("NoNeed"), 0])
     opened(page, fleet)
     rows = page.evaluate("[...document.querySelectorAll('#events-body tbody tr')].map((row) => "
                          "[row.dataset.chain, Number(row.dataset.block), row.cells[0].textContent])")
-    assert len([row for row in rows if row[0] == UNI]) == 46
+    assert len([row for row in rows if row[0] == UNI]) == 231
     assert all(text != "\u2014" and ":" in text for _, _, text in rows)
     times = [fleet.chains[name].timestamp(block) for name, block, _ in rows]
     assert times == sorted(times, reverse=True)
