@@ -16,13 +16,12 @@ The addresses come from [`deployments/manifest.json`](deployments/manifest.json)
 
 A reactive contract pays each reaction from its reserves at the system contract. A callback contract pays each callback from its reserves at the callback proxy. When the reserves are empty, the ledger records a debt and the contract gets no more work. There is no error: the automation only stops.
 
-The first user is the builder. The builder's own automation `FastfillReactive` holds [60.37 lREACT](evidence/network/table.md) in reserves, and reserves cannot be withdrawn. The builder over-funded it, because a contract that runs out stops with no error.
+The first user is the builder. The builder's own automation `FastfillReactive` holds [60.37 lREACT](evidence/network/table.md) in reserves (query `fastfill_reactive_reserves`), and reserves cannot be withdrawn. The builder over-funded it, because a contract that runs out stops with no error.
 
 Network numbers, from 2026-11-05 00:00 EET to the heights in [`evidence/network/heights.json`](evidence/network/heights.json):
 
 | Number | Value | Query in [`data.json`](evidence/network/data.json) |
 |---|---|---|
-| Reserves of `FastfillReactive` | [60.37 lREACT](evidence/network/table.md) | `fastfill_reactive_reserves` |
 | Debt events on Lasna | [349](evidence/network/table.md) | `lasna_debt_events` |
 | Debt events on the destination chains | [47](evidence/network/table.md): Base Sepolia 36, Unichain Sepolia 11 | `destination_debt_events` |
 | Contracts with a debt event that are in debt at the end | Lasna [199 of 256](evidence/network/table.md), Base Sepolia [24 of 36](evidence/network/table.md), Unichain Sepolia [8 of 11](evidence/network/table.md) | `stopped_contracts` |
