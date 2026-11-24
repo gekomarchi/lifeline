@@ -6,9 +6,9 @@ Lifeline runs on Reactive Network testnet only. Entry track: "Set It and Forget 
 
 | Contract | Chain (chain ID) | Address | Sourcify | Ledger of the chain |
 |---|---|---|---|---|
-| `LifelineHub` | Lasna (5318007) | `0xbba61E507e7CC334e57A62c39A776272DA6b07Dd` | [verified](https://repo.sourcify.dev/5318007/0xbba61E507e7CC334e57A62c39A776272DA6b07Dd) | system contract `0x8888888888888888888888888888888888888888` |
-| `LifelineVault` | Unichain Sepolia (1301) | `0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26` | [verified](https://repo.sourcify.dev/1301/0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26) | callback proxy `0x775c9B990ADe401060B78D0e98684eEf8d2466C1` |
-| `LifelineVault` | Base Sepolia (84532) | `0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2` | [verified](https://repo.sourcify.dev/84532/0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2) | callback proxy `0x476F44b11F5C942c58f4c8E3d0300E5710743585` |
+| `LifelineHub` | Lasna ([5318007](JUDGE.md#heights)) | `0xbba61E507e7CC334e57A62c39A776272DA6b07Dd` | [verified](https://repo.sourcify.dev/5318007/0xbba61E507e7CC334e57A62c39A776272DA6b07Dd) | system contract `0x8888888888888888888888888888888888888888` |
+| `LifelineVault` | Unichain Sepolia ([1301](JUDGE.md#heights)) | `0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26` | [verified](https://repo.sourcify.dev/1301/0x89dbc693c78C8844b5A3294DE8f7c0f0adf1DC26) | callback proxy `0x775c9B990ADe401060B78D0e98684eEf8d2466C1` |
+| `LifelineVault` | Base Sepolia ([84532](JUDGE.md#heights)) | `0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2` | [verified](https://repo.sourcify.dev/84532/0x1aA62Eaf6746Ffc7a19330dD255211680B4952B2) | callback proxy `0x476F44b11F5C942c58f4c8E3d0300E5710743585` |
 
 The addresses come from [`deployments/manifest.json`](deployments/manifest.json).
 
@@ -23,16 +23,16 @@ Network numbers, from 2026-11-05 00:00 EET to the heights in [`evidence/network/
 | Number | Value | Query in [`data.json`](evidence/network/data.json) |
 |---|---|---|
 | Debt events on Lasna | [349](evidence/network/table.md) | `lasna_debt_events` |
-| Debt events on the destination chains | [47](evidence/network/table.md): Base Sepolia 36, Unichain Sepolia 11 | `destination_debt_events` |
+| Debt events on the destination chains | [47](evidence/network/table.md): Base Sepolia [36](evidence/network/table.md), Unichain Sepolia [11](evidence/network/table.md) | `destination_debt_events` |
 | Contracts with a debt event that are in debt at the end | Lasna [199 of 256](evidence/network/table.md), Base Sepolia [24 of 36](evidence/network/table.md), Unichain Sepolia [8 of 11](evidence/network/table.md) | `stopped_contracts` |
 | Contracts on Lasna with 3 or more debt events | [14](evidence/network/table.md) | `repeat_debtors` |
 | Dropped callbacks, derived from debt intervals (not a count of observed reverted transactions) | [146](evidence/network/table.md) | `dropped_callbacks` |
 
 What Lifeline does for an enrolled automation:
 
-- An automation that runs out works again. Measured on testnet: a Lasna target was alive [1 block](JUDGE.md#lasna-rescues-and-gaps) after its debt event, in each of 2 rescues. A Base Sepolia target was alive [5 blocks](JUDGE.md#loop-check-canary-base-sepolia) after its debt event, in 1 rescue. The time in seconds is not measured yet.
+- An automation that runs out works again. Measured on testnet: a Lasna target was alive [1 block](JUDGE.md#lasna-rescues-and-gaps) after its debt event, in each of [2 rescues](JUDGE.md#lasna-rescues-and-gaps). A Base Sepolia target was alive [5 blocks](JUDGE.md#loop-check-canary-base-sepolia) after its debt event, in [1 rescue](JUDGE.md#loop-check-canary-base-sepolia). The time in seconds is not measured yet.
 - An automation normally does not run out, because a slow gauge refills it first.
-- A broken automation is cut off after a set number of rescues. Measured on testnet: a canary that reverts in a loop was [quarantined after 2 rescues](JUDGE.md#quarantine), and the hub paid 0 after that.
+- A broken automation is cut off after a set number of rescues. Measured on testnet: a canary that reverts in a loop was [quarantined after 2 rescues](JUDGE.md#quarantine), and the hub paid [0 after the quarantine](JUDGE.md#quarantine).
 
 ## How it works
 
@@ -68,7 +68,7 @@ Reactivate is an earlier project for the same problem.
 | Principal isolation | The ledger can take only the fee float. | New |
 | Threshold top-up | The gauge refills a target below `low`. | Not new |
 
-The strongest alternative is a cron poller that calls `depositTo`, or large pre-funding. The experiment runs three identical canary automations side by side: A with no guardian, B with a cron poller, C with Lifeline. Result: [the three-arm table](JUDGE.md#three-arm-table). At the heights of that table no load is recorded (0 pokes for each arm), so it shows no difference between the arms yet.
+The strongest alternative is a cron poller that calls `depositTo`, or large pre-funding. The experiment runs three identical canary automations side by side: A with no guardian, B with a cron poller, C with Lifeline. Result: [the three-arm table](JUDGE.md#three-arm-table). At the heights of that table no load is recorded ([0 pokes for each arm](JUDGE.md#three-arm-table)), so it shows no difference between the arms yet.
 
 ## Quick start
 
@@ -159,7 +159,7 @@ python -m lifeline.forkrelay      --rpc <chain>=<url> ... [--cron-tick] [--watch
 - The commands read each ABI from `out/`: run `forge build` first. `LIFELINE_OWNER_KEY` is the key of the owner of the hub and of each vault. `verify` and `status` need no key.
 - Exit status 0 is success. Status 1 is a refusal or a failure, with the reason on standard error.
 - `deploy` reads [`deployments/config.json`](deployments/config.json) and writes the manifest. Each later command reads the manifest and adds its records.
-- A command writes each transaction to the manifest before it sends it. After a failure, run the same command again: it continues and sends no transaction a second time. Do not run two commands with one key at the same time.
+- A command writes a transaction to the manifest before it sends it. After a failure, run the same command again with the same inputs: it continues from the manifest and from the state of the chain. `hub.vaultUp` has no such record: `recover` reads the hub and the vault debt before each call. Do not run two commands with one key at the same time.
 
 ### Configuration and manifest
 
@@ -266,7 +266,7 @@ cast send <vault> "release(address)" <target>                                   
 
 ## Limits
 
-- **Future delivery, not zero loss.** Lifeline restores future delivery. Work that arrives while a target is in debt is lost, and nothing replays it. The `Gap(target, deadFromBlock, aliveAtBlock)` event of the hub tells the owner what to retry.
+- **Future delivery, not zero loss.** Lifeline restores future delivery. Work that arrives while a target is in debt is lost, and nothing replays it. For a Lasna rescue the hub emits `Gap(target, deadFromBlock, aliveAtBlock)`, so the owner knows what to retry; `deadFromBlock` is 0 if no debt event started the rescue. For a destination target the gap is the time from `BlacklistContract(target)` to `WhitelistContract(target)` at the callback proxy. `JUDGE.md` lists each gap.
 - **Calendar-day caps.** A cap counts for one calendar day (UTC), so two caps can be paid across midnight.
 - **`PaymentFailure`.** `PaymentFailure` does not always accompany debt. Lifeline listens to `BlacklistContract` only.
 - **Sample values.** [0.0125 lREACT and 7e11 wei](evidence/network/table.md) are samples (the `sampleFeeWei` parameters of the network queries), not protocol constants.
@@ -347,7 +347,7 @@ python -m pytest
 
 - `forge test` runs the contracts against the real ledgers on forks of Lasna and Base Sepolia. Each node must serve the state of the fork block of the test. `forge test --match-contract LifelineTypesTest` needs no fork.
 - `python -m pytest` runs the real commands against a local JSON-RPC server.
-- The fork modules (`test_ops_forks.py`, `test_experiment_forks.py`, `test_judge_forks.py`, `test_board_forks.py`) repeat the dry run with the real commands. They also need `anvil`, `UNICHAIN_SEPOLIA_RPC_URL`, `BASE_SEPOLIA_FORK_BLOCK=62527000` and `UNICHAIN_SEPOLIA_FORK_BLOCK=68574000`. Without them the modules are skipped. The board modules need Chrome or Chromium.
+- The fork modules (`test_ops_forks.py`, `test_experiment_forks.py`, `test_judge_forks.py`, `test_board_forks.py`) repeat the dry run with the real commands. They also need `anvil`, the build output and `UNICHAIN_SEPOLIA_RPC_URL`; without one of them the modules are skipped. Set `BASE_SEPOLIA_FORK_BLOCK=62527000` and `UNICHAIN_SEPOLIA_FORK_BLOCK=68574000`: a fork of the newest block does not have the delivery account of `forkrelay`. The board modules need Chrome or Chromium.
 
 ## License
 
