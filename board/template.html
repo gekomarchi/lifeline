@@ -31,7 +31,7 @@
   color-scheme: light;
   --h-neutral: 265; --c-neutral: 0.004;
   --h-accent: 263; --c-accent: 0.2; --l-accent: 62%;
-  --h-success: 147; --h-danger: 26; --h-warning: 56; --h-info: 257;
+  --h-danger: 26; --h-warning: 56; --h-info: 257;
   --ink-l: 50%; --sem-l-shift: 0%;
 
   --gray-0: oklch(100% 0 0);
@@ -40,7 +40,6 @@
   --gray-300: oklch(87% var(--c-neutral) var(--h-neutral));
   --gray-400: oklch(76% var(--c-neutral) var(--h-neutral));
   --gray-600: oklch(51% calc(var(--c-neutral) * 2) var(--h-neutral));
-  --gray-700: oklch(44% calc(var(--c-neutral) * 2) var(--h-neutral));
   --gray-800: oklch(37% calc(var(--c-neutral) * 1.8) var(--h-neutral));
   --gray-925: oklch(22% var(--c-neutral) var(--h-neutral));
   --gray-950: oklch(19% var(--c-neutral) var(--h-neutral));
@@ -54,28 +53,17 @@
   --ink-1: var(--gray-950);
   --ink-2: var(--gray-800);
   --ink-3: var(--gray-600);
-  --ink-4: var(--gray-400);
   --line-1: color-mix(in oklch, var(--ink-1) 7%, transparent);
   --line-2: color-mix(in oklch, var(--ink-1) 13%, transparent);
-  --line-3: color-mix(in oklch, var(--ink-1) 22%, transparent);
   --fill-1: color-mix(in oklch, var(--gray-600) 10%, transparent);
   --fill-2: color-mix(in oklch, var(--gray-600) 17%, transparent);
   --fill-3: color-mix(in oklch, var(--gray-600) 24%, transparent);
   --accent: var(--accent-500);
-  --accent-soft: color-mix(in oklch, var(--accent-500) 12%, transparent);
-  --accent-ink: oklch(var(--ink-l) calc(var(--c-accent) * 1.05) var(--h-accent));
-  --success: oklch(calc(73% + var(--sem-l-shift)) 0.19 var(--h-success));
-  --success-ink: oklch(var(--ink-l) 0.15 var(--h-success));
-  --success-soft: color-mix(in oklch, var(--success) 14%, transparent);
   --danger: oklch(calc(65% + var(--sem-l-shift)) 0.23 var(--h-danger));
   --danger-ink: oklch(var(--ink-l) 0.20 var(--h-danger));
-  --danger-soft: color-mix(in oklch, var(--danger) 13%, transparent);
   --warning: oklch(calc(75% + var(--sem-l-shift)) 0.17 var(--h-warning));
   --warning-ink: oklch(var(--ink-l) 0.14 var(--h-warning));
-  --warning-soft: color-mix(in oklch, var(--warning) 16%, transparent);
-  --info: oklch(calc(62% + var(--sem-l-shift)) 0.21 var(--h-info));
   --info-ink: oklch(var(--ink-l) 0.18 var(--h-info));
-  --info-soft: color-mix(in oklch, var(--info) 12%, transparent);
   --hover: color-mix(in oklch, var(--ink-1) 4.5%, transparent);
   --focus-ring: 0 0 0 1.5px var(--accent), 0 0 0 4px color-mix(in oklch, var(--accent-500) 40%, transparent);
   --ring: inset 0 0 0 .5px var(--line-2);
@@ -94,7 +82,11 @@
   --r-xs: 6px; --r-sm: 10px; --r-pill: 999px;
   --radius-panel: var(--r-sm);
   --radius-control: 8px;
-  --control-h-sm: 28px; --control-h-xs: 24px; --topbar-h: 52px;
+  --control-h: 28px; --topbar-h: 52px;
+  --inset: var(--sp-4);   /* the left and the right edge of the content of each panel */
+  --gutter: var(--sp-6);  /* the left and the right edge of the page */
+  --lh-line: 20px; --lh-cap: 16px;
+  --icon-xs: 12px; --icon-sm: 14px; --icon-md: 16px;
   --page-max: 1480px;
 
   --dur-3: 180ms;
@@ -105,19 +97,16 @@
   --c-neutral: 0.002; --ink-l: 78%; --sem-l-shift: 2%;
   --canvas: var(--gray-975);
   --surface-1: var(--gray-925);
-  --surface-sunken: oklch(13% var(--c-neutral) var(--h-neutral));
+  --surface-sunken: var(--gray-975);
   --ink-1: oklch(98.5% 0 0);
   --ink-2: var(--gray-300);
   --ink-3: var(--gray-400);
-  --ink-4: var(--gray-700);
   --line-1: color-mix(in oklch, var(--ink-1) 8%, transparent);
   --line-2: color-mix(in oklch, var(--ink-1) 14%, transparent);
-  --line-3: color-mix(in oklch, var(--ink-1) 24%, transparent);
   --fill-1: color-mix(in oklch, var(--gray-400) 13%, transparent);
   --fill-2: color-mix(in oklch, var(--gray-400) 20%, transparent);
   --fill-3: color-mix(in oklch, var(--gray-400) 28%, transparent);
   --accent: var(--accent-400);
-  --accent-soft: color-mix(in oklch, var(--accent-400) 18%, transparent);
   --hover: color-mix(in oklch, var(--ink-1) 5%, transparent);
 }
 
@@ -129,13 +118,14 @@
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   min-height: 100vh; background: var(--canvas); color: var(--ink-1);
-  font-family: var(--font-sans); font-size: var(--text-callout); line-height: 1.4; letter-spacing: var(--tr-body);
+  font-family: var(--font-sans); font-size: var(--text-callout); line-height: var(--lh-line); letter-spacing: var(--tr-body);
   font-feature-settings: "cv11" 1; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 button, input, select { font: inherit; color: inherit; letter-spacing: inherit; }
 button { background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
 button:disabled { cursor: default; }
+ul, ol, dl { list-style: none; padding: 0; }
 :focus { outline: none; }
 :focus-visible { outline: none; box-shadow: var(--focus-ring); }
 ::selection { background: color-mix(in oklch, var(--accent) 26%, transparent); }
@@ -146,52 +136,39 @@ button:disabled { cursor: default; }
 }
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 
-/* Numbers, addresses and blocks: same digit width in each row. */
+/* Text roles. A cell or a block has one line of the main size and, below it, lines of the caption size. */
 .num, .mono, td, th, input { font-variant-numeric: tabular-nums; }
 .mono { font-family: var(--font-mono); font-size: var(--text-mono); letter-spacing: 0; font-feature-settings: normal; }
-.unit { color: var(--ink-3); font-weight: var(--w-regular); margin-left: .3em; }
-.dim { color: var(--ink-3); }
-.cap { display: block; font-size: var(--text-caption); line-height: 1.35; color: var(--ink-3); letter-spacing: .004em; }
-.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .strong { font-weight: var(--w-semibold); }
+.medium { font-weight: var(--w-medium); }
+.dim { color: var(--ink-3); }
+.unit { margin-left: .3em; color: var(--ink-3); font-weight: var(--w-regular); }
+.cap { display: block; margin-top: var(--sp-05); font-size: var(--text-caption); line-height: var(--lh-cap); color: var(--ink-3); letter-spacing: .004em; }
+.cap .unit { margin-left: .25em; }
+.label { font-size: var(--text-label); line-height: var(--lh-cap); font-weight: var(--w-semibold); letter-spacing: var(--tr-label); text-transform: uppercase; color: var(--ink-3); }
+.truncate { display: block; max-width: 32ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nodata { color: var(--ink-3); }
 
-/* Icon: one 16-unit grid, 1.6 stroke, currentColor. */
-.ico { display: inline-flex; flex: none; width: 1em; height: 1em; font-size: 14px; }
-.ico svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+/* Icon: the filled glyphs of the UI kit, one size for each place. */
+.icon { display: inline-block; flex: none; width: var(--icon-sm); height: var(--icon-sm); vertical-align: -.16em; }
+.icon svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 
 /* ---------------------------------------------------------------------------------------------
-   Top bar
+   Controls: field, button, group, segmented filter, tag
    --------------------------------------------------------------------------------------------- */
-.bar {
-  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: var(--sp-4);
-  min-height: var(--topbar-h); padding: var(--sp-2) var(--sp-4); flex-wrap: wrap;
-  background: var(--surface-1); box-shadow: inset 0 -.5px 0 var(--line-2);
-}
-.bar__id { display: flex; align-items: center; gap: var(--sp-25); min-width: 0; margin-right: auto; }
-.bar__mark { font-size: 20px; color: var(--accent-ink); }
-.bar__title { font-size: var(--text-title-3); line-height: 1.25; letter-spacing: var(--tr-title-3); font-weight: var(--w-semibold); }
-.bar__controls { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
-.control { display: inline-flex; align-items: center; gap: var(--sp-15); }
-.control__label {
-  font-size: var(--text-label); font-weight: var(--w-semibold); letter-spacing: var(--tr-label);
-  text-transform: uppercase; color: var(--ink-3); white-space: nowrap;
-}
-
-/* Field, button, chip, tag, kbd: the atoms of the kit in the small sizes. */
 .field {
-  height: var(--control-h-sm); min-width: 0; padding: 0 var(--sp-25); border: 0; border-radius: var(--radius-control);
+  height: var(--control-h); min-width: 0; padding: 0 var(--sp-25); border: 0; border-radius: var(--radius-control);
   background: var(--fill-1); color: var(--ink-1); font-size: var(--text-callout);
-  box-shadow: inset 0 0 0 1px transparent; appearance: none; -webkit-appearance: none;
+  appearance: none; -webkit-appearance: none;
   transition: background var(--dur-3) var(--ease-standard), box-shadow var(--dur-3) var(--ease-standard);
 }
 .field::placeholder { color: var(--ink-3); }
 .field:hover { background: var(--fill-2); }
 .field:focus, .field:focus-visible { background: var(--surface-1); box-shadow: inset 0 0 0 2px var(--accent); }
 .field[aria-invalid="true"] { box-shadow: inset 0 0 0 1.5px var(--danger); }
-.field--num { width: 104px; text-align: right; }
-select.field { padding-right: var(--sp-2); cursor: pointer; }
+select.field { padding: 0 var(--sp-1) 0 var(--sp-2); cursor: pointer; appearance: auto; -webkit-appearance: menulist; }
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-15); height: var(--control-h-sm);
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-15); height: var(--control-h);
   padding: 0 var(--sp-3); border-radius: var(--radius-control); background: var(--fill-1); color: var(--ink-1);
   font-size: var(--text-footnote); font-weight: var(--w-semibold); line-height: 1; white-space: nowrap; user-select: none;
   transition: background var(--dur-3) var(--ease-standard), color var(--dur-3) var(--ease-standard);
@@ -199,183 +176,185 @@ select.field { padding-right: var(--sp-2); cursor: pointer; }
 .btn:hover { background: var(--fill-2); }
 .btn:active { background: var(--fill-3); }
 .btn:disabled { opacity: var(--disabled-opacity); pointer-events: none; }
-.btn--tonal { background: var(--accent-soft); color: var(--accent-ink); }
-.btn--tonal:hover { background: color-mix(in oklch, var(--accent) 18%, transparent); }
-.btn--tonal:active { background: color-mix(in oklch, var(--accent) 24%, transparent); }
-.btn--icon { width: var(--control-h-sm); padding: 0; }
-.btn--ghost { background: transparent; color: var(--ink-3); }
+.btn--ghost { background: transparent; color: var(--ink-2); }
 .btn--ghost:hover { background: var(--hover); color: var(--ink-1); }
-.btn--xs { height: var(--control-h-xs); padding: 0 var(--sp-2); font-size: var(--text-caption); border-radius: var(--r-xs); }
-.kbd {
-  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 5px;
-  background: var(--surface-1); box-shadow: var(--ring), 0 1px 0 var(--line-2); font-family: var(--font-mono);
-  font-size: 10.5px; font-weight: var(--w-medium); color: var(--ink-2); line-height: 1;
+.btn--ghost .icon { color: var(--ink-3); transition: transform var(--dur-3) var(--ease-standard); }
+.btn--ghost[aria-expanded="true"] .icon { transform: rotate(90deg); }
+
+/* Group: a label, a field and its button as one control (the input group of the kit). */
+.group {
+  display: inline-flex; align-items: stretch; height: var(--control-h); min-width: 0; border-radius: var(--radius-control);
+  background: var(--fill-1); transition: box-shadow var(--dur-3) var(--ease-standard), background var(--dur-3) var(--ease-standard);
 }
-.chip {
-  display: inline-flex; align-items: center; gap: var(--sp-15); height: var(--control-h-xs); padding: 0 var(--sp-25);
-  border-radius: var(--r-pill); background: var(--fill-1); color: var(--ink-1); font-size: var(--text-caption);
+.group:focus-within { background: var(--surface-1); box-shadow: inset 0 0 0 2px var(--accent); }
+.group > * { display: inline-flex; align-items: center; }
+.group__label { padding: 0 var(--sp-25); color: var(--ink-3); font-size: var(--text-footnote); white-space: nowrap; box-shadow: inset -.5px 0 0 var(--line-2); }
+.group__unit { padding-right: var(--sp-25); color: var(--ink-3); font-size: var(--text-footnote); }
+.group .field, .group .field:hover, .group .field:focus { flex: 1 1 auto; height: auto; background: transparent; box-shadow: none; border-radius: 0; }
+.group .field--num { width: 88px; flex: none; text-align: right; padding-right: var(--sp-15); }
+.group .btn { height: auto; border-radius: 0 var(--radius-control) var(--radius-control) 0; background: transparent; box-shadow: inset .5px 0 0 var(--line-2); }
+.group .btn:hover { background: var(--hover); }
+.group--wide { display: flex; width: 100%; max-width: 520px; }
+.hint { display: block; margin-top: var(--sp-1); font-size: var(--text-caption); line-height: var(--lh-cap); color: var(--ink-3); }
+.hint--error { color: var(--danger-ink); }
+
+/* Segmented filter: one group, the pressed item is the raised one. */
+.seg { display: inline-flex; flex-wrap: wrap; gap: var(--sp-05); padding: var(--sp-05); border-radius: var(--radius-control); background: var(--fill-1); }
+.seg__item {
+  display: inline-flex; align-items: center; gap: var(--sp-15); height: calc(var(--control-h) - 2 * var(--sp-05));
+  padding: 0 var(--sp-25); border-radius: var(--r-xs); color: var(--ink-2); font-size: var(--text-footnote);
   font-weight: var(--w-medium); line-height: 1; white-space: nowrap;
-  transition: background var(--dur-3) var(--ease-standard), box-shadow var(--dur-3) var(--ease-standard);
 }
-.chip:hover { background: var(--fill-2); }
-.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); box-shadow: inset 0 0 0 1.5px var(--accent); }
-.chip[aria-pressed="true"]:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent), var(--focus-ring); }
-.chip__n { color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.chip[aria-pressed="true"] .chip__n { color: inherit; }
-.chips { display: flex; align-items: center; gap: var(--sp-15); flex-wrap: wrap; }
+.seg__item:hover { color: var(--ink-1); }
+.seg__item[aria-pressed="true"] { background: var(--surface-1); color: var(--ink-1); font-weight: var(--w-semibold); box-shadow: var(--ring), 0 1px 2px var(--line-2); }
+.seg__item[aria-pressed="true"]:focus-visible { box-shadow: var(--focus-ring); }
+.seg__n { color: var(--ink-3); font-weight: var(--w-regular); }
+
+/* Tag: a state that needs the owner. Neutral ground, and one glyph that has the tone. */
 .tag {
-  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: var(--r-xs);
-  font-size: var(--text-caption); font-weight: var(--w-semibold); line-height: 1; letter-spacing: .01em;
-  background: var(--fill-1); color: var(--ink-2); white-space: nowrap; vertical-align: middle;
+  display: inline-flex; align-items: center; gap: var(--sp-1); height: 22px; padding: 0 var(--sp-2) 0 var(--sp-15);
+  border-radius: var(--r-xs); background: var(--fill-1); color: var(--ink-1); font-size: var(--text-footnote);
+  font-weight: var(--w-medium); line-height: 1; white-space: nowrap;
 }
-.tag .ico { font-size: 12px; }
-.tag--success { background: var(--success-soft); color: var(--success-ink); }
-.tag--warning { background: var(--warning-soft); color: var(--warning-ink); }
-.tag--danger { background: var(--danger-soft); color: var(--danger-ink); }
-.tag--info { background: var(--info-soft); color: var(--info-ink); }
-.tag--outline { background: transparent; box-shadow: inset 0 0 0 1px var(--line-3); color: var(--ink-3); }
-.tags { display: flex; align-items: center; gap: var(--sp-1); flex-wrap: wrap; }
+.tag .icon { color: var(--ink-3); }
+.tag--danger .icon, .tone--danger { color: var(--danger-ink); }
+.tag--warning .icon, .tone--warning { color: var(--warning-ink); }
+.tag--info .icon, .tone--info { color: var(--info-ink); }
+.states { display: flex; align-items: center; gap: var(--sp-15); flex-wrap: wrap; min-height: var(--lh-line); }
+.states--below { margin-top: var(--sp-1); }
+.btn--after { margin-left: var(--sp-2); }
 .spinner {
   width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--fill-3); border-top-color: var(--accent);
   animation: spin .85s linear infinite; flex: none;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.skel { display: inline-block; height: .9em; width: var(--w, 8ch); border-radius: .3em; background: var(--fill-2); vertical-align: -.09em; animation: skel 1.4s var(--ease-standard) infinite; }
+.skel { display: inline-block; height: .9em; width: var(--w); border-radius: .3em; background: var(--fill-2); vertical-align: -.09em; animation: skel 1.4s var(--ease-standard) infinite; }
 @keyframes skel { 50% { opacity: .45; } }
 
 /* ---------------------------------------------------------------------------------------------
-   Page, status line, panels
+   Layout: bar, page, panel. One inset (--inset) for each left and right edge.
    --------------------------------------------------------------------------------------------- */
-.page { max-width: var(--page-max); margin: 0 auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-4); }
-@media (min-width: 900px) { .page { padding: var(--sp-5) var(--sp-6) var(--sp-8); } }
-
-/* The state rail: a 3px edge that has the tone of the worst state of its row or block. */
-.rail { --tone: transparent; box-shadow: inset 3px 0 0 var(--tone); }
-[data-sev="3"] > .rail { --tone: var(--danger); }
-[data-sev="2"] > .rail { --tone: var(--warning); }
-[data-sev="1"] > .rail { --tone: var(--success); }
-[data-sev="info"] > .rail { --tone: var(--info); }
-
-.verdict {
-  display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; min-height: 44px;
-  padding: var(--sp-2) var(--sp-4); background: var(--surface-1); border-radius: var(--radius-panel);
-  box-shadow: inset 3px 0 0 var(--tone), var(--ring);
+.bar { position: sticky; top: 0; z-index: 20; background: var(--surface-1); box-shadow: inset 0 -.5px 0 var(--line-2); }
+.bar__in {
+  display: flex; align-items: center; gap: var(--sp-3) var(--sp-4); flex-wrap: wrap; max-width: var(--page-max);
+  min-height: var(--topbar-h); margin: 0 auto; padding: var(--sp-2) var(--gutter);
 }
-.verdict__head { font-weight: var(--w-semibold); font-size: var(--text-body); margin-right: var(--sp-1); }
-.verdict__items { display: flex; align-items: center; gap: var(--sp-15); flex-wrap: wrap; min-width: 0; }
-.verdict__item { cursor: pointer; height: auto; min-height: 22px; padding-block: 4px; max-width: 100%; white-space: normal; line-height: 1.25; }
-.verdict__item:hover { filter: brightness(.97); }
+.bar__id { margin-right: auto; min-width: 0; }
+.bar__title { font-size: var(--text-title-3); line-height: 1.25; letter-spacing: var(--tr-title-3); font-weight: var(--w-semibold); }
+.bar__controls { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+
+.page { max-width: var(--page-max); margin: 0 auto; padding: var(--sp-4) var(--gutter) var(--sp-8); display: flex; flex-direction: column; gap: var(--sp-4); }
 
 .panel { min-width: 0; background: var(--surface-1); box-shadow: var(--ring); border-radius: var(--radius-panel); overflow: hidden; }
-.panel__header {
-  display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; min-height: 44px;
-  padding: var(--sp-2) var(--sp-4); box-shadow: inset 0 -.5px 0 var(--line-2);
-}
-.panel__title { font-size: var(--text-body); font-weight: var(--w-semibold); letter-spacing: var(--tr-body); white-space: nowrap; }
+.panel__header { display: flex; align-items: baseline; gap: var(--sp-1) var(--sp-3); flex-wrap: wrap; padding: var(--sp-3) var(--inset); }
+.panel__title { font-size: var(--text-body); line-height: var(--lh-line); font-weight: var(--w-semibold); }
 .panel__meta { font-size: var(--text-footnote); color: var(--ink-3); min-width: 0; }
-.panel__tools { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-left: auto; }
-.panel__body { overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--fill-3) transparent; }
-.panel__foot { padding: var(--sp-2) var(--sp-4); box-shadow: inset 0 .5px 0 var(--line-2); font-size: var(--text-footnote); color: var(--ink-3); }
-/* Diagnostics: the counts at the left, the statement of what they are at the right. */
-.aside { display: flex; align-items: flex-start; flex-wrap: wrap; }
-.aside > .panel__body { flex: 0 1 auto; max-width: 100%; }
-.aside > .panel__body .table { width: auto; }
-.aside__note { flex: 1 1 280px; max-width: 60ch; padding: var(--sp-3) var(--sp-4); font-size: var(--text-footnote); line-height: 1.45; color: var(--ink-2); }
+.panel__tools { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; padding: 0 var(--inset) var(--sp-3); }
+.panel__tools .field { width: 220px; margin-left: auto; }
+.panel__tools select.field { width: auto; margin-left: 0; }
+.panel__body { overflow-x: auto; box-shadow: inset 0 .5px 0 var(--line-2); }
+.panel__foot { padding: var(--sp-25) var(--inset); box-shadow: inset 0 .5px 0 var(--line-2); font-size: var(--text-footnote); color: var(--ink-3); }
+.empty { padding: var(--sp-4) var(--inset); color: var(--ink-3); }
+
+/* Status: one line for each item that needs the owner, the worst first. */
+.status { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 0 var(--sp-6); padding: var(--sp-2) var(--inset); }
+.status__item {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-height: 32px; padding: var(--sp-1) 0;
+  border-radius: var(--r-xs);
+}
+.status__item:hover .status__text { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .16em; }
+.status__text { flex: 1 1 auto; min-width: 0; }
+.status__where { color: var(--ink-3); font-size: var(--text-caption); white-space: nowrap; }
 
 /* ---------------------------------------------------------------------------------------------
-   Tables
+   Tables. The first and the last column have the panel inset; each cell has the same padding.
    --------------------------------------------------------------------------------------------- */
-.table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--text-callout); line-height: 1.35; }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; }
 .table th {
-  padding: var(--sp-2) var(--sp-3); text-align: left; background: var(--surface-1); color: var(--ink-3);
-  font-size: var(--text-label); font-weight: var(--w-semibold); letter-spacing: var(--tr-label);
-  text-transform: uppercase; white-space: nowrap; box-shadow: inset 0 -.5px 0 var(--line-2);
+  padding: var(--sp-2) var(--sp-3); text-align: left; white-space: nowrap; box-shadow: inset 0 -.5px 0 var(--line-2);
+  font-size: var(--text-label); line-height: var(--lh-cap); font-weight: var(--w-semibold); letter-spacing: var(--tr-label);
+  text-transform: uppercase; color: var(--ink-3);
 }
-.table td { padding: var(--sp-2) var(--sp-3); box-shadow: inset 0 -.5px 0 var(--line-1); vertical-align: top; white-space: nowrap; }
-.table td.wrap { white-space: normal; min-width: 24ch; }
+.table td { padding: var(--sp-25) var(--sp-3); vertical-align: top; box-shadow: inset 0 -.5px 0 var(--line-1); }
 .table tbody tr:last-child > td { box-shadow: none; }
-.table tbody tr:last-child > td.rail { box-shadow: inset 3px 0 0 var(--tone); }
-.table td.rail { box-shadow: inset 3px 0 0 var(--tone), inset 0 -.5px 0 var(--line-1); padding-left: var(--sp-4); }
-.table th:first-child { padding-left: var(--sp-4); }
-.table th:last-child, .table td:last-child { padding-right: var(--sp-4); }
+.table th:first-child, .table td:first-child { padding-left: var(--inset); }
+.table th:last-child, .table td:last-child { padding-right: var(--inset); }
 .table .r { text-align: right; }
-.table tbody tr.row:hover > td { background: var(--hover); }
+.table td.r, .table td.nw { white-space: nowrap; }
+.table td.r .gauge { margin-left: auto; }
+.table td.act { width: 1%; padding-top: var(--sp-15); padding-bottom: var(--sp-15); text-align: right; white-space: nowrap; }
+.table td.act .btn { margin-right: calc(-1 * var(--sp-3)); }  /* the glyph ends at the panel inset */
+.table tr.row:hover > td { background: var(--hover); }
 .table tr.is-muted > td { color: var(--ink-3); }
 .table tr.is-muted .strong { font-weight: var(--w-medium); }
-.th-sort { display: inline-flex; align-items: center; gap: 3px; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; border-radius: 4px; }
+.th-sort { display: inline-flex; align-items: center; gap: var(--sp-05); font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; border-radius: var(--r-xs); }
+.r .th-sort { flex-direction: row-reverse; }  /* the text of a right column ends where its values end */
 .th-sort:hover { color: var(--ink-1); }
-.th-sort .ico { font-size: 11px; opacity: .45; }
-th[aria-sort="ascending"] .th-sort, th[aria-sort="descending"] .th-sort { color: var(--ink-1); }
-th[aria-sort="ascending"] .th-sort .ico, th[aria-sort="descending"] .th-sort .ico { opacity: 1; }
-th[aria-sort="descending"] .th-sort .ico { transform: rotate(180deg); }
-.note { display: block; margin-top: 3px; font-size: var(--text-caption); line-height: 1.35; color: var(--ink-2); width: max-content; max-width: 44ch; white-space: normal; }
-.note--warning { color: var(--warning-ink); }
-.note--danger { color: var(--danger-ink); }
-.empty { padding: var(--sp-5) var(--sp-4); color: var(--ink-3); font-size: var(--text-callout); }
-.nodata { color: var(--ink-3); }
+.th-sort .icon { width: var(--icon-xs); height: var(--icon-xs); visibility: hidden; }
+th[aria-sort] .th-sort { color: var(--ink-1); }
+th[aria-sort] .th-sort .icon { visibility: visible; }
+th[aria-sort="ascending"] .th-sort .icon { transform: rotate(180deg); }
 
-.cell { display: flex; align-items: flex-start; gap: var(--sp-15); }
-.cell > div { min-width: 0; }
-.label { display: block; max-width: 30ch; }
-.label--short { max-width: 24ch; }
-.tags--below { margin-top: var(--sp-1); }
-.btn--after { margin-left: var(--sp-2); }
-.addr { display: inline-flex; align-items: center; gap: var(--sp-05); max-width: 100%; }
-.copy { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; color: var(--ink-4); }
+.addr { display: inline-flex; align-items: center; gap: var(--sp-05); max-width: 100%; vertical-align: bottom; }
+.copy { display: inline-grid; place-items: center; width: 18px; height: 16px; border-radius: var(--r-xs); color: var(--ink-3); }
 .copy:hover { color: var(--ink-1); background: var(--hover); }
-.copy .ico { font-size: 12px; }
-.copy[data-done] { color: var(--success-ink); }
-.expander { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 5px; color: var(--ink-3); }
-.expander:hover { background: var(--hover); color: var(--ink-1); }
-.expander .ico { font-size: 12px; transition: transform var(--dur-3) var(--ease-standard); }
-.expander[aria-expanded="true"] .ico { transform: rotate(90deg); }
+.copy .icon { width: var(--icon-xs); height: var(--icon-xs); }
 
-/* Detail row: a sunken block below its row. */
-.table tr.detail > td { padding: 0; white-space: normal; background: var(--surface-sunken); box-shadow: inset 0 -.5px 0 var(--line-1), inset 0 .5px 0 var(--line-1); }
-.detail__body { padding: var(--sp-3) var(--sp-4); display: grid; gap: var(--sp-2) var(--sp-6); grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+/* Detail and alert: a sunken block below its row, with the same inset. */
+.table tr.sub > td { padding: 0; background: var(--surface-sunken); }
+.sub__body { display: grid; gap: var(--sp-3) var(--sp-6); grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); padding: var(--sp-3) var(--inset) var(--sp-4); }
+.sub__body--first { padding-bottom: 0; }
+.sub__wide { grid-column: 1 / -1; }
+.kv--2 { grid-column: span 2; }
 .kv { min-width: 0; }
-.kv dt { font-size: var(--text-label); font-weight: var(--w-semibold); letter-spacing: var(--tr-label); text-transform: uppercase; color: var(--ink-3); }
-.kv dd { font-size: var(--text-footnote); overflow-wrap: anywhere; }
-.urls { grid-column: 1 / -1; display: grid; gap: var(--sp-1); }
-.urls li { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--text-footnote); }
-.urls ol { list-style: none; padding: 0; display: grid; gap: var(--sp-1); }
+.kv dd, .kv__value { display: block; margin-top: var(--sp-05); font-size: var(--text-footnote); line-height: var(--lh-line); overflow-wrap: anywhere; }
+.urls { display: grid; gap: var(--sp-1); margin-top: var(--sp-05); }
+.urls li { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--text-footnote); }
+.notice { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--sp-2) var(--sp-25); align-items: start; padding: var(--sp-3) var(--inset); }
+.notice > .icon { width: var(--icon-md); height: var(--icon-md); margin-top: 2px; }
+.notice__title { font-weight: var(--w-semibold); }
+.notice__list { margin-top: var(--sp-1); color: var(--ink-2); font-size: var(--text-footnote); overflow-wrap: anywhere; }
+.notice__actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 
-.notice {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--sp-25); align-items: start;
-  padding: var(--sp-25) var(--sp-3); border-radius: var(--radius-control); background: var(--danger-soft);
-  font-size: var(--text-footnote); line-height: 1.4;
-}
-.notice > .ico { color: var(--danger-ink); margin-top: 2px; }
-.notice__title { font-weight: var(--w-semibold); font-size: var(--text-callout); }
-.notice ul { padding-left: 1.2em; margin-top: 2px; color: var(--ink-2); overflow-wrap: anywhere; }
-.table tr.alert > td { padding: 0 var(--sp-4) var(--sp-25) var(--sp-4); white-space: normal; }
-
-/* Gauge: a level on a track, with a tick at each mark. */
-.gauge { position: relative; height: 6px; min-width: 96px; margin: 6px 0 5px; border-radius: var(--r-pill); background: var(--fill-2); }
-.gauge__fill { position: absolute; inset: 0 auto 0 0; width: var(--v, 0%); border-radius: inherit; background: var(--tone, var(--ink-3)); transition: width var(--dur-3) var(--ease-standard); }
-.gauge__tick { position: absolute; top: -3px; bottom: -3px; left: var(--at); width: 1.5px; margin-left: -.75px; border-radius: 1px; background: var(--ink-2); }
-.gauge[data-tone="ok"] { --tone: var(--success); }
+/* Gauge: a level on a track, with a tick at each mark. The fill has a tone only below a mark. */
+.gauge { position: relative; width: 112px; height: 4px; margin-top: var(--sp-15); border-radius: var(--r-pill); background: var(--fill-2); }
+.gauge__fill { position: absolute; inset: 0 auto 0 0; width: var(--v, 0%); border-radius: inherit; background: var(--tone, var(--ink-3)); }
+.gauge__tick { position: absolute; top: -2px; bottom: -2px; left: var(--at); width: 1px; background: var(--ink-2); }
 .gauge[data-tone="low"] { --tone: var(--warning); }
 .gauge[data-tone="bad"] { --tone: var(--danger); }
-.gauge[data-tone="off"] { --tone: var(--ink-4); }
-.progress { position: relative; height: 3px; margin-top: 5px; border-radius: var(--r-pill); background: var(--fill-2); overflow: hidden; }
+.progress { position: relative; height: 3px; max-width: 220px; margin-top: var(--sp-15); border-radius: var(--r-pill); background: var(--fill-2); overflow: hidden; }
 .progress > i { position: absolute; inset: 0 auto 0 0; width: var(--v, 0%); background: var(--accent); border-radius: inherit; transition: width var(--dur-3) var(--ease-standard); }
 
-/* Chains table */
-.over { display: flex; align-items: center; gap: var(--sp-15); }
-.over .field { flex: 1 1 auto; width: 100%; min-width: 150px; }
-.blockno { font-size: var(--text-body); font-weight: var(--w-semibold); }
-
-.foot { display: flex; gap: var(--sp-2) var(--sp-5); flex-wrap: wrap; align-items: center; color: var(--ink-3); font-size: var(--text-footnote); padding: 0 var(--sp-1); }
-.foot span { display: inline-flex; align-items: center; gap: var(--sp-15); }
+.foot { display: flex; gap: var(--sp-1) var(--sp-5); flex-wrap: wrap; padding: 0 var(--inset); color: var(--ink-3); font-size: var(--text-footnote); }
 
 @media (max-width: 899px) {
+  :root { --gutter: var(--sp-3); }
   .bar { position: static; }
-  .bar__controls { width: 100%; }
-  .panel__tools { margin-left: 0; width: 100%; }
-  /* A wide table scrolls inside its panel, and its first column stays in view. */
-  .table th:first-child, .table td.rail { position: sticky; left: 0; z-index: 1; background: var(--surface-1); }
-  .detail__body, .notice { max-width: calc(100vw - 2 * var(--sp-4)); position: sticky; left: 0; }
+  .panel__tools .field { width: 100%; margin-left: 0; }
+  /* A narrow or zoomed window: each row is a block with its column names, so no column is out of view. */
+  .table, .table tbody { display: block; }
+  .table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .table tr.row {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3) var(--sp-4);
+    padding: var(--sp-3) var(--inset); box-shadow: inset 0 -.5px 0 var(--line-1);
+  }
+  .table tr.row > td, .table tr.row > td:first-child, .table tr.row > td:last-child {
+    display: block; width: auto; min-width: 0; padding: 0; box-shadow: none; text-align: left; white-space: normal;
+  }
+  .table tr.row > td::before { content: attr(data-th); display: block; margin-bottom: var(--sp-05); }
+  .table tr.row > td::before {
+    font-size: var(--text-label); line-height: var(--lh-cap); font-weight: var(--w-semibold); letter-spacing: var(--tr-label);
+    text-transform: uppercase; color: var(--ink-3);
+  }
+  .table tr.row > td:first-child, .table tr.row > td.wide, .table tr.row > td.act { grid-column: 1 / -1; }
+  .table tr.row > td:first-child::before, .table tr.row > td.act::before { content: none; }
+  .table tr.row > td .gauge { margin-left: 0; }
+  .table tr.row > td.act .btn { margin: 0 0 0 calc(-1 * var(--sp-3)); }
+  .table tr.row:hover > td { background: none; }
+  .table tr.sub, .table tr.sub > td { display: block; }
+  .kv--2 { grid-column: 1 / -1; }
+  .notice { grid-template-columns: auto minmax(0, 1fr); }
+  .notice__actions { grid-column: 2; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
@@ -384,68 +363,64 @@ th[aria-sort="descending"] .th-sort .ico { transform: rotate(180deg); }
 </head>
 <body data-phase="start">
 
-<!-- Marks: one stroke style. Each mark names a state; no mark is an ornament. -->
+<!-- The glyphs are the filled icons of the UI kit, inline. A glyph is on a state that needs the owner, or on a control. -->
 <svg class="sprite" aria-hidden="true">
-  <symbol id="i-mark" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h3.3l1.4-2.8 3 5.6L11 8h3.2"/></symbol>
-  <symbol id="i-ok" viewBox="0 0 16 16"><path d="M3.2 8.6l3 3 6.4-7.2"/></symbol>
-  <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2.4 14.2 13H1.8Z"/><path d="M8 6.6v3M8 11.3v.1"/></symbol>
-  <symbol id="i-error" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M5.7 5.7l4.6 4.6M10.3 5.7l-4.6 4.6"/></symbol>
-  <symbol id="i-fallback" viewBox="0 0 16 16"><circle cx="4" cy="4" r="2.2"/><path d="M4 7v3.4A1.6 1.6 0 0 0 5.6 12H9"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/></symbol>
-  <symbol id="i-override" viewBox="0 0 16 16"><rect x="2.3" y="2.3" width="11.4" height="11.4" rx="2.6"/><circle cx="8" cy="8" r="1.9" fill="currentColor"/></symbol>
-  <symbol id="i-quarantine" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M3.7 12.3 12.3 3.7"/></symbol>
-  <symbol id="i-parked" viewBox="0 0 16 16"><rect x="2.3" y="2.3" width="11.4" height="11.4" rx="2.6"/><path d="M6.4 5.8v4.4M9.6 5.8v4.4"/></symbol>
-  <symbol id="i-disarmed" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" stroke-dasharray="2.6 2.3"/></symbol>
-  <symbol id="i-debt" viewBox="0 0 16 16"><path d="M8 2.4v8.2M4.7 7.5 8 10.8l3.3-3.3M3 13.6h10"/></symbol>
-  <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5.6" y="5.6" width="8" height="8" rx="1.8"/><path d="M3.6 10.4h-.3a.9.9 0 0 1-.9-.9V3.3a.9.9 0 0 1 .9-.9h6.2a.9.9 0 0 1 .9.9v.3"/></symbol>
-  <symbol id="i-chevron" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5"/></symbol>
-  <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.8M13.3 2.6v2.8h-2.8"/></symbol>
-  <symbol id="i-sort" viewBox="0 0 16 16"><path d="M8 12.5v-9M4.6 6.9 8 3.5l3.4 3.4"/></symbol>
-  <symbol id="i-theme" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8"/><path d="M8 2.2a5.8 5.8 0 0 1 0 11.6Z" fill="currentColor"/></symbol>
+  <symbol id="i-error" viewBox="0 0 256 256"><path d="M128,20A108,108,0,1,0,236,128,108.12,108.12,0,0,0,128,20Zm0,192a84,84,0,1,1,84-84A84.09,84.09,0,0,1,128,212Zm-12-80V80a12,12,0,0,1,24,0v52a12,12,0,0,1-24,0Zm28,40a16,16,0,1,1-16-16A16,16,0,0,1,144,172Z"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 256 256"><path d="M240.26,186.1,152.81,34.23h0a28.74,28.74,0,0,0-49.62,0L15.74,186.1a27.45,27.45,0,0,0,0,27.71A28.31,28.31,0,0,0,40.55,228h174.9a28.31,28.31,0,0,0,24.79-14.19A27.45,27.45,0,0,0,240.26,186.1Zm-20.8,15.7a4.46,4.46,0,0,1-4,2.2H40.55a4.46,4.46,0,0,1-4-2.2,3.56,3.56,0,0,1,0-3.73L124,46.2a4.77,4.77,0,0,1,8,0l87.44,151.87A3.56,3.56,0,0,1,219.46,201.8ZM116,136V104a12,12,0,0,1,24,0v32a12,12,0,0,1-24,0Zm28,40a16,16,0,1,1-16-16A16,16,0,0,1,144,176Z"/></symbol>
+  <symbol id="i-quarantine" viewBox="0 0 256 256"><path d="M128,20A108,108,0,1,0,236,128,108.12,108.12,0,0,0,128,20Zm84,108a83.6,83.6,0,0,1-16.75,50.28L77.72,60.75A84,84,0,0,1,212,128ZM44,128A83.6,83.6,0,0,1,60.75,77.72L178.28,195.25A84,84,0,0,1,44,128Z"/></symbol>
+  <symbol id="i-parked" viewBox="0 0 256 256"><path d="M200,28H160a20,20,0,0,0-20,20V208a20,20,0,0,0,20,20h40a20,20,0,0,0,20-20V48A20,20,0,0,0,200,28Zm-4,176H164V52h32ZM96,28H56A20,20,0,0,0,36,48V208a20,20,0,0,0,20,20H96a20,20,0,0,0,20-20V48A20,20,0,0,0,96,28ZM92,204H60V52H92Z"/></symbol>
+  <symbol id="i-fallback" viewBox="0 0 256 256"><path d="M232.49,160.49l-48,48a12,12,0,0,1-17-17L195,164H128A108.12,108.12,0,0,1,20,56a12,12,0,0,1,24,0,84.09,84.09,0,0,0,84,84h67l-27.52-27.51a12,12,0,0,1,17-17l48,48A12,12,0,0,1,232.49,160.49Z"/></symbol>
+  <symbol id="i-override" viewBox="0 0 256 256"><path d="M238.15,78.54,177.46,17.86a20,20,0,0,0-28.3,0L97.2,70c-12.43-3.33-36.68-5.72-61.74,14.5a20,20,0,0,0-1.6,29.73l45.46,45.47-39.8,39.8a12,12,0,0,0,17,17l39.8-39.81,45.47,45.46A20,20,0,0,0,155.91,228c.46,0,.93,0,1.4-.05A20,20,0,0,0,171.87,220c4.69-6.23,11-16.13,14.44-28s3.45-22.88.16-33.4l51.7-51.87A20,20,0,0,0,238.15,78.54Zm-74.26,68.79a12,12,0,0,0-2.23,13.84c3.43,6.86,6.9,21-6.28,40.65L54.08,100.53c21.09-14.59,39.53-6.64,41-6a11.67,11.67,0,0,0,13.81-2.29l54.43-54.61,55,55Z"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 256 256"><path d="M216,28H88A12,12,0,0,0,76,40V76H40A12,12,0,0,0,28,88V216a12,12,0,0,0,12,12H168a12,12,0,0,0,12-12V180h36a12,12,0,0,0,12-12V40A12,12,0,0,0,216,28ZM156,204H52V100H156Zm48-48H180V88a12,12,0,0,0-12-12H100V52H204Z"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 256 256"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 256 256"><path d="M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 256 256"><path d="M216.49,104.49l-80,80a12,12,0,0,1-17,0l-80-80a12,12,0,0,1,17-17L128,159l71.51-71.52a12,12,0,0,1,17,17Z"/></symbol>
 </svg>
 
 <header class="bar">
-  <div class="bar__id">
-    <span class="ico bar__mark" aria-hidden="true"><svg viewBox="0 0 16 16"><use href="#i-mark"/></svg></span>
-    <div>
+  <div class="bar__in">
+    <div class="bar__id">
       <h1 class="bar__title">Lifeline board</h1>
-      <span class="cap" id="bar-sub">Read-only. State by eth_call at the latest block of each chain.</span>
+      <span class="cap">Read-only. State by eth_call at the latest block of each chain.</span>
     </div>
-  </div>
-  <div class="bar__controls">
-    <form class="control" id="lookback-form" novalidate>
-      <label class="control__label" for="lookback">Lookback</label>
-      <input class="field field--num" id="lookback" inputmode="numeric" autocomplete="off" spellcheck="false"
-             aria-describedby="lookback-unit lookback-error">
-      <span class="dim" id="lookback-unit">blocks</span>
-      <button class="btn" type="submit" id="lookback-apply">Apply</button>
-      <span class="note note--danger" id="lookback-error" role="alert" hidden></span>
-    </form>
-    <div class="control">
-      <label class="control__label" for="auto">Auto read</label>
-      <select class="field" id="auto">
-        <option value="0">Off</option>
-        <option value="30">30 s</option>
-        <option value="60">1 min</option>
-        <option value="300">5 min</option>
-      </select>
+    <div class="bar__controls">
+      <form id="lookback-form" novalidate>
+        <div class="group">
+          <label class="group__label" for="lookback">Lookback</label>
+          <input class="field field--num" id="lookback" inputmode="numeric" autocomplete="off" spellcheck="false"
+                 aria-describedby="lookback-unit lookback-error">
+          <span class="group__unit" id="lookback-unit">blocks</span>
+          <button class="btn" type="submit">Apply</button>
+        </div>
+        <span class="hint hint--error" id="lookback-error" role="alert" hidden></span>
+      </form>
+      <div class="group">
+        <label class="group__label" for="auto">Auto read</label>
+        <select class="field" id="auto">
+          <option value="0">Off</option>
+          <option value="30">30 s</option>
+          <option value="60">1 min</option>
+          <option value="300">5 min</option>
+        </select>
+      </div>
+      <button class="btn" type="button" id="refresh" title="Read each chain again (key R)">Read again</button>
+      <button class="btn btn--ghost" type="button" id="theme" title="Switch between the light and the dark theme">Theme</button>
     </div>
-    <button class="btn btn--tonal" type="button" id="refresh" title="Read each chain again (R)">
-      <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16"><use href="#i-refresh"/></svg></span>
-      Read again <span class="kbd" aria-hidden="true">R</span>
-    </button>
-    <button class="btn btn--icon btn--ghost" type="button" id="theme" aria-label="Switch between the light and the dark theme" title="Light or dark theme">
-      <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16"><use href="#i-theme"/></svg></span>
-    </button>
   </div>
 </header>
 
 <main class="page" id="page">
-  <section class="verdict" id="verdict" aria-label="Fleet status"></section>
+  <section class="panel" id="verdict" aria-labelledby="verdict-title">
+    <div class="panel__header">
+      <h2 class="panel__title" id="verdict-title">Status</h2>
+      <span class="panel__meta" id="verdict-meta"></span>
+    </div>
+    <div class="panel__body" id="verdict-body"></div>
+  </section>
 
   <section class="panel" id="chains" aria-labelledby="chains-title">
     <div class="panel__header">
       <h2 class="panel__title" id="chains-title">Chains and RPC</h2>
-      <span class="panel__meta">A request that fails goes to the next URL of the chain. A chain with no answer shows no number.</span>
     </div>
     <div class="panel__body" id="chains-body"></div>
   </section>
@@ -453,7 +428,6 @@ th[aria-sort="descending"] .th-sort .ico { transform: rotate(180deg); }
   <section class="panel" id="funds" aria-labelledby="funds-title">
     <div class="panel__header">
       <h2 class="panel__title" id="funds-title">Hub and vault funds</h2>
-      <span class="panel__meta">Principal is the balance of the contract. The fee float is its reserves at the ledger of its chain.</span>
     </div>
     <div class="panel__body" id="funds-body"></div>
   </section>
@@ -462,12 +436,13 @@ th[aria-sort="descending"] .th-sort .ico { transform: rotate(180deg); }
     <div class="panel__header">
       <h2 class="panel__title" id="targets-title">Targets</h2>
       <span class="panel__meta" id="targets-meta"></span>
-      <div class="panel__tools">
-        <div class="chips" id="targets-state" role="group" aria-label="Filter the targets by state"></div>
-        <div class="chips" id="targets-chain" role="group" aria-label="Filter the targets by chain"></div>
-        <label class="visually-hidden" for="targets-text">Filter the targets by label or address</label>
-        <input class="field" id="targets-text" type="search" placeholder="Label or address" autocomplete="off" spellcheck="false" title="Filter by label or address (/)">
-      </div>
+    </div>
+    <div class="panel__tools">
+      <div class="seg" id="targets-state" role="group" aria-label="Filter the targets by state"></div>
+      <label class="visually-hidden" for="targets-chain">Filter the targets by chain</label>
+      <select class="field" id="targets-chain"></select>
+      <label class="visually-hidden" for="targets-text">Filter the targets by label or address</label>
+      <input class="field" id="targets-text" type="search" placeholder="Label or address" autocomplete="off" spellcheck="false" title="Filter by label or address (key /)">
     </div>
     <div class="panel__body" id="targets-body"></div>
   </section>
@@ -475,11 +450,12 @@ th[aria-sort="descending"] .th-sort .ico { transform: rotate(180deg); }
   <section class="panel" id="events" aria-labelledby="events-title">
     <div class="panel__header">
       <h2 class="panel__title" id="events-title">Events</h2>
-      <span class="panel__meta" id="events-meta">Newest first, inside the block window of each chain.</span>
-      <div class="panel__tools">
-        <div class="chips" id="events-type" role="group" aria-label="Filter the events by type"></div>
-        <div class="chips" id="events-chain" role="group" aria-label="Filter the events by chain"></div>
-      </div>
+      <span class="panel__meta" id="events-meta"></span>
+    </div>
+    <div class="panel__tools">
+      <div class="seg" id="events-type" role="group" aria-label="Filter the events by type"></div>
+      <label class="visually-hidden" for="events-chain">Filter the events by chain</label>
+      <select class="field" id="events-chain"></select>
     </div>
     <div class="panel__body" id="events-body"></div>
     <div class="panel__foot" id="events-foot" hidden></div>
@@ -488,14 +464,11 @@ th[aria-sort="descending"] .th-sort .ico { transform: rotate(180deg); }
   <section class="panel" id="diag" aria-labelledby="diag-title">
     <div class="panel__header">
       <h2 class="panel__title" id="diag-title">Diagnostics only</h2>
-      <span class="panel__meta">CallbackFailure counts of the callback proxies, inside the same block windows.</span>
+      <span class="panel__meta">CallbackFailure counts in the event window of each chain</span>
     </div>
-    <div class="aside">
-      <div class="panel__body" id="diag-body"></div>
-      <p class="aside__note">Any caller can make a proxy write a CallbackFailure log for a contract: an
-        unauthorized callback is enough. So a count here is not a state. It changes no target state and no
-        other value on this page.</p>
-    </div>
+    <div class="panel__body" id="diag-body"></div>
+    <div class="panel__foot">Any caller can make a proxy write a CallbackFailure log for a contract: an unauthorized
+      callback is enough. So a count here is not a state. It changes no target state and no other value on this page.</div>
   </section>
 
   <footer class="foot" id="foot"></footer>
@@ -583,17 +556,17 @@ function h(tag, attributes, ...children) {
   return element;
 }
 
-const ICONS = new Set(["mark", "ok", "warn", "error", "fallback", "override", "quarantine", "parked", "disarmed",
-  "debt", "copy", "chevron", "refresh", "sort", "theme"]);
+const ICONS = new Set(["error", "warn", "quarantine", "parked", "fallback", "override", "copy", "ok", "chevron", "sort"]);
 
 function icon(name) {
-  const holder = h("span", { class: "ico", "aria-hidden": "true" });
-  if (ICONS.has(name)) holder.innerHTML = `<svg viewBox="0 0 16 16"><use href="#i-${name}"/></svg>`;
+  const holder = h("span", { class: "icon", "aria-hidden": "true" });
+  if (ICONS.has(name)) holder.innerHTML = `<svg viewBox="0 0 256 256"><use href="#i-${name}"/></svg>`;
   return holder;
 }
 
+/** A state that needs the owner: a glyph with the tone, and the text. */
 function tag(tone, text, mark) {
-  return h("span", { class: "tag" + (tone ? " tag--" + tone : "") }, mark && icon(mark), text);
+  return h("span", { class: `tag tag--${tone}` }, icon(mark), text);
 }
 
 /** An amount with its exact value as the title and as `data-raw`, for a check against a direct read. */
@@ -1373,6 +1346,7 @@ async function readAll() {
 
 // ---------------------------------------------------------------------------------------------
 // Derived rows. A severity is 0 (not managed), 1 (as it must be), 2 (the owner must look), 3 (failure).
+// A state that needs the owner is a tag: { tone, text, mark }. Each other state is plain text.
 // ---------------------------------------------------------------------------------------------
 
 const UI = {
@@ -1389,24 +1363,27 @@ function fundRows() {
       return row;
     }
     const v = row.values = chain.data.contract;
-    const flag = (sev, tone, text, mark) => { row.flags.push({ tone, text, mark }); row.sev = Math.max(row.sev, sev); };
-    if (v.debt > 0n) flag(3, "danger", "In debt", "debt");
+    const flag = (sev, text, mark) => {
+      row.flags.push({ tone: sev === 3 ? "danger" : "warning", text, mark: mark || (sev === 3 ? "error" : "warn") });
+      row.sev = Math.max(row.sev, sev);
+    };
+    if (v.debt > 0n) flag(3, "In debt");
     if (row.role === "hub") {
-      if (v.paused) flag(2, "warning", "Paused", "parked");
-      if (!v.cron) flag(2, "warning", "Cron not subscribed", "warn");
+      if (v.paused) flag(2, "Paused", "parked");
+      if (!v.cron) flag(2, "Cron not subscribed");
     } else {
       const view = HUB.phase === "ok" ? HUB.data.vaultInfo[chain.cfg.name] : null;
       row.hubView = view;
       if (view) {
-        if (lower(view.vault) !== lower(chain.cfg.contract)) flag(3, "danger", "Hub has another vault", "error");
-        else if (!view.up) flag(3, "danger", "Down at the hub", "error");
-        if (view.pending > 0n) flag(2, "warning", `${fmtInt(view.pending)} pending`, "warn");
+        if (lower(view.vault) !== lower(chain.cfg.contract)) flag(3, "Hub has another vault");
+        else if (!view.up) flag(3, "Down at the hub");
+        if (view.pending > 0n) flag(2, `${fmtInt(view.pending)} pending`);
       }
-      if (v.paused) flag(2, "warning", "Paused", "parked");
+      if (v.paused) flag(2, "Paused", "parked");
     }
-    if (v.principal <= v.floor) flag(3, "danger", "Principal at the floor", "warn");
-    if (v.debt === 0n && v.float === 0n) flag(3, "danger", "Float empty", "warn");
-    else if (v.debt === 0n && v.float * 2n < v.floatTarget) flag(2, "warning", "Float low", "warn");
+    if (v.principal <= v.floor) flag(3, "Principal at the floor");
+    if (v.debt === 0n && v.float === 0n) flag(3, "Float empty");
+    else if (v.debt === 0n && v.float * 2n < v.floatTarget) flag(2, "Float low");
     return row;
   });
 }
@@ -1453,54 +1430,58 @@ function targetRows() {
     row.high = row.policy ? row.policy.high : null;
     row.vaultQuarantine = Boolean(record && record.quarantined);
 
-    row.tags = [];
+    row.tags = [];   // states that need the owner
+    row.plain = [];  // states that need no action
     row.notes = [];
     row.sev = 1;
     row.cat = "other";
-    const mark = (sev, tone, text, glyph) => { row.tags.push({ tone, text, mark: glyph }); row.sev = Math.max(row.sev, sev); };
+    const mark = (sev, text, glyph) => {
+      row.tags.push({ tone: sev === 3 ? "danger" : "warning", text, mark: glyph || (sev === 3 ? "error" : "warn") });
+      row.sev = Math.max(row.sev, sev);
+    };
     const managed = row.hubState !== "Disarmed" && row.hubState !== "None";
     if (row.hubState === null) {
-      if (!row.loading && HUB.phase === "error") mark(2, "outline", "Hub state not known", null);
+      if (!row.loading && HUB.phase === "error") { row.plain.push("Hub state not known"); row.sev = 2; }
     } else if (row.hubState === "Active") {
       row.cat = "active";
       if (row.vaultQuarantine) {
         row.cat = "quarantined";
-        mark(2, "warning", "Quarantined on the vault", "quarantine");
-        row.tags.push({ tone: "outline", text: "Active on the hub" });
+        mark(2, "Quarantined on the vault", "quarantine");
+        row.plain.push("Active on the hub");
       } else {
-        mark(1, "success", "Active", "ok");
+        row.plain.push("Active");
       }
     } else if (row.hubState === "Quarantined") {
       row.cat = "quarantined";
-      mark(2, "warning", "Quarantined", "quarantine");
-      row.notes.push(["warning", "The hub pays no rescue for it. hub.release ends the quarantine."]);
+      mark(2, "Quarantined", "quarantine");
+      row.notes.push("No rescue until hub.release.");
     } else if (row.hubState === "Parked") {
       row.cat = "parked";
-      mark(2, "warning", "Parked", "parked");
-      if (row.vaultQuarantine) row.tags.push({ tone: "warning", text: "Quarantined on the vault", mark: "quarantine" });
-      row.notes.push(["warning", "The relay limit is reached: the hub sends no relay for it. hub.rearm starts it again."]);
+      mark(2, "Parked", "parked");
+      if (row.vaultQuarantine) mark(2, "Quarantined on the vault", "quarantine");
+      row.notes.push("Relay limit reached. hub.rearm starts it again.");
     } else if (row.hubState === "Disarmed") {
       row.cat = "disarmed";
       row.sev = 0;
-      row.tags.push({ tone: "", text: "Disarmed", mark: "disarmed" });
-      if (row.vaultQuarantine) row.tags.push({ tone: "outline", text: "Quarantined on the vault" });
+      row.plain.push("Disarmed");
+      if (row.vaultQuarantine) row.plain.push("quarantined on the vault");
+    } else if (row.removed) {
+      row.sev = 0;
+      row.plain.push("Not enrolled at the hub");
     } else {
-      row.sev = row.removed ? 0 : 2;
-      row.tags.push({ tone: "outline", text: "Not enrolled at the hub" });
-      if (!row.removed) row.notes.push(["warning", "The manifest has this enrollment, and the hub has no record of it."]);
+      mark(2, "Not enrolled at the hub");
+      row.notes.push("The manifest has this enrollment. The hub has no record of it.");
     }
     // Count change 8: the hub sweeps a listed target until hub.disarm, also when the vault quarantined it.
     row.sweepNote = Boolean(row.vaultQuarantine && row.listed);
-    if (row.sweepNote) {
-      row.notes.unshift(["warning", "The hub still has it in the sweep list of this chain. hub.disarm stops its sweep cost."]);
-    }
+    if (row.sweepNote) row.notes.unshift("Still in the hub sweep list. hub.disarm stops its sweep cost.");
     if (managed && !onHubChain && record && !record.hasPolicy) {
-      mark(2, "warning", "No vault policy", "warn");
-      row.notes.push(["warning", "The vault answers NoPolicy for it until vault.setPolicy."]);
+      mark(2, "No vault policy");
+      row.notes.push("The vault answers NoPolicy until vault.setPolicy.");
     }
     if (managed && row.known) {
-      if (row.debt > 0n) mark(3, "danger", "In debt", "debt");
-      else if (row.low !== null && row.reserves < row.low) mark(2, "warning", "Below the low mark", "warn");
+      if (row.debt > 0n) mark(3, "In debt");
+      else if (row.low !== null && row.reserves < row.low) mark(2, "Below the low mark");
     }
     if (!row.known && !row.loading && managed) row.sev = Math.max(row.sev, 2);
   }
@@ -1524,7 +1505,6 @@ function eventRows() {
 }
 
 const LOW_EVENTS = new Set(["HubLow", "VaultLow"]);
-const PAID_OUTCOMES = new Set(["Rescued", "ToppedUp"]);
 
 function labelOf(chain, target) {
   const entry = ENROLLED.get(keyOf(chain.cfg.name, target));
@@ -1533,7 +1513,7 @@ function labelOf(chain, target) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Render
+// Render. Each cell has one main line and, below it, caption lines: the same pattern in each table.
 // ---------------------------------------------------------------------------------------------
 
 const $ = (id) => document.getElementById(id);
@@ -1555,7 +1535,7 @@ function draw() {
   queued = false;
   const active = document.activeElement, focusKey = active && active.dataset ? active.dataset.fk : null;
   const funds = fundRows(), targets = targetRows(), events = eventRows();
-  drawVerdict(funds, targets);
+  drawStatus(funds, targets);
   drawChains();
   drawFunds(funds);
   drawTargets(targets);
@@ -1569,22 +1549,46 @@ function draw() {
   document.body.dataset.phase = isBusy() ? "reading" : "idle";
 }
 
-function chips(holder, group, choices, current, pick) {
+const cap = (...children) => h("span", { class: "cap" }, children);
+const kv = (term, ...value) => h("div", { class: "kv" }, h("dt", { class: "label" }, term), h("dd", null, value));
+const kvWide = (term, ...value) => Object.assign(kv(term, ...value), { className: "kv kv--2" });
+const th = (text, right) => h("th", { scope: "col", class: right ? "r" : null }, text);
+const dash = () => h("span", { class: "nodata" }, "\u2014");
+/** A value that is a caption of another value, when its chain gave no answer: the field is there, with no value. */
+const blank = (field) => h("span", { hidden: true, data: { field, raw: "" } });
+
+/** The states of one cell: the tags first, then the plain states. */
+function states(tags, plain, extra) {
+  return h("span", { class: "states", ...(extra || {}) },
+    tags.map((entry) => tag(entry.tone, entry.text, entry.mark)),
+    plain.length ? h("span", { class: tags.length ? "dim" : null }, plain.join(" \u00b7 ")) : null);
+}
+
+function segments(holder, group, choices, current, pick) {
   holder.replaceChildren(...choices.map(([value, text, count]) =>
     h("button", {
-      class: "chip", type: "button", "aria-pressed": String(value === current), data: { fk: `${group}:${value}` },
+      class: "seg__item", type: "button", "aria-pressed": String(value === current), data: { fk: `${group}:${value}` },
       onclick: () => { pick(value); render(); },
-    }, text, count === undefined ? null : h("span", { class: "chip__n" }, fmtInt(count)))));
+    }, text, count === undefined ? null : h("span", { class: "seg__n" }, fmtInt(count)))));
 }
 
 function table(caption, head, body) {
-  return h("table", { class: "table" },
+  const built = h("table", { class: "table" },
     h("caption", { class: "visually-hidden" }, caption),
     h("thead", null, h("tr", null, head)), h("tbody", null, body));
+  // Each cell has the name of its column: a narrow window shows a row as a block.
+  const names = head.map((cell) => cell.textContent);
+  for (const row of built.tBodies[0].rows) {
+    if (row.classList.contains("row")) [...row.cells].forEach((cell, at) => { cell.dataset.th = names[at]; });
+  }
+  return built;
 }
 
-const kv = (term, value) => h("div", { class: "kv" }, h("dt", null, term), h("dd", null, value));
-const th = (text, right) => h("th", { scope: "col", class: right ? "r" : null }, text);
+/** The button at the end of a row that opens the block below it. */
+function expander(open, text, label, key, toggle) {
+  return h("button", { class: "btn btn--ghost", type: "button", "aria-expanded": String(open), "aria-label": label,
+    title: label, data: { fk: key }, onclick: toggle }, text, icon("chevron"));
+}
 
 function gauge(tone, level, ticks, label) {
   return h("div", { class: "gauge", "data-tone": tone, role: "img", "aria-label": label, title: label,
@@ -1623,11 +1627,13 @@ function utc(seconds) {
     + `${two(date.getUTCMinutes())}:${two(date.getUTCSeconds())}`;
 }
 
-// Fleet status ---------------------------------------------------------------------------------
+// Status ---------------------------------------------------------------------------------------
 
-function drawVerdict(funds, targets) {
+const PARTS = { chains: "Chains and RPC", funds: "Funds", targets: "Targets", events: "Events" };
+
+function drawStatus(funds, targets) {
   const items = [];
-  const add = (sev, tone, text, mark, section) => items.push({ sev, tone, text, mark, section });
+  const add = (sev, text, section, mark) => items.push({ sev, text, section, mark });
   const count = (list, text) => `${list.length} ${list.length === 1 ? "target" : "targets"} ${text}`;
   const names = (list) => list.map((chain) => chain.cfg.name).join(", ");
 
@@ -1636,51 +1642,53 @@ function drawVerdict(funds, targets) {
   const fallback = CHAINS.filter((chain) => chain.phase === "ok" && !chain.override && chain.used > 0);
   const overridden = CHAINS.filter((chain) => chain.override);
   const noEvents = CHAINS.filter((chain) => chain.phase === "ok" && chain.events && chain.events.phase === "error");
-  if (failed.length) add(3, "danger", `No answer: ${names(failed)}`, "error", "chains");
-  if (fallback.length) add(2, "warning", `Fallback RPC: ${names(fallback)}`, "fallback", "chains");
-  if (overridden.length) add(1, "info", `RPC override: ${names(overridden)}`, "override", "chains");
-  if (noEvents.length) add(2, "warning", `Event queries failed: ${names(noEvents)}`, "warn", "chains");
+  if (failed.length) add(3, `No answer: ${names(failed)}`, "chains");
+  if (fallback.length) add(2, `Fallback RPC: ${names(fallback)}`, "chains", "fallback");
+  if (overridden.length) add(1, `RPC override: ${names(overridden)}`, "chains", "override");
+  if (noEvents.length) add(2, `Event queries failed: ${names(noEvents)}`, "chains");
 
   for (const row of funds) {
     const name = row.role === "hub" ? "Hub" : `Vault ${row.chain.cfg.name}`;
-    for (const flag of row.flags) add(flag.tone === "danger" ? 3 : 2, flag.tone, `${name}: ${flag.text}`, flag.mark, "funds");
+    for (const flag of row.flags) add(flag.tone === "danger" ? 3 : 2, `${name}: ${flag.text}`, "funds", flag.mark);
   }
 
-  const group = (test, sev, tone, text, mark) => {
+  const group = (test, sev, text, mark) => {
     const list = targets.filter(test);
-    if (list.length) add(sev, tone, count(list, text), mark, "targets");
+    if (list.length) add(sev, count(list, text), "targets", mark);
   };
-  const managed = (row) => row.hubState !== "Disarmed" && row.hubState !== "None";
-  group((row) => managed(row) && row.known && row.debt > 0n, 3, "danger", "in debt", "debt");
-  group((row) => row.sweepNote, 2, "warning", "quarantined on a vault and still swept by the hub", "quarantine");
-  group((row) => row.hubState === "Quarantined", 2, "warning", "quarantined by the hub", "quarantine");
-  group((row) => row.hubState === "Parked", 2, "warning", "parked", "parked");
-  group((row) => managed(row) && row.known && row.debt === 0n && row.low !== null && row.reserves < row.low, 2, "warning",
-    "below its low mark", "warn");
-  group((row) => row.tags.some((entry) => entry.text === "No vault policy"), 2, "warning", "with no vault policy", "warn");
+  const tagged = (text) => (row) => row.tags.some((entry) => entry.text === text);
+  group(tagged("In debt"), 3, "in debt");
+  group((row) => row.sweepNote, 2, "quarantined on a vault and still swept by the hub", "quarantine");
+  group((row) => row.hubState === "Quarantined", 2, "quarantined by the hub", "quarantine");
+  group((row) => row.hubState === "Parked", 2, "parked", "parked");
+  group(tagged("Below the low mark"), 2, "below its low mark");
+  group(tagged("No vault policy"), 2, "with no vault policy");
 
   for (const chain of CHAINS) {
     if (!chain.events) continue;
     const low = chain.events.rows.filter((row) => LOW_EVENTS.has(row.name));
-    if (low.length) add(3, "danger", `${low[0].name} in the window: ${low.length}`, "warn", "events");
+    if (low.length) add(3, `${low[0].name} in the window: ${low.length}`, "events");
   }
 
   const worst = items.reduce((sev, item) => Math.max(sev, item.sev), 0);
   const waiting = first.length > 0;
-  const head = worst === 3 ? "Alert" : worst === 2 ? "Attention" : waiting ? "Reading" : "No alert";
-  const tone = worst === 3 ? "var(--danger)" : worst === 2 ? "var(--warning)" : waiting ? "var(--line-3)" : "var(--success)";
-  const holder = $("verdict");
-  holder.style.setProperty("--tone", tone);
-  holder.dataset.state = head;
   const answered = CHAINS.filter((chain) => chain.phase === "ok").length;
-  holder.replaceChildren(
-    h("span", { class: "verdict__head" }, head),
-    h("span", { class: "dim" }, `${answered} of ${CHAINS.length} chains read`,
-      waiting ? `, ${first.length} in progress` : ""),
-    h("span", { class: "verdict__items" }, items.sort((a, b) => b.sev - a.sev).map((item) =>
-      h("button", { class: `tag tag--${item.tone} verdict__item`, type: "button", data: { fk: `verdict:${item.text}` },
-        title: "Show the section", onclick: () => $(item.section).scrollIntoView({ behavior: "smooth", block: "start" }) },
-        item.mark && icon(item.mark), item.text))));
+  const needs = items.filter((item) => item.sev >= 2).length;
+  $("verdict").dataset.state = worst === 3 ? "Alert" : worst === 2 ? "Attention" : waiting ? "Reading" : "No alert";
+  $("verdict-meta").textContent = [
+    needs ? `${needs} ${needs === 1 ? "item needs" : "items need"} the owner` : waiting ? "" : "No item needs the owner",
+    `${answered} of ${CHAINS.length} chains read${waiting ? `, ${first.length} in progress` : ""}`,
+  ].filter(Boolean).join(" \u00b7 ");
+  const tone = { 3: "danger", 2: "warning", 1: "info" };
+  $("verdict-body").hidden = !items.length;
+  $("verdict-body").replaceChildren(h("ul", { class: "status" }, items.sort((a, b) => b.sev - a.sev).map((item) => {
+    const mark = icon(item.mark || (item.sev === 3 ? "error" : "warn"));
+    mark.classList.add(`tone--${tone[item.sev]}`);
+    return h("li", null, h("button", { class: "status__item", type: "button", data: { fk: `status:${item.text}` },
+      title: `Go to ${PARTS[item.section]}`,
+      onclick: () => $(item.section).scrollIntoView({ behavior: "smooth", block: "start" }) },
+      mark, h("span", { class: "status__text" }, item.text), h("span", { class: "status__where" }, PARTS[item.section])));
+  })));
 }
 
 // Chains ---------------------------------------------------------------------------------------
@@ -1690,14 +1698,13 @@ function buildChains() {
   for (const chain of CHAINS) {
     const name = chain.cfg.name;
     const input = h("input", {
-      class: "field", type: "url", id: `rpc-${name}`, placeholder: "URL of another node", autocomplete: "off",
-      spellcheck: "false", "aria-label": `Another RPC URL for ${name}`, "aria-describedby": `rpc-error-${name}`,
+      class: "field", type: "url", id: `rpc-${name}`, placeholder: "URL of a node", autocomplete: "off",
+      spellcheck: "false", "aria-describedby": `rpc-hint-${name} rpc-error-${name}`,
     });
-    const use = h("button", { class: "btn", type: "submit" }, "Use");
     const clear = h("button", { class: "btn btn--ghost", type: "button", hidden: true,
       onclick: () => setOverride(chain, null) }, "Clear");
-    const error = h("span", { class: "note note--danger", id: `rpc-error-${name}`, role: "alert", hidden: true });
-    const form = h("form", { class: "over", novalidate: true, onsubmit: (event) => {
+    const error = h("span", { class: "hint hint--error", id: `rpc-error-${name}`, role: "alert", hidden: true });
+    const form = h("form", { novalidate: true, onsubmit: (event) => {
       event.preventDefault();
       const text = input.value.trim();
       if (!text) return setOverride(chain, null);
@@ -1706,138 +1713,138 @@ function buildChains() {
       input.setAttribute("aria-invalid", String(!url));
       if (!url) { error.textContent = "This is not a URL of a node."; return; }
       setOverride(chain, url);
-    } }, input, use, clear);
+    } },
+      h("label", { class: "label", for: `rpc-${name}` }, `Another RPC URL for ${name}`),
+      h("div", { class: "states states--below" },
+        h("div", { class: "group group--wide" }, input, h("button", { class: "btn", type: "submit" }, "Use")), clear),
+      error,
+      h("span", { class: "hint", id: `rpc-hint-${name}` },
+        "Each request of this chain goes to this URL, with no fallback. Clear goes back to the list of the manifest."));
     input.addEventListener("input", () => { error.hidden = true; input.removeAttribute("aria-invalid"); });
 
-    const expander = h("button", { class: "expander", type: "button", "aria-expanded": "false",
-      "aria-controls": `chain-detail-${name}`, "aria-label": `Details of ${name}`,
-      onclick: () => { chain.open = !chain.open; render(); } }, icon("chevron"));
-    const cells = { status: h("td"), block: h("td", { class: "r" }), rpc: h("td"), window: h("td") };
+    const cells = { rpc: h("td"), block: h("td", { class: "r" }), window: h("td", { class: "wide" }), act: h("td", { class: "act" }) };
     const row = h("tr", { class: "row", data: { chain: name } },
-      h("td", { class: "rail" }, h("div", { class: "cell" }, expander,
-        h("div", null, h("span", { class: "strong" }, name),
-          h("span", { class: "cap" }, `chain ${chain.cfg.chainId} \u00b7 ${chain.cfg.role} \u00b7 ${chain.cfg.unit}`)))),
-      cells.status, cells.block, cells.rpc, cells.window, h("td", null, form, error));
-    const alert = h("tr", { class: "alert", hidden: true }, h("td", { colspan: 6 }));
-    const detail = h("tr", { class: "detail", id: `chain-detail-${name}`, hidden: true }, h("td", { colspan: 6 }));
-    chain.el = { row, cells, input, clear, alert, detail, expander, error };
+      h("td", null, h("span", { class: "strong" }, name), cap(`${chain.cfg.role} \u00b7 chain ${chain.cfg.chainId}`)),
+      cells.rpc, cells.block, cells.window, cells.act);
+    const alert = h("tr", { class: "sub alert", hidden: true }, h("td", { colspan: 5 }));
+    const urls = h("div", { class: "kv sub__wide" }), facts = h("dl", { class: "sub__body" });
+    const detail = h("tr", { class: "sub detail", id: `chain-detail-${name}`, hidden: true },
+      h("td", { colspan: 5 }, h("div", { class: "sub__body sub__body--first" }, urls, h("div", { class: "kv sub__wide" }, form)), facts));
+    chain.el = { row, cells, input, clear, alert, detail, urls, facts, error };
     rows.push(row, alert, detail);
   }
   $("chains-body").replaceChildren(table("The chains, their RPC state, their latest block and their event window", [
-    th("Chain"), th("RPC state"), th("Latest block", true), th("RPC in use"), th("Event window (blocks)"),
-    th("Set another RPC URL"),
+    th("Chain"), th("RPC"), th("Latest block", true), th("Event window (blocks)"),
+    h("th", { scope: "col" }, h("span", { class: "visually-hidden" }, "RPC settings")),
   ], rows));
 }
 
-function chainStatus(chain) {
-  const busy = chain.busy ? [h("span", { class: "spinner", role: "img", "aria-label": "Reading" }),
-    chain.waitUntil && h("span", { class: "cap" }, `rate limit: next try at ${clock(chain.waitUntil)}`)] : null;
-  if (chain.phase === "loading") return [0, h("span", { class: "tags" }, tag("", "Reading"), busy)];
+function chainRpc(chain) {
+  const busy = chain.busy ? h("span", { class: "spinner", role: "img", "aria-label": "Reading" }) : null;
+  const wait = chain.busy && chain.waitUntil ? cap(`Rate limit: next try at ${clock(chain.waitUntil)}`) : null;
+  if (chain.phase === "loading") return [h("span", { class: "states" }, "Reading", busy), wait];
   if (chain.phase === "error") {
-    return [3, [h("span", { class: "tags" }, tag("danger", "No answer", "error"), busy),
-      h("span", { class: "note note--danger" }, "The numbers of this chain are removed.")]];
+    return [h("span", { class: "states" }, tag("danger", "No answer", "error"), busy), cap("Numbers removed"), wait];
   }
-  const firstFailure = chain.attempts.find((attempt) => attempt.state === "failed");
-  if (chain.override) {
-    return ["info", [h("span", { class: "tags" }, tag("info", "Override", "override"), busy),
-      h("span", { class: "note" }, "Each request of this chain goes to the URL that you set. The list of the manifest is not in use.")]];
-  }
-  if (chain.used > 0) {
-    return [2, [h("span", { class: "tags" }, tag("warning", "Fallback RPC", "fallback"), busy),
-      h("span", { class: "note note--warning" },
-        `URL ${chain.used + 1} of ${chain.urls.length} answers. ${firstFailure ? `URL 1: ${firstFailure.error}` : ""}`)]];
-  }
-  return [1, h("span", { class: "tags" }, tag("success", "OK", "ok"), busy)];
+  const url = chain.urls[chain.used];
+  const tags = chain.override ? [{ tone: "info", text: "Override", mark: "override" }]
+    : chain.used > 0 ? [{ tone: "warning", text: "Fallback RPC", mark: "fallback" }] : [];
+  return [
+    h("span", { class: "states" }, tags.length ? tags.map((entry) => tag(entry.tone, entry.text, entry.mark)) : "OK", busy),
+    cap(h("span", { class: "mono", title: chain.override ? "The URL that you set" : url, data: { field: `rpc:${chain.cfg.name}`, raw: url } }, host(url)),
+      chain.override ? " \u00b7 set in this page" : ` \u00b7 URL ${chain.used + 1} of ${chain.urls.length}`),
+    wait,
+  ];
 }
 
 function chainWindow(chain) {
-  const events = chain.events;
-  if (chain.phase === "loading") return skeleton("18ch");
-  if (chain.phase === "error" || !events) return noData(`window:${chain.cfg.name}`);
+  const events = chain.events, field = `window:${chain.cfg.name}`;
+  if (chain.phase === "loading") return [skeleton("18ch")];
+  if (chain.phase === "error" || !events) return [noData(field)];
   if (events.empty) {
-    return [h("span", { data: { field: `window:${chain.cfg.name}`, from: "", to: "" } }, "No query"),
-      h("span", { class: "cap" }, `The head is below deployBlock ${fmtInt(chain.cfg.deployBlock)}.`)];
+    return [h("span", { data: { field, from: "", to: "" } }, "No query"),
+      cap(`The head is below deployBlock ${fmtInt(chain.cfg.deployBlock)}.`)];
   }
   const blocks = events.to - events.from + 1;
   const seconds = chain.headTime !== null && events.fromTime !== null ? chain.headTime - events.fromTime : null;
   const parts = [`${fmtInt(blocks)} blocks`];
   if (seconds !== null && seconds >= 0) parts.push(`about ${span(seconds)}`);
-  parts.push(events.clamped ? "starts at deployBlock" : `lookback ${fmtInt(S.lookback)}`);
+  if (events.clamped) parts.push("from deployBlock");
   const done = events.blocks ? 100 - (events.left / events.blocks) * 100 : 100;
   return [
-    h("span", { class: "num", data: { field: `window:${chain.cfg.name}`, from: String(events.from), to: String(events.to), phase: events.phase } },
+    h("span", { class: "num", data: { field, from: String(events.from), to: String(events.to), phase: events.phase } },
       `${fmtInt(events.from)} \u2013 ${fmtInt(events.to)}`),
-    h("span", { class: "cap" }, parts.join(" \u00b7 ")),
+    cap(parts.join(" \u00b7 ")),
     events.phase === "scanning" && [
       h("div", { class: "progress", role: "progressbar", "aria-label": `Event queries of ${chain.cfg.name}`,
         "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.round(done)), style: `--v:${done.toFixed(1)}%` }, h("i")),
-      h("span", { class: "cap" }, `Reading the logs: ${Math.round(done)}%`),
-      events.waitUntil && h("span", { class: "note note--warning" },
-        `The node limits the request rate. The next request goes out at ${clock(events.waitUntil)}.`)],
-    events.phase === "error" && [h("span", { class: "tags tags--below" }, tag("warning", "Event queries failed", "warn")),
-      h("span", { class: "note note--warning" }, events.error)],
+      cap(`Reading the logs: ${Math.round(done)}%`),
+      events.waitUntil && cap(`Rate limit: the next request goes out at ${clock(events.waitUntil)}`)],
+    events.phase === "error" && [h("span", { class: "states states--below" }, tag("warning", "Event queries failed", "warn")),
+      cap(events.error)],
   ];
+}
+
+function openChain(chain) {
+  chain.open = true;
+  render();
+  setTimeout(() => chain.el.input.focus(), 60);
 }
 
 function drawChains() {
   for (const chain of CHAINS) {
-    const { row, cells, input, clear, alert, detail, expander } = chain.el;
+    const { row, cells, input, clear, alert, detail, urls, facts } = chain.el;
     const name = chain.cfg.name;
-    const [sev, status] = chainStatus(chain);
-    row.dataset.sev = String(sev);
     row.dataset.state = chain.phase === "ok" ? (chain.override ? "override" : chain.used > 0 ? "fallback" : "ok") : chain.phase;
-    cells.status.replaceChildren(...[status].flat());
-
+    cells.rpc.replaceChildren(...chainRpc(chain).flat(Infinity).filter(Boolean));
     if (chain.phase === "ok") {
       cells.block.replaceChildren(
-        h("span", { class: "num blockno", data: { field: `block:${name}`, raw: String(chain.head) } }, fmtInt(chain.head)),
+        h("span", { class: "num strong", data: { field: `block:${name}`, raw: String(chain.head) } }, fmtInt(chain.head)),
         h("span", { class: "cap age", data: { at: String(chain.readAt) } }, `read ${ago(chain.readAt)}`));
-      const attempt = chain.attempts[chain.used] || {};
-      cells.rpc.replaceChildren(
-        h("span", { class: "mono truncate", title: chain.override ? "The URL that you set" : chain.urls[chain.used],
-          data: { field: `rpc:${name}`, raw: chain.urls[chain.used] } }, host(chain.urls[chain.used])),
-        h("span", { class: "cap" }, chain.override ? "set in this page"
-          : `URL ${chain.used + 1} of ${chain.urls.length}`, attempt.ms !== undefined ? ` \u00b7 ${fmtInt(attempt.ms)} ms` : ""));
-    } else if (chain.phase === "loading") {
-      cells.block.replaceChildren(skeleton("9ch"));
-      cells.rpc.replaceChildren(skeleton("16ch"));
     } else {
-      cells.block.replaceChildren(noData(`block:${name}`));
-      cells.rpc.replaceChildren(h("span", { class: "nodata" }, "none"),
-        h("span", { class: "cap" }, `${chain.urls.length} URL${chain.urls.length === 1 ? "" : "s"} tried`));
+      cells.block.replaceChildren(chain.phase === "loading" ? skeleton("9ch") : noData(`block:${name}`));
     }
-    cells.window.replaceChildren(...[chainWindow(chain)].flat(Infinity).filter(Boolean));
-
-    if (document.activeElement !== input) input.value = chain.override || "";
-    clear.hidden = !chain.override;
+    cells.window.replaceChildren(...chainWindow(chain).flat(Infinity).filter(Boolean));
+    cells.act.replaceChildren(expander(chain.open, "RPC", `RPC settings and details of ${name}`, `cexp:${name}`,
+      () => { chain.open = !chain.open; render(); }));
 
     alert.hidden = chain.phase !== "error";
     if (chain.phase === "error") {
-      alert.firstChild.replaceChildren(h("div", { class: "notice", role: "alert" }, icon("error"),
+      const mark = icon("error");
+      mark.classList.add("tone--danger");
+      alert.firstChild.replaceChildren(h("div", { class: "notice", role: "alert" }, mark,
         h("div", null,
           h("div", { class: "notice__title" }, `No RPC URL of ${name} answered. The page shows no number of this chain.`),
-          h("ul", null, chain.attempts.map((attempt) => h("li", null, `${host(attempt.url)}: ${attempt.error || "not tried"}`))),
-          h("span", { class: "cap" }, `Last try at ${clock(chain.failedAt)}. Set another RPC URL in this row, or read again.`)),
-        h("button", { class: "btn", type: "button", data: { fk: `retry:${name}` }, disabled: chain.busy,
-          onclick: () => loadChain(chain).catch(console.error) }, "Read again")));
+          h("ul", { class: "notice__list" }, chain.attempts.map((attempt) => h("li", null, `${host(attempt.url)}: ${attempt.error || "not tried"}`))),
+          cap(`Last try at ${clock(chain.failedAt)}.`)),
+        h("div", { class: "notice__actions" },
+          h("button", { class: "btn", type: "button", data: { fk: `retry:${name}` }, disabled: chain.busy,
+            onclick: () => loadChain(chain).catch(console.error) }, "Read again"),
+          h("button", { class: "btn btn--ghost", type: "button", data: { fk: `other:${name}` }, onclick: () => openChain(chain) },
+            "Set another RPC URL"))));
     }
 
-    expander.setAttribute("aria-expanded", String(chain.open));
+    if (document.activeElement !== input) input.value = chain.override || "";
+    clear.hidden = !chain.override;
     detail.hidden = !chain.open;
-    if (chain.open) {
-      detail.firstChild.replaceChildren(h("dl", { class: "detail__body" },
-        kv(chain.cfg.role === "hub" ? "Hub" : "Vault", address(chain.cfg.contract, `contract:${name}`)),
-        kv("deployBlock", h("span", { class: "num" }, fmtInt(chain.cfg.deployBlock))),
-        kv(chain.cfg.role === "hub" ? "System contract (ledger)" : "Callback proxy (ledger)", address(chain.cfg.ledger, `ledger:${name}`)),
-        kv("Log request", `${fmtInt(chain.chunk)} blocks at most`),
-        h("div", { class: "kv urls" }, h("dt", null, chain.override ? "RPC URL set in this page" : "RPC URLs of the manifest, in order"),
-          h("dd", null, h("ol", null, chain.attempts.map((attempt, index) => h("li", null,
-            h("span", { class: "dim num" }, `${index + 1}.`),
-            h("span", { class: "mono", title: chain.override ? null : attempt.url }, host(attempt.url)),
-            attempt.state === "ok" ? tag("success", index === chain.used ? `in use${attempt.ms !== undefined ? ` \u00b7 ${fmtInt(attempt.ms)} ms` : ""}` : "answers")
-              : attempt.state === "failed" ? [tag("danger", "failed"), h("span", { class: "dim" }, attempt.error)]
-                : tag("outline", "not tried"))))))));
-    }
+    if (!chain.open) continue;
+    const list = chain.attempts.length ? chain.attempts : chain.urls.map((url) => ({ url, state: "untried" }));
+    urls.replaceChildren(
+      h("div", { class: "label" }, chain.override ? "RPC URL set in this page" : "RPC URLs of the manifest, in order"),
+      h("ol", { class: "urls" }, list.map((attempt, index) => h("li", null,
+        h("span", { class: "dim num" }, `${index + 1}.`),
+        h("span", { class: "mono", title: chain.override ? null : attempt.url }, host(attempt.url)),
+        attempt.state === "ok"
+          ? h("span", { class: "dim" }, index === chain.used ? "in use" : "answers", attempt.ms !== undefined ? ` \u00b7 ${fmtInt(attempt.ms)} ms` : "")
+          : attempt.state === "failed" ? [tag("danger", "Failed", "error"), h("span", { class: "dim" }, attempt.error)]
+            : h("span", { class: "dim" }, "not tried")))));
+    facts.replaceChildren(
+      kv(chain.cfg.role === "hub" ? "Hub" : "Vault", address(chain.cfg.contract, `contract:${name}`)),
+      kv(chain.cfg.role === "hub" ? "System contract (ledger)" : "Callback proxy (ledger)", address(chain.cfg.ledger, `ledger:${name}`)),
+      kv("deployBlock", h("span", { class: "num" }, fmtInt(chain.cfg.deployBlock))),
+      kv("Native unit", chain.cfg.unit),
+      kv("Lookback", `${fmtInt(S.lookback)} blocks`),
+      kv("Log request", `${fmtInt(chain.chunk)} blocks at most`));
   }
 }
 
@@ -1847,10 +1854,10 @@ function drawFunds(rows) {
   const body = rows.map((row) => {
     const chain = row.chain, name = chain.cfg.name, v = row.values, field = (key) => `funds:${name}.${key}`;
     const loading = chain.phase === "loading";
-    const cell = (value, key) => h("td", { class: "r" }, loading ? skeleton("9ch") : amount(value, row.unit, field(key)));
+    const value = (key) => amount(v && v[key], row.unit, field(key));
     let state;
     if (loading) state = skeleton("12ch");
-    else if (!v) state = h("span", { class: "tags" }, tag("danger", "No data", "error"));
+    else if (!v) state = h("span", { class: "states" }, tag("danger", "No data", "error"));
     else {
       const quiet = [];
       if (row.role === "hub") {
@@ -1862,9 +1869,9 @@ function drawFunds(rows) {
         if (!v.paused) quiet.push("not paused");
       }
       state = [
-        row.flags.length ? h("span", { class: "tags" }, row.flags.map((flag) => tag(flag.tone, flag.text, flag.mark))) : null,
-        quiet.length ? h("span", { class: row.flags.length ? "cap" : null }, quiet.join(" \u00b7 ")) : null,
-        row.role === "vault" && !row.hubView && h("span", { class: "cap" },
+        row.flags.length ? states(row.flags, []) : null,
+        quiet.length ? (row.flags.length ? cap(quiet.join(" \u00b7 ")) : h("span", null, quiet.join(" \u00b7 "))) : null,
+        row.role === "vault" && !row.hubView && cap(
           HUB.phase === "loading" ? "Reading the hub view" : "Up or down state not known: the hub chain gave no answer"),
         h("span", { hidden: true, data: { field: field("paused"), raw: String(v.paused) } }),
         row.role === "hub" ? h("span", { hidden: true, data: { field: field("cron"), raw: String(v.cron) } }) : null,
@@ -1872,27 +1879,27 @@ function drawFunds(rows) {
           h("span", { hidden: true, data: { field: field("pending"), raw: String(row.hubView.pending) } })] : null,
       ];
     }
-    let level;
-    if (loading) level = skeleton("12ch");
-    else if (!v) level = noData();
+    let float;
+    if (loading) float = skeleton("9ch");
+    else if (!v) float = [noData(field("float")), blank(field("floatTarget"))];
     else {
       const share = percent(v.float, v.floatTarget);
       const tone = v.debt > 0n || v.float === 0n ? "bad" : v.float * 2n < v.floatTarget ? "low" : "ok";
-      level = [gauge(tone, share, [50], `Fee float: ${share.toFixed(0)}% of the target. The tick is half of the target.`),
-        h("span", { class: "cap num" }, v.floatTarget > 0n ? `${share.toFixed(0)}% of the target` : "no target")];
+      float = [value("float"),
+        cap(v.floatTarget > 0n ? `${share.toFixed(0)}% of the target ` : "target ", value("floatTarget")),
+        gauge(tone, share, [50], `Fee float: ${share.toFixed(0)}% of the target. The tick is half of the target.`)];
     }
-    return h("tr", { class: "row", data: { sev: String(row.sev >= 2 ? row.sev : 0), funds: name } },
-      h("td", { class: "rail" }, h("span", { class: "strong" }, row.role === "hub" ? "Hub" : "Vault"),
-        h("span", { class: "cap" }, name), address(chain.cfg.contract, `funds:${name}.address`)),
-      h("td", null, state),
-      cell(v && v.principal, "principal"), cell(v && v.floor, "floor"),
-      cell(v && v.float, "float"), cell(v && v.floatTarget, "floatTarget"),
-      h("td", null, level),
-      h("td", { class: "r" }, loading ? skeleton("6ch") : amount(v && v.debt, row.unit, field("debt"))));
+    return h("tr", { class: "row", data: { funds: name } },
+      h("td", null, h("span", { class: "strong" }, row.role === "hub" ? "Hub" : "Vault"),
+        cap(name, " \u00b7 ", address(chain.cfg.contract, `funds:${name}.address`))),
+      h("td", { class: "wide" }, state),
+      h("td", { class: "r" }, loading ? skeleton("9ch") : v ? [value("principal"), cap("floor ", value("floor"))]
+        : [noData(field("principal")), blank(field("floor"))]),
+      h("td", { class: "r" }, float),
+      h("td", { class: "r" }, loading ? skeleton("6ch") : value("debt")));
   });
   $("funds-body").replaceChildren(table("The funds and the state of the hub and of each vault", [
-    th("Contract"), th("State"), th("Principal (balance)", true), th("Principal floor", true),
-    th("Fee float (reserves)", true), th("Float target", true), th("Float level"), th("Debt", true),
+    th("Contract"), th("State"), th("Principal (balance)", true), th("Fee float (reserves)", true), th("Debt", true),
   ], body));
 }
 
@@ -1924,15 +1931,15 @@ function targetDetail(row, unit) {
   const origin = row.manifest
     ? `Manifest enrollment${row.removed ? ", removed" : ""}${row.guest ? ", guest" : ""}`
     : "Not in the manifest";
-  return h("dl", { class: "detail__body" },
-    kv("Address", h("span", { class: "mono" }, row.address)),
+  return h("dl", { class: "sub__body" },
+    kvWide("Address", h("span", { class: "mono" }, row.address)),
     kv("Source", `${origin}. ${row.listed === null ? "Hub list not known" : row.listed ? "In the hub list" : "Not in the hub list"}.`),
     kv("Hub state", row.hubState || "not known"),
     row.chain !== HUB && kv("Vault record", row.vault
       ? `${row.vault.hasPolicy ? "policy set" : "no policy"}, ${row.vault.quarantined ? "quarantined" : "not quarantined"}` : "no data"),
     kv("Debt", wei(row.debt)), kv("Reserves", wei(row.reserves)),
-    kv(`Marks (${row.chain === HUB ? "hub policy" : "vault policy"})`, p ? `low ${wei(p.low)}; high ${wei(p.high)}` : "no policy"),
-    p && kv("Limits", `maxDebt ${wei(p.maxDebt)}; dailyCap ${wei(p.dailyCap)}`),
+    kv("Policy", p ? (row.chain === HUB ? "of the hub" : "of the vault") : "no policy"),
+    p && [kv("Low mark", wei(p.low)), kv("High mark", wei(p.high)), kv("maxDebt", wei(p.maxDebt)), kv("dailyCap", wei(p.dailyCap))],
     p && kv("Quarantine rule", `${p.maxRescues} rescue${p.maxRescues === 1 ? "" : "s"} in ${fmtInt(p.window)} s`),
     row.chain !== HUB && row.hubPolicy && kv("Hub relay rule", `maxRescues ${row.hubPolicy.maxRescues}, window ${fmtInt(row.hubPolicy.window)} s`));
 }
@@ -1942,9 +1949,7 @@ function drawTargets(all) {
   const categories = [["all", "All", all.length], ["attention", "Attention", all.filter((row) => row.sev >= 2).length],
     ...["active", "quarantined", "parked", "disarmed"].map((cat) =>
       [cat, cat[0].toUpperCase() + cat.slice(1), all.filter((row) => row.cat === cat).length])];
-  chips($("targets-state"), "tstate", categories, T.state, (value) => { T.state = value; });
-  chips($("targets-chain"), "tchain", [["all", "All chains"], ...CHAINS.map((chain) => [chain.cfg.name, chain.cfg.name])],
-    T.chain, (value) => { T.chain = value; });
+  segments($("targets-state"), "tstate", categories, T.state, (value) => { T.state = value; });
 
   const text = T.text.trim().toLowerCase();
   const shown = sortTargets(all.filter((row) =>
@@ -1967,39 +1972,39 @@ function drawTargets(all) {
 
   const body = shown.flatMap((row) => {
     const unit = row.chain.cfg.unit, base = `target:${row.key}`, open = T.open.has(row.key);
-    const numbers = (value, key) => h("td", { class: "r" },
-      row.loading ? skeleton("8ch") : row.known ? (value === null ? h("span", { class: "nodata", data: { field: `${base}.${key}`, raw: "" } }, "\u2014")
-        : amount(value, unit, `${base}.${key}`)) : noData(`${base}.${key}`));
-    let level;
-    if (row.loading) level = skeleton("12ch");
-    else if (!row.known) level = noData();
-    else if (row.high === null || row.high === 0n) level = h("span", { class: "nodata" }, "no marks");
+    // A value of the chain of the target: a skeleton while it loads, "no data" if that chain gave no answer.
+    const value = (wei, key) => (wei === null ? h("span", { class: "nodata", data: { field: `${base}.${key}`, raw: "" } }, "\u2014")
+      : amount(wei, unit, `${base}.${key}`));
+    const numbers = (wei, key) => (row.loading ? skeleton("8ch") : row.known ? value(wei, key) : noData(`${base}.${key}`));
+    let reserves;
+    if (row.loading) reserves = skeleton("8ch");
+    else if (!row.known) reserves = [noData(`${base}.reserves`), blank(`${base}.low`), blank(`${base}.high`)];
     else {
-      // The scale ends at 125% of the high mark: a level above it fills the track.
-      const scale = (row.high * 5n) / 4n;
-      const tone = row.sev === 0 ? "off" : row.debt > 0n ? "bad" : row.reserves < row.low ? "low" : "ok";
-      const text = row.debt > 0n ? "In debt" : row.reserves < row.low ? "Below the low mark"
-        : row.reserves >= row.high ? "At or above the high mark" : "Between the marks";
-      level = [gauge(tone, percent(row.reserves, scale), [percent(row.low, scale), 80], `${text}. The ticks are the low and the high mark.`),
-        h("span", { class: "cap" }, text)];
+      reserves = [value(row.reserves, "reserves"), cap("low ", value(row.low, "low"), " \u00b7 high ", value(row.high, "high"))];
+      if (row.high !== null && row.high > 0n) {
+        // The scale ends at 125% of the high mark: a level above it fills the track.
+        const scale = (row.high * 5n) / 4n;
+        const tone = row.sev === 0 ? "ok" : row.debt > 0n ? "bad" : row.reserves < row.low ? "low" : "ok";
+        const text = row.debt > 0n ? "In debt" : row.reserves < row.low ? "Below the low mark"
+          : row.reserves >= row.high ? "At or above the high mark" : "Between the marks";
+        reserves.push(gauge(tone, percent(row.reserves, scale), [percent(row.low, scale), 80], `${text}. The ticks are the low and the high mark.`));
+      }
     }
     const main = h("tr", { class: "row" + (row.sev === 0 ? " is-muted" : ""), data: { sev: String(row.sev >= 2 ? row.sev : 0), target: row.key, state: row.hubState || "" } },
-      h("td", { class: "rail" }, h("div", { class: "cell" },
-        h("button", { class: "expander", type: "button", "aria-expanded": String(open), "aria-label": `Details of ${row.label || row.address}`,
-          data: { fk: `texp:${row.key}` }, onclick: () => { if (open) T.open.delete(row.key); else T.open.add(row.key); render(); } }, icon("chevron")),
-        h("div", null,
-          h("span", { class: (row.label ? "strong" : "dim") + " truncate label",
-            title: row.label || "No label: the manifest has no enrollment of this address" }, row.label || "No label"),
-          address(row.address, `${base}.address`), row.guest && tag("outline", "guest")))),
-      h("td", null, row.chain.cfg.name),
       h("td", null,
-        row.hubLoading ? skeleton("10ch") : h("span", { class: "tags", data: { field: `${base}.state`, raw: row.hubState || "" } },
-          row.tags.map((entry) => tag(entry.tone, entry.text, entry.mark))),
+        h("span", { class: (row.label ? "strong" : "dim") + " truncate", title: row.label || "No label: the manifest has no enrollment of this address" },
+          row.label || "No label"),
+        cap(address(row.address, `${base}.address`), row.guest ? " \u00b7 guest" : "")),
+      h("td", { class: "nw" }, row.chain.cfg.name),
+      h("td", { class: "wide" },
+        row.hubLoading ? skeleton("10ch") : states(row.tags, row.plain, { class: "states tags", data: { field: `${base}.state`, raw: row.hubState || "" } }),
         h("span", { hidden: true, data: { field: `${base}.vaultQuarantine`, raw: row.vault ? String(row.vault.quarantined) : "" } }),
-        row.notes.map(([tone, text]) => h("span", { class: `note note--${tone}`, data: row.sweepNote && text.includes("hub.disarm") ? { note: "disarm" } : null }, text))),
-      numbers(row.debt, "debt"), numbers(row.reserves, "reserves"),
-      h("td", null, level), numbers(row.low, "low"), numbers(row.high, "high"));
-    return open ? [main, h("tr", { class: "detail" }, h("td", { colspan: 8 }, targetDetail(row, unit)))] : [main];
+        row.notes.map((text) => h("span", { class: "cap", data: row.sweepNote && text.includes("hub.disarm") ? { note: "disarm" } : null }, text))),
+      h("td", { class: "r" }, numbers(row.debt, "debt")),
+      h("td", { class: "r" }, reserves),
+      h("td", { class: "act" }, expander(open, "Details", `Details of ${row.label || row.address}`, `texp:${row.key}`,
+        () => { if (open) T.open.delete(row.key); else T.open.add(row.key); render(); })));
+    return open ? [main, h("tr", { class: "sub detail" }, h("td", { colspan: 6 }, targetDetail(row, unit)))] : [main];
   });
 
   const holder = $("targets-body");
@@ -2010,8 +2015,8 @@ function drawTargets(all) {
   }
   holder.replaceChildren(table("The targets, their state, their debt and their reserves against the marks", [
     sortHead("label", "Target"), sortHead("chain", "Chain"), sortHead("attention", "State"), sortHead("debt", "Debt", true),
-    sortHead("reserves", "Reserves", true), th("Level against the marks"), th("Low mark", true), th("High mark", true),
-  ], body.length ? body : h("tr", null, h("td", { colspan: 8, class: "empty" }, "No target has this state, this chain and this text."))));
+    sortHead("reserves", "Reserves and marks", true), h("th", { scope: "col" }, h("span", { class: "visually-hidden" }, "Details")),
+  ], body.length ? body : h("tr", null, h("td", { colspan: 6, class: "empty" }, "No target has this state, this chain and this text."))));
 }
 
 // Events ---------------------------------------------------------------------------------------
@@ -2020,23 +2025,21 @@ function eventCells(row) {
   const chain = row.chain, unit = chain.cfg.unit, a = row.args;
   const subject = (target) => {
     const label = labelOf(chain, target);
-    return [label ? h("span", { class: "strong truncate label label--short", title: label }, label) : null, address(target)];
+    return label ? [h("span", { class: "truncate", title: label }, label), cap(address(target))] : [address(target)];
   };
-  const own = [h("span", { class: "strong" }, chain.cfg.role === "hub" ? "Hub" : "Vault")];
   switch (row.name) {
     case "HubLow": case "VaultLow":
-      return { tone: "danger", name: "danger", subject: own, paid: null,
+      return { subject: [chain.cfg.role === "hub" ? "Hub" : "Vault"], paid: null,
         detail: ["balance ", amount(a.balance, unit), " below the floor ", amount(a.principalFloor, unit)] };
     case "Rescued":
-      return { tone: "info", name: "info", subject: subject(a.target), paid: a.paid, detail: ["cleared the debt ", amount(a.debt, unit)] };
+      return { subject: subject(a.target), paid: a.paid, detail: ["cleared the debt ", amount(a.debt, unit)] };
     case "Gap":
-      return { tone: "warning", name: "warning", subject: subject(a.target), paid: null,
+      return { subject: subject(a.target), paid: null,
         detail: `in debt from block ${fmtInt(a.deadFromBlock)} to block ${fmtInt(a.aliveAtBlock)}: ${fmtInt(a.aliveAtBlock - a.deadFromBlock)} blocks` };
     default: {
       const outcome = CONFIG.outcomes[a.outcome] || `outcome ${a.outcome}`;
       const id = a.id === 0n ? "setPolicy" : a.id >= REQUEST_ID_BASE ? `request ${fmtInt(a.id - REQUEST_ID_BASE)}` : `sweep of tick ${fmtInt(a.id)}`;
-      const tone = PAID_OUTCOMES.has(outcome) ? "info" : outcome === "NoNeed" ? "" : "warning";
-      return { tone, name: "", subject: subject(a.target), paid: a.paid, outcome, detail: [tag(tone, outcome), " ", h("span", { class: "dim" }, id)] };
+      return { subject: subject(a.target), paid: a.paid, outcome, detail: [outcome, h("span", { class: "dim" }, ` \u00b7 ${id}`)] };
     }
   }
 }
@@ -2046,29 +2049,27 @@ function drawEvents({ rows, timed }) {
   const types = [["all", "All"], ["low", "HubLow, VaultLow"], ["Rescued", "Rescued"], ["Gap", "Gap"], ["Result", "Result"]];
   const isType = (row, type) => type === "all" || (type === "low" ? LOW_EVENTS.has(row.name) : row.name === type);
   const inChain = rows.filter((row) => E.chain === "all" || row.chain.cfg.name === E.chain);
-  chips($("events-type"), "etype", types.map(([type, text]) => [type, text, inChain.filter((row) => isType(row, type)).length]),
+  segments($("events-type"), "etype", types.map(([type, text]) => [type, text, inChain.filter((row) => isType(row, type)).length]),
     E.type, (value) => { E.type = value; E.more = false; });
-  chips($("events-chain"), "echain", [["all", "All chains"], ...CHAINS.map((chain) => [chain.cfg.name, chain.cfg.name])],
-    E.chain, (value) => { E.chain = value; E.more = false; });
 
   const shown = inChain.filter((row) => isType(row, E.type));
   const visible = E.more ? shown : shown.slice(0, MAX_EVENT_ROWS);
   const scanning = CHAINS.filter((chain) => chain.events && chain.events.phase === "scanning");
   const absent = CHAINS.filter((chain) => chain.phase === "error" || (chain.events && chain.events.phase === "error"));
-  $("events-meta").textContent = "Newest first, inside the block window of each chain."
-    + (timed ? "" : " Chains are in the order of the list above: a block time is not known.");
+  $("events-meta").textContent = timed ? "Newest first"
+    : "Newest first for each chain. Chains are in the order of the list above: a block time is not known.";
 
   const body = visible.map((row) => {
-    const cells = eventCells(row);
-    return h("tr", { class: "row", data: { sev: cells.tone === "danger" ? "3" : "0", event: row.name, chain: row.chain.cfg.name,
+    const cells = eventCells(row), low = LOW_EVENTS.has(row.name);
+    return h("tr", { class: "row", data: { event: row.name, chain: row.chain.cfg.name,
       block: String(row.block), index: String(row.index), tx: row.tx, outcome: cells.outcome || "" } },
-      h("td", { class: "rail num", title: row.time === null ? "Block time not known" : `${ago(row.time * 1000)}` },
-        row.time === null ? h("span", { class: "nodata" }, "\u2014") : utc(row.time)),
+      h("td", { class: "num nw", title: row.time === null ? "Block time not known" : `${ago(row.time * 1000)}` },
+        row.time === null ? dash() : utc(row.time)),
       h("td", { class: "r num" }, fmtInt(row.block)),
-      h("td", null, row.chain.cfg.name),
-      h("td", null, tag(cells.name, row.name)),
-      h("td", null, cells.subject), h("td", { class: "wrap" }, cells.detail),
-      h("td", { class: "r" }, cells.paid === null ? h("span", { class: "nodata" }, "\u2014") : amount(cells.paid, row.chain.cfg.unit)));
+      h("td", { class: "nw" }, row.chain.cfg.name),
+      h("td", null, low ? h("span", { class: "states" }, tag("danger", row.name, "error")) : h("span", { class: "medium" }, row.name)),
+      h("td", null, cells.subject), h("td", { class: "wide" }, cells.detail),
+      h("td", { class: "r" }, cells.paid === null ? dash() : amount(cells.paid, row.chain.cfg.unit)));
   });
 
   const holder = $("events-body"), foot = $("events-foot");
@@ -2078,7 +2079,7 @@ function drawEvents({ rows, timed }) {
   if (shown.length > visible.length) notes.push(`${fmtInt(visible.length)} of ${fmtInt(shown.length)} rows shown.`);
   foot.hidden = !notes.length;
   foot.replaceChildren(h("span", null, notes.join(" "), shown.length > visible.length
-    && h("button", { class: "btn btn--xs btn--after", type: "button", data: { fk: "emore" }, onclick: () => { E.more = true; render(); } }, "Show each row")));
+    && h("button", { class: "btn btn--after", type: "button", data: { fk: "emore" }, onclick: () => { E.more = true; render(); } }, "Show each row")));
 
   if (!body.length) {
     const reading = CHAINS.some((chain) => chain.phase === "loading") || scanning.length;
@@ -2111,17 +2112,17 @@ function drawDiagnostics(targets) {
     for (const [recipient, label] of recipients) {
       const entry = counted.get(lower(recipient)) || { count: 0, last: 0 };
       const field = `failures:${name}|${lower(recipient)}`;
-      let count, last = h("span", { class: "nodata" }, "\u2014");
+      let count, last = dash();
       if (chain.phase === "loading") count = skeleton("4ch");
       else if (chain.phase === "error" || !events || events.phase === "error") count = noData(field);
       else {
-        count = [h("span", { class: "num strong", data: { field, raw: String(entry.count), phase: events.phase } }, fmtInt(entry.count)),
-          events.phase === "scanning" ? h("span", { class: "cap" }, "so far") : null];
+        count = [h("span", { class: "num", data: { field, raw: String(entry.count), phase: events.phase } }, fmtInt(entry.count)),
+          events.phase === "scanning" ? cap("so far") : null];
         if (entry.count) last = h("span", { class: "num" }, fmtInt(entry.last));
       }
       body.push(h("tr", { class: "row" },
-        h("td", { class: "rail" }, h("span", { class: "strong truncate label label--short", title: label }, label), address(recipient)),
-        h("td", null, name), h("td", { class: "r" }, count), h("td", { class: "r" }, last)));
+        h("td", null, h("span", { class: "strong truncate", title: label }, label), cap(address(recipient))),
+        h("td", { class: "nw" }, name), h("td", { class: "r" }, count), h("td", { class: "r" }, last)));
     }
   }
   $("diag-body").replaceChildren(body.length
@@ -2136,16 +2137,14 @@ function drawControls() {
   const input = $("lookback");
   if (document.activeElement !== input) input.value = fmtInt(S.lookback);
   $("auto").value = String(S.auto);
-  const busy = isBusy();
-  $("refresh").setAttribute("aria-busy", String(busy));
+  $("refresh").setAttribute("aria-busy", String(isBusy()));
   const hub = HUB.cfg;
   $("foot").replaceChildren(
     h("span", null, "Read-only: no wallet, no transaction, no enrollment."),
     h("span", null, "Hub ", h("span", { class: "mono", title: hub.contract }, short(hub.contract))),
     CONFIG.cronTopic && h("span", null, `Cron topic ${CONFIG.cronTopic}`),
     h("span", null, "Build ", h("span", { class: "mono", data: { field: "build", raw: CONFIG.build } }, CONFIG.build)),
-    h("span", null, h("span", { class: "kbd" }, "R"), " read again"),
-    h("span", null, h("span", { class: "kbd" }, "/"), " filter the targets"));
+    h("span", null, "Keys: R reads again, / goes to the target filter."));
 }
 
 function setOverride(chain, url) {
@@ -2213,6 +2212,11 @@ function applySettings(first) {
 function start() {
   applySettings(true);
   buildChains();
+  for (const [id, part] of [["targets-chain", UI.targets], ["events-chain", UI.events]]) {
+    $(id).replaceChildren(h("option", { value: "all" }, "All chains"),
+      ...CHAINS.map((chain) => h("option", { value: chain.cfg.name }, chain.cfg.name)));
+    $(id).addEventListener("change", (event) => { part.chain = event.target.value; part.more = false; render(); });
+  }
 
   $("lookback-form").addEventListener("submit", (event) => {
     event.preventDefault();

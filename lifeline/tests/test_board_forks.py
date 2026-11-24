@@ -166,7 +166,7 @@ def test_a_target_that_the_vault_quarantined_has_the_disarm_note(net, page):
     row = page.evaluate(f"(() => {{ const row = document.querySelector('#targets-body tr[data-target=\"{key}\"]');"
                         f" return [row.innerText, [...row.querySelectorAll('[data-note]')].map((n) => n.textContent)]; }})()")
     assert "Quarantined on the vault" in row[0] and "Active on the hub" in row[0] and "In debt" in row[0]
-    assert row[1] == ["The hub still has it in the sweep list of this chain. hub.disarm stops its sweep cost."]
+    assert row[1] == ["Still in the hub sweep list. hub.disarm stops its sweep cost."]
     assert page.evaluate("document.querySelectorAll('#targets-body [data-note]').length") == 1
     outcomes = page.evaluate(f"[...document.querySelectorAll('#events-body tr[data-chain=\"{BASE}\"][data-event=\"Result\"]')]"
                              f".map((row) => row.dataset.outcome)")

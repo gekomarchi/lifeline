@@ -280,6 +280,19 @@ def reloaded(page, fleet, chain) -> int:
     return mark
 
 
+def set_rpc(page, chain, text) -> None:
+    """Opens the RPC settings of a chain row, and types a URL into its field."""
+    page.evaluate(f"(() => {{ if (document.getElementById('chain-detail-{chain}').hidden) "
+                  f"document.querySelector('#chains-body button[data-fk=\"cexp:{chain}\"]').click(); }})()")
+    page.wait(f"!document.getElementById('chain-detail-{chain}').hidden")
+    page.type_into(f"#rpc-{chain}", text)
+
+
+def choose(page, select, value) -> None:
+    page.evaluate(f"(() => {{ const field = document.getElementById({json.dumps(select)}); field.value = {json.dumps(value)}; "
+                  f"field.dispatchEvent(new Event('change', {{ bubbles: true }})); }})()")
+
+
 def state_of(page, chain) -> str:
     return page.evaluate(f"document.querySelector('#chains-body tr[data-chain=\"{chain}\"]').dataset.state")
 
@@ -355,7 +368,11 @@ def test_first_url_unreachable_the_values_come_from_the_second_one(tmp_path, pag
         assert {record["path"] for record in fleet.gate.calls(route=LASNA)} == {f"{LASNA}/b"}
         assert {record["path"] for record in fleet.gate.calls(route=BASE)} == {f"{BASE}/b"}
         row = page.evaluate(f"document.querySelector('#chains-body tr[data-chain=\"{LASNA}\"]').innerText")
-        assert "Fallback RPC" in row and "URL 2 of 2 answers" in row
+        assert "Fallback RPC" in row and "URL 2 of 2" in row
+        # The reason of the first URL is in the settings of the row.
+        page.click(f"#chains-body button[data-fk=\"cexp:{LASNA}\"]")
+        detail = page.wait(f"(document.getElementById('chain-detail-{LASNA}').innerText.match(/in use[^]*/) || {{}}).input")
+        assert "Failed" in detail and "no answer: the URL is not reachable" in detail and "in use" in detail
         assert "Fallback RPC: lasna, base-sepolia" in page.evaluate("document.getElementById('verdict').innerText")
     finally:
         fleet.close()
@@ -438,7 +455,7 @@ def test_an_override_takes_each_request_of_its_chain(fleet, page):
     opened(page, fleet)
     other = fleet.gate.url(LASNA, "/own")
     mark = fleet.gate.mark()
-    page.type_into(f"#rpc-{LASNA}", other)
+    set_rpc(page, LASNA, other)
     page.wait(f"document.querySelector('#chains-body tr[data-chain=\"{LASNA}\"]').dataset.state === 'override'")
     page.wait(IDLE)
     after = fleet.gate.calls(route=LASNA, since=mark)
@@ -464,7 +481,7 @@ def test_an_override_takes_each_request_of_its_chain(fleet, page):
 
     # "Clear" goes back to the list of the manifest.
     mark = fleet.gate.mark()
-    page.click(f"#chains-body tr[data-chain=\"{LASNA}\"] form button[type=button]")
+    page.click(f"#chain-detail-{LASNA} form button[type=button]")
     page.wait(f"document.querySelector('#chains-body tr[data-chain=\"{LASNA}\"]').dataset.state === 'ok'")
     page.wait(IDLE)
     assert {record["path"] for record in fleet.gate.calls(route=LASNA, since=mark)} == {f"{LASNA}/a"}
@@ -473,13 +490,13 @@ def test_an_override_takes_each_request_of_its_chain(fleet, page):
 
 def test_an_override_for_another_chain_is_refused(fleet, page):
     opened(page, fleet)
-    page.type_into(f"#rpc-{UNI}", fleet.gate.url(BASE, "/a"))
+    set_rpc(page, UNI, fleet.gate.url(BASE, "/a"))
     page.wait(f"document.querySelector('#chains-body tr[data-chain=\"{UNI}\"]').dataset.state === 'error'")
     alert = page.evaluate("document.querySelector('#chains-body tr.alert:not([hidden])').innerText")
     assert f"the URL answers for chain {CHAIN_IDS[BASE]}, and the manifest has {CHAIN_IDS[UNI]}" in alert
     assert set(chain_fields(page.evaluate(FIELDS), UNI).values()) == {""}
     # A text that is not a URL changes nothing.
-    page.type_into(f"#rpc-{BASE}", "not a url")
+    set_rpc(page, BASE, "not a url")
     assert page.evaluate(f"document.getElementById('rpc-{BASE}').getAttribute('aria-invalid')") == "true"
     assert state_of(page, BASE) == "ok"
 
@@ -534,9 +551,9 @@ def test_log_queries_stay_inside_the_window_and_inside_the_chunk(fleet, page):
         assert {query["address"].lower() for query in queries} == ({contract} if chain == LASNA else {contract, LEDGERS[chain]})
     # Base: the window starts at deployBlock, and the page says so.
     assert window_of(page, BASE)[0] == DEPLOY[BASE]
-    assert "starts at deployBlock" in page.evaluate(f"document.querySelector('#chains-body tr[data-chain=\"{BASE}\"]').innerText")
+    assert "from deployBlock" in page.evaluate(f"document.querySelector('#chains-body tr[data-chain=\"{BASE}\"]').innerText")
     row = page.evaluate(f"document.querySelector('#chains-body tr[data-chain=\"{LASNA}\"]').innerText")
-    assert "470,000 \u2013 500,000" in row and "30,001 blocks" in row and "lookback 30,000" in row
+    assert "470,000 \u2013 500,000" in row and "30,001 blocks" in row and "from deployBlock" not in row
     # The proxy query names the recipients: the vault and the targets of the chain, no other contract.
     proxy = [query for query in log_queries(fleet, BASE) if query["address"].lower() == LEDGERS[BASE]]
     assert proxy[0]["topics"] == [[fleet.abi["ledger"]["events"]["CallbackFailure"]["topic"]],
@@ -721,7 +738,7 @@ def test_events_are_newest_first_with_their_values(fleet, page):
     # A filter is a button: one type, one chain.
     page.click("#events-type button[data-fk=\"etype:Result\"]")
     page.wait("document.querySelectorAll('#events-body tbody tr').length === 3")
-    page.click(f"#events-chain button[data-fk=\"echain:{UNI}\"]")
+    choose(page, "events-chain", UNI)
     page.wait("document.querySelectorAll('#events-body tbody tr').length === 1")
 
 
@@ -740,7 +757,7 @@ def test_a_target_quarantined_on_the_vault_and_in_the_hub_list_has_the_disarm_no
     opened(page, fleet)
     row = target_row(page, BASE, T_VAULT_Q)
     assert "Quarantined on the vault" in row["text"] and "Active on the hub" in row["text"]
-    assert row["notes"] == ["The hub still has it in the sweep list of this chain. hub.disarm stops its sweep cost."]
+    assert row["notes"] == ["Still in the hub sweep list. hub.disarm stops its sweep cost."]
     assert row["state"] == "Active" and row["sev"] == "3"  # it is in debt too
     # No other row has the note: not the Lasna target that the hub quarantined, not a healthy one.
     assert page.evaluate("document.querySelectorAll('#targets-body [data-note]').length") == 1
@@ -755,7 +772,7 @@ def test_a_target_quarantined_on_the_vault_and_in_the_hub_list_has_the_disarm_no
     page.click("#refresh")
     page.wait(f"document.querySelector('#targets-body tr[data-target=\"{BASE}|{T_VAULT_Q}\"]').dataset.state === 'Disarmed'")
     row = target_row(page, BASE, T_VAULT_Q)
-    assert row["notes"] == [] and "Disarmed" in row["text"] and "Quarantined on the vault" in row["text"]
+    assert row["notes"] == [] and "Disarmed" in row["text"] and "quarantined on the vault" in row["text"]
 
 
 def test_states_of_the_other_targets(fleet, page):
@@ -813,15 +830,24 @@ def test_failure_counts_are_diagnostics_and_change_no_target_state(fleet, page):
     assert "CallbackFailure" not in page.evaluate("document.getElementById('verdict').innerText")
 
 
-def test_the_file_shows_a_usable_page_at_a_phone_width(fleet, browser):
-    narrow = browser.page(width=390, height=844)
+@pytest.mark.parametrize("width, height", [(390, 844), (720, 500)])
+def test_a_narrow_or_zoomed_window_shows_each_column(fleet, browser, width, height):
+    """390px is a phone. 720px is a 1440px window at a browser zoom of 200%. No column is out of view."""
+    narrow = browser.page(width=width, height=height)
     try:
         opened(narrow, fleet, theme="dark")
         assert narrow.evaluate("document.documentElement.dataset.theme") == "dark"
-        # The page does not scroll sideways: each wide table scrolls inside its panel.
+        # Nothing scrolls sideways: not the page, and no table inside its panel.
         assert narrow.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
-        assert narrow.evaluate("document.querySelector('#targets .panel__body').scrollWidth > "
-                               "document.querySelector('#targets .panel__body').clientWidth")
+        assert narrow.evaluate("[...document.querySelectorAll('.panel__body')].every((body) => "
+                               "body.scrollWidth <= body.clientWidth + 1)")
+        # Each value and each control of a row is inside the window, with the name of its column.
+        assert narrow.evaluate("[...document.querySelectorAll('[data-field], #chains-body input, #chains-body button')]"
+                               ".filter((e) => !e.hidden && e.getClientRects().length)"
+                               ".every((e) => e.getBoundingClientRect().right <= window.innerWidth + 1)")
+        cell = (f"document.querySelector('[data-field=\"funds:{LASNA}.float\"]').closest('td')")
+        assert narrow.evaluate(f"{cell}.dataset.th") == "Fee float (reserves)"
+        assert narrow.evaluate(f"getComputedStyle({cell}, '::before').content") == '"Fee float (reserves)"'
         assert not narrow.errors
     finally:
         narrow.close()
