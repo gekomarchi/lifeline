@@ -380,18 +380,24 @@ def test_the_data_file_has_the_join_the_fleet_the_cost_and_the_scenarios_from_th
 
     # The latency: each rescue that a debt log started, by the block timestamps of the chain of the target.
     # The mock chains have a block time of one second on lasna and of two seconds on base-sepolia. The second
-    # rescue of the looping canary has no debt log: it is not in the list.
+    # rescue of the looping canary has no debt log: it is not in the list. The waiting canary was rescued by
+    # the sweep of the recovery, with no relay request: its trigger is `sweep`, and it has its own figures.
     assert data["latency"]["byChain"] == {
         LASNA: {"rescues": 2, "medianSeconds": 1, "largestSeconds": 2, "medianBlocks": 1, "largestBlocks": 2},
         BASE: {"rescues": 1, "medianSeconds": 10, "largestSeconds": 10, "medianBlocks": 5, "largestBlocks": 5},
     }
+    assert data["latency"]["sweepByChain"] == {
+        BASE: {"rescues": 1, "medianSeconds": 40, "largestSeconds": 40, "medianBlocks": 20, "largestBlocks": 20},
+    }
     assert data["latency"]["rescues"] == [
-        {"chain": LASNA, "target": LOOPING, "deadFromBlock": 1209, "aliveAtBlock": 1210, "blocks": 1, "seconds": 1,
-         "tx": logs["looping 1"]["transactionHash"]},
-        {"chain": LASNA, "target": REACTIVE, "deadFromBlock": 1498, "aliveAtBlock": 1500, "blocks": 2, "seconds": 2,
-         "tx": logs["rescued reactive"]["transactionHash"]},
-        {"chain": BASE, "target": EXECUTOR, "deadFromBlock": 800, "aliveAtBlock": 805, "blocks": 5, "seconds": 10,
-         "tx": logs["result executor"]["transactionHash"]},
+        {"chain": LASNA, "target": LOOPING, "trigger": "debt event", "deadFromBlock": 1209, "aliveAtBlock": 1210,
+         "blocks": 1, "seconds": 1, "tx": logs["looping 1"]["transactionHash"]},
+        {"chain": LASNA, "target": REACTIVE, "trigger": "debt event", "deadFromBlock": 1498, "aliveAtBlock": 1500,
+         "blocks": 2, "seconds": 2, "tx": logs["rescued reactive"]["transactionHash"]},
+        {"chain": BASE, "target": EXECUTOR, "trigger": "debt event", "deadFromBlock": 800, "aliveAtBlock": 805,
+         "blocks": 5, "seconds": 10, "tx": logs["result executor"]["transactionHash"]},
+        {"chain": BASE, "target": WAITING, "trigger": "sweep", "deadFromBlock": 1010, "aliveAtBlock": 1030,
+         "blocks": 20, "seconds": 40, "tx": logs["result waiting"]["transactionHash"]},
     ]
 
     # The fleet: no guest, no fixture. The target with no `setPolicy` in the chain data is left out.
@@ -495,9 +501,12 @@ def test_judge_md_has_the_sections_in_order_and_the_open_request_in_the_open_lis
     assert f"| `{REACTIVE}` | 1500<br>`{logs['rescued reactive']['transactionHash']}` | 10 | 110 | 1498 | 1500 |" \
         in section(document, "Lasna rescues and gaps")
     latency = section(document, "Rescue latency")
-    assert f"| {LASNA} | 2 | 1 | 2 | 1 | 2 |" in latency and f"| {BASE} | 1 | 10 | 10 | 5 | 5 |" in latency
-    assert latency.index(f"| {LASNA} | 2 |") < latency.index(f"| {BASE} | 1 |")
-    assert f"| {BASE} | `{EXECUTOR}` | 800 | 805 | 5 | 10 | `{logs['result executor']['transactionHash']}` |" in latency
+    assert f"| debt event | {LASNA} | 2 | 1 | 2 | 1 | 2 |" in latency
+    assert f"| debt event | {BASE} | 1 | 10 | 10 | 5 | 5 |" in latency
+    assert f"| sweep | {BASE} | 1 | 40 | 40 | 20 | 20 |" in latency
+    assert latency.index(f"| debt event | {LASNA} | 2 |") < latency.index(f"| debt event | {BASE} | 1 |")
+    assert f"| debt event | {BASE} | `{EXECUTOR}` | 800 | 805 | 5 | 10 |" in latency
+    assert f"| sweep | {BASE} | `{WAITING}` | 1010 | 1030 | 20 | 40 |" in latency
     fleet = section(document, "Fleet report")
     assert "### FleetReactive" in fleet and "### FleetExecutor" in fleet and "late canary" not in fleet
     assert "experiment" not in fleet.replace("fixture of the experiment", "")

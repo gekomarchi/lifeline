@@ -10,7 +10,7 @@ Reactive Omni Buildathon, track "Set It and Forget It". Testnet only. Each numbe
 A reactive contract pays each run from its reserves at the gas ledger of its chain. When the reserves are empty, the contract gets no more work, and there is no error.
 
 - **In this buildathon:** [22 of 75](evidence/network/table.md) submissions have a Lasna contract in debt (query `buildathon_debt`, Lasna block [9140577](evidence/network/table.md); a contract that a repository names can be an old deployment).
-- **On the network since 2026-11-05:** [424](evidence/network/table.md) debt events on Lasna and [66](evidence/network/table.md) on the destination chains. [231 of 306](evidence/network/table.md) Lasna contracts that ran out are still in debt, and [19](evidence/network/table.md) ran out 3 times or more. About [159](evidence/network/table.md) callbacks were dropped (derived from debt intervals, not from observed reverts). The counts include the test canaries of this repository.
+- **On the network since [2026-11-05](evidence/network/table.md):** [424](evidence/network/table.md) debt events on Lasna and [66](evidence/network/table.md) on the destination chains. [231 of 306](evidence/network/table.md) Lasna contracts that ran out are still in debt, and [19 ran out 3 times or more](evidence/network/table.md). About [159](evidence/network/table.md) callbacks were dropped (derived from debt intervals, not from observed reverts). The counts include the test canaries of this repository.
 - **The builder's own automation:** `FastfillReactive` holds [60.37 lREACT](evidence/network/table.md) in reserves that cannot be withdrawn, because over-funding was the only protection.
 
 ## Proof
@@ -20,20 +20,20 @@ One rescue on Base Sepolia, from the origin event to the callback. Nobody sent a
 | Step | Chain | Transaction |
 |---|---|---|
 | 1. The callback contract runs out: the callback proxy emits `BlacklistContract(target)` | Base Sepolia | [`0x9bb5e827…5727`](https://base-sepolia.blockscout.com/tx/0x9bb5e827d134906e1ec5f184cd2fecd4a0370974fb8711d2baaabedcb0c15727) |
-| 2. `LifelineHub.react()` sees the debt event and requests a rescue (`Relayed`) | Lasna | [`0x33cc6420…061e`](https://lasna.reactscan.net/tx/0x33cc6420f62ea2653c5fe28ae6b41d572a06405d10fdbc43fa2c9244fc35061e) |
+| 2. `LifelineHub.react` sees the debt event and requests a rescue (`Relayed`) | Lasna | [`0x33cc6420…061e`](https://lasna.reactscan.net/tx/0x33cc6420f62ea2653c5fe28ae6b41d572a06405d10fdbc43fa2c9244fc35061e) |
 | 3. Callback: `LifelineVault` pays the debt and refills (`Result: Rescued`, `WhitelistContract`) | Base Sepolia | [`0xd19743a0…1adf`](https://base-sepolia.blockscout.com/tx/0xd19743a00790ed97d97e0a4d830759dbf1293d2257fd61eb0f56f47b25091adf) |
 
 A reactive contract on Lasna needs no callback: the hub pays in its own reaction, [1 block](JUDGE.md#rescue-latency) after the debt event ([`0xeb5f7b5f…b955`](https://lasna.reactscan.net/tx/0xeb5f7b5f092550dc46bb9eee726ac6d0c9bcf0999510209cd32dafb48cb6b955)). Every rescue, with its blocks and hashes, is in [`JUDGE.md`](JUDGE.md#destination-rescues).
 
 | Measured on testnet | Result |
 |---|---|
-| Time from the debt event to the rescue, Lasna | [5 rescues](JUDGE.md#rescue-latency): median [1 s](JUDGE.md#rescue-latency), largest [1 s](JUDGE.md#rescue-latency) |
-| Time from the debt event to the rescue, Base Sepolia | [6 rescues](JUDGE.md#rescue-latency): median [1 s](JUDGE.md#rescue-latency), largest [1 s](JUDGE.md#rescue-latency) |
+| Time from the debt event to the rescue it started, Lasna | [5 rescues](JUDGE.md#rescue-latency): median [1 s](JUDGE.md#rescue-latency), largest [1 s](JUDGE.md#rescue-latency) |
+| Time from the debt event to the rescue it started, Base Sepolia | [6 rescues](JUDGE.md#rescue-latency): median [1 s](JUDGE.md#rescue-latency), largest [1 s](JUDGE.md#rescue-latency) |
 | A canary that reverts in a loop | [Quarantined after 2 rescues](JUDGE.md#quarantine); the hub paid [0 after the quarantine](JUDGE.md#quarantine) |
-| A flood of [556 junk callbacks](JUDGE.md#junk-flood) pushed the Base Sepolia vault offline | It took the fee float and [0.000122 ETH](JUDGE.md#junk-flood) of self-care, and no other principal ([0 unexplained](JUDGE.md#junk-flood)). [One deposit brought the vault back, and the hub repeated the waiting rescue](JUDGE.md#junk-recovery) |
+| A flood of [556 junk callbacks](JUDGE.md#junk-flood) pushed the Base Sepolia vault offline | It took the fee float and [0.000122 ETH](JUDGE.md#junk-flood) of self-care, and no other principal ([0 unexplained](JUDGE.md#junk-flood)). [One deposit and one `hub.vaultUp` call of the owner brought the vault back, and the hub then repeated the waiting rescue](JUDGE.md#junk-recovery), [25 s](JUDGE.md#rescue-latency) after its debt event |
 | Tests | 193 Solidity tests on forks of the real ledgers (`forge test`); 217 Python tests of the real commands (`python -m pytest`) |
 
-**Check it yourself.** Open the [live board](https://gekomarchi.github.io/lifeline/board/): it needs no install and reads the three chains in your browser. Or ask the ledger of Lasna for the debt of the hub with Foundry (`0` is the expected answer):
+**Check it yourself.** Open the [live board](https://gekomarchi.github.io/lifeline/board/): it needs no install and reads the three chains in your browser. Or ask the ledger of Lasna for the debt of the hub with Foundry (the answer is `0` while the hub is healthy):
 
 ```
 cast call 0x8888888888888888888888888888888888888888 "debt(address)(uint256)" 0xbba61E507e7CC334e57A62c39A776272DA6b07Dd --rpc-url https://lasna-rpc.rnk.dev/
@@ -94,7 +94,7 @@ Three identical canary automations got the same load at the same time: A has no 
 
 - **A** stopped at its first debt and stayed dead to the end.
 - **B** was dead on Lasna for [7369 s](evidence/network/table.md) (query `cron_poller_ward_dead_time`), until the next cron tick. Its callback contract stayed dead: this poller pays only on Lasna.
-- **C** missed nothing. Each debt ended [1 s](JUDGE.md#rescue-latency) later. The [169 blocks](JUDGE.md#three-arm-table) of vault downtime in the full table are the junk flood test, which ran after the load.
+- **C** delivered each of its [24 callbacks](JUDGE.md#three-arm-table) in this load. Each debt ended [1 s](JUDGE.md#rescue-latency) later; work that arrives inside such a gap is lost (see Limits). The [169 blocks](JUDGE.md#three-arm-table) of vault downtime in the full table are the junk flood test, which ran after the load.
 
 Heights, definitions and costs: [the three-arm table](JUDGE.md#three-arm-table).
 

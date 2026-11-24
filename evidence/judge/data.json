@@ -530,6 +530,7 @@
     "deadFromBlock": 9051443,
     "seconds": 1,
     "target": "0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9",
+    "trigger": "debt event",
     "tx": "0xeb5f7b5f092550dc46bb9eee726ac6d0c9bcf0999510209cd32dafb48cb6b955"
    },
    {
@@ -539,6 +540,7 @@
     "deadFromBlock": 9051465,
     "seconds": 1,
     "target": "0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9",
+    "trigger": "debt event",
     "tx": "0x0513ec1482d1df1aa9fa7a6376efd7656a3c320cfd7245a62cb37aed1a0acf2d"
    },
    {
@@ -548,6 +550,7 @@
     "deadFromBlock": 9133031,
     "seconds": 1,
     "target": "0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948",
+    "trigger": "debt event",
     "tx": "0x9dd8a1350b7a3216b5e9fbf561373c6e0a1fe4255f65fea54c3c4a3ca13dcf9c"
    },
    {
@@ -557,6 +560,7 @@
     "deadFromBlock": 9134913,
     "seconds": 1,
     "target": "0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948",
+    "trigger": "debt event",
     "tx": "0x50b463025ecadd7c7bfc51231c13746b2c06cf089cb55d431708b3ad4ef1673c"
    },
    {
@@ -566,6 +570,7 @@
     "deadFromBlock": 9136793,
     "seconds": 1,
     "target": "0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948",
+    "trigger": "debt event",
     "tx": "0x81937deca291aea975b223dd2a82ce5acd7e2930efe9442176008612bb9135c3"
    },
    {
@@ -575,6 +580,7 @@
     "deadFromBlock": 62489494,
     "seconds": 1,
     "target": "0xa462B906917C0372872AD35C0321eB5Daa60692E",
+    "trigger": "debt event",
     "tx": "0xd19743a00790ed97d97e0a4d830759dbf1293d2257fd61eb0f56f47b25091adf"
    },
    {
@@ -584,6 +590,7 @@
     "deadFromBlock": 62955820,
     "seconds": 1,
     "target": "0x81de741ACEd87B5b59770391AE6426333E444dc7",
+    "trigger": "debt event",
     "tx": "0x181ec8d0b285d86128797508317365df1eacdfe1d229851e355d461370ed2614"
    },
    {
@@ -593,6 +600,7 @@
     "deadFromBlock": 62980279,
     "seconds": 1,
     "target": "0x313496642Ce898F7dD723B6AB6CF4A5891A456ed",
+    "trigger": "debt event",
     "tx": "0xca270503967fa43799aa53cddbb9548f6e93331d5b082ce6a6fd5b0a12eb537b"
    },
    {
@@ -602,6 +610,7 @@
     "deadFromBlock": 62990196,
     "seconds": 1,
     "target": "0x313496642Ce898F7dD723B6AB6CF4A5891A456ed",
+    "trigger": "debt event",
     "tx": "0xb90ce349675071e8172cf7f2ca89e21e2df1425200bb1a80d565c7d84341c422"
    },
    {
@@ -611,6 +620,7 @@
     "deadFromBlock": 63000135,
     "seconds": 1,
     "target": "0x313496642Ce898F7dD723B6AB6CF4A5891A456ed",
+    "trigger": "debt event",
     "tx": "0x06974537ab68e52c24234f03fb7669280a6606bc6ee5826f01fe12e178a22fab"
    },
    {
@@ -620,9 +630,29 @@
     "deadFromBlock": 63010052,
     "seconds": 1,
     "target": "0x313496642Ce898F7dD723B6AB6CF4A5891A456ed",
+    "trigger": "debt event",
     "tx": "0xd32920a1ca3031ba2b5d57ab61b3a3b14f92a63007bf8aad3133ff86e2faf2b8"
+   },
+   {
+    "aliveAtBlock": 63038773,
+    "blocks": 127,
+    "chain": "base-sepolia",
+    "deadFromBlock": 63038646,
+    "seconds": 25,
+    "target": "0xC67C2BDE920E75378eB71c9011abd3F4C1775289",
+    "trigger": "sweep",
+    "tx": "0x77633be6a468669993383edddfe263c025fbcd20e083bcffcfb5964e71453f50"
    }
-  ]
+  ],
+  "sweepByChain": {
+   "base-sepolia": {
+    "largestBlocks": 127,
+    "largestSeconds": 25,
+    "medianBlocks": 127,
+    "medianSeconds": 25,
+    "rescues": 1
+   }
+  }
  },
  "quarantine": {
   "chain": "lasna",

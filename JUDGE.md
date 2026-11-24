@@ -51,26 +51,28 @@ Each row is one `Rescued` log of the hub with the `Gap` log of the same transact
 
 ## Rescue latency
 
-Each row is one rescue that a debt log started: the time from the `BlacklistContract` log of the target to the payment that ended the debt, on the chain of the target. The seconds are the difference of the two block timestamps, in whole seconds. The median is the lower middle value.
+Each row is one rescue that a debt log started: the time from the `BlacklistContract` log of the target to the payment that ended the debt, on the chain of the target. The seconds are the difference of the two block timestamps, in whole seconds. The median is the lower middle value. `debt event`: the debt log started the rescue, by a reaction of the hub on lasna or by a relay request of the hub. `sweep`: the target waited for a sweep, for example while its vault was down.
 
-| Chain | Rescues | Median seconds | Largest seconds | Median blocks | Largest blocks |
-|---|---|---|---|---|---|
-| lasna | 5 | 1 | 1 | 1 | 1 |
-| base-sepolia | 6 | 1 | 1 | 5 | 5 |
-
-| Chain | Target | Debt log block | Rescue block | Blocks | Seconds | Rescue transaction |
+| Started by | Chain | Rescues | Median seconds | Largest seconds | Median blocks | Largest blocks |
 |---|---|---|---|---|---|---|
-| lasna | `0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9` | 9051443 | 9051444 | 1 | 1 | `0xeb5f7b5f092550dc46bb9eee726ac6d0c9bcf0999510209cd32dafb48cb6b955` |
-| lasna | `0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9` | 9051465 | 9051466 | 1 | 1 | `0x0513ec1482d1df1aa9fa7a6376efd7656a3c320cfd7245a62cb37aed1a0acf2d` |
-| lasna | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9133031 | 9133032 | 1 | 1 | `0x9dd8a1350b7a3216b5e9fbf561373c6e0a1fe4255f65fea54c3c4a3ca13dcf9c` |
-| lasna | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9134913 | 9134914 | 1 | 1 | `0x50b463025ecadd7c7bfc51231c13746b2c06cf089cb55d431708b3ad4ef1673c` |
-| lasna | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9136793 | 9136794 | 1 | 1 | `0x81937deca291aea975b223dd2a82ce5acd7e2930efe9442176008612bb9135c3` |
-| base-sepolia | `0xa462B906917C0372872AD35C0321eB5Daa60692E` | 62489494 | 62489499 | 5 | 1 | `0xd19743a00790ed97d97e0a4d830759dbf1293d2257fd61eb0f56f47b25091adf` |
-| base-sepolia | `0x81de741ACEd87B5b59770391AE6426333E444dc7` | 62955820 | 62955825 | 5 | 1 | `0x181ec8d0b285d86128797508317365df1eacdfe1d229851e355d461370ed2614` |
-| base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 62980279 | 62980284 | 5 | 1 | `0xca270503967fa43799aa53cddbb9548f6e93331d5b082ce6a6fd5b0a12eb537b` |
-| base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 62990196 | 62990201 | 5 | 1 | `0xb90ce349675071e8172cf7f2ca89e21e2df1425200bb1a80d565c7d84341c422` |
-| base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 63000135 | 63000140 | 5 | 1 | `0x06974537ab68e52c24234f03fb7669280a6606bc6ee5826f01fe12e178a22fab` |
-| base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 63010052 | 63010057 | 5 | 1 | `0xd32920a1ca3031ba2b5d57ab61b3a3b14f92a63007bf8aad3133ff86e2faf2b8` |
+| debt event | lasna | 5 | 1 | 1 | 1 | 1 |
+| debt event | base-sepolia | 6 | 1 | 1 | 5 | 5 |
+| sweep | base-sepolia | 1 | 25 | 25 | 127 | 127 |
+
+| Started by | Chain | Target | Debt log block | Rescue block | Blocks | Seconds | Rescue transaction |
+|---|---|---|---|---|---|---|---|
+| debt event | lasna | `0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9` | 9051443 | 9051444 | 1 | 1 | `0xeb5f7b5f092550dc46bb9eee726ac6d0c9bcf0999510209cd32dafb48cb6b955` |
+| debt event | lasna | `0xF6152129A1Cbef7c04F7c92D47B6AA0Ac80FA5F9` | 9051465 | 9051466 | 1 | 1 | `0x0513ec1482d1df1aa9fa7a6376efd7656a3c320cfd7245a62cb37aed1a0acf2d` |
+| debt event | lasna | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9133031 | 9133032 | 1 | 1 | `0x9dd8a1350b7a3216b5e9fbf561373c6e0a1fe4255f65fea54c3c4a3ca13dcf9c` |
+| debt event | lasna | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9134913 | 9134914 | 1 | 1 | `0x50b463025ecadd7c7bfc51231c13746b2c06cf089cb55d431708b3ad4ef1673c` |
+| debt event | lasna | `0x541FCD5EeA3Af2d8fd2A8447299128ad476c7948` | 9136793 | 9136794 | 1 | 1 | `0x81937deca291aea975b223dd2a82ce5acd7e2930efe9442176008612bb9135c3` |
+| debt event | base-sepolia | `0xa462B906917C0372872AD35C0321eB5Daa60692E` | 62489494 | 62489499 | 5 | 1 | `0xd19743a00790ed97d97e0a4d830759dbf1293d2257fd61eb0f56f47b25091adf` |
+| debt event | base-sepolia | `0x81de741ACEd87B5b59770391AE6426333E444dc7` | 62955820 | 62955825 | 5 | 1 | `0x181ec8d0b285d86128797508317365df1eacdfe1d229851e355d461370ed2614` |
+| debt event | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 62980279 | 62980284 | 5 | 1 | `0xca270503967fa43799aa53cddbb9548f6e93331d5b082ce6a6fd5b0a12eb537b` |
+| debt event | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 62990196 | 62990201 | 5 | 1 | `0xb90ce349675071e8172cf7f2ca89e21e2df1425200bb1a80d565c7d84341c422` |
+| debt event | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 63000135 | 63000140 | 5 | 1 | `0x06974537ab68e52c24234f03fb7669280a6606bc6ee5826f01fe12e178a22fab` |
+| debt event | base-sepolia | `0x313496642Ce898F7dD723B6AB6CF4A5891A456ed` | 63010052 | 63010057 | 5 | 1 | `0xd32920a1ca3031ba2b5d57ab61b3a3b14f92a63007bf8aad3133ff86e2faf2b8` |
+| sweep | base-sepolia | `0xC67C2BDE920E75378eB71c9011abd3F4C1775289` | 63038646 | 63038773 | 127 | 25 | `0x77633be6a468669993383edddfe263c025fbcd20e083bcffcfb5964e71453f50` |
 
 ## Fleet report
 

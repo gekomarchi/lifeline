@@ -238,35 +238,55 @@ class Evidence:
 
     def latency(self, rescues: list, lasna_rescues: list) -> dict:
         """The time from the debt log of a target to the rescue that ended the debt, on the chain of the
-        target, by the block timestamps. A rescue that no debt log of the heights started is left out."""
+        target, by the block timestamps. `trigger` is `debt event` for a rescue that the debt log started (a
+        reaction of the hub on Lasna, or a relay request of the hub), and `sweep` for each other rescue of a
+        vault: the target waited for a sweep, for example while the vault was down. A rescue that no debt log
+        of the heights started is left out."""
         rows = []
         for entry in lasna_rescues:
             gap = entry["gap"]
             if gap and gap["deadFromBlock"]:
-                rows.append((LASNA, entry["target"], gap["deadFromBlock"], gap["aliveAtBlock"],
+                rows.append((LASNA, entry["target"], "debt event", gap["deadFromBlock"], gap["aliveAtBlock"],
                              entry["rescued"]["tx"]))
-        for entry in rescues:
-            if entry["status"] == "joined" and entry["whitelist"] and entry["debtEvent"]:
-                rows.append((entry["chain"], entry["target"], entry["debtEvent"]["block"],
-                             entry["whitelist"]["block"], entry["whitelist"]["tx"]))
+        relayed = {(entry["chain"], entry["result"]["tx"], entry["target"].lower())
+                   for entry in rescues if entry["status"] == "joined"}
+        for chain in sorted(self.vaults):
+            for log, values in self.vault_events(chain, "Result"):
+                if OUTCOMES[values["outcome"]] != "Rescued":
+                    continue
+                target, tx = checksum(values["target"]), log["transactionHash"]
+                ledger = self.ledger_events(chain, target)
+                cleared = [entry for entry in ledger if entry["topics"][0] == WHITELIST
+                           and entry["transactionHash"] == tx]
+                debts = [entry for entry in ledger if entry["topics"][0] == BLACKLIST
+                         and _log_position(entry) < _log_position(log)]
+                if cleared and debts:
+                    trigger = "debt event" if (chain, tx, target.lower()) in relayed else "sweep"
+                    rows.append((chain, target, trigger, block_of(debts[-1]), block_of(log), tx))
         blocks = {}
-        for chain, _, dead, alive, _ in rows:
+        for chain, _, _, dead, alive, _ in rows:
             blocks.setdefault(chain, set()).update((dead, alive))
         times = {chain: self.readers[chain].timestamps(sorted(numbers)) for chain, numbers in blocks.items()}
-        entries = [{"chain": chain, "target": target, "deadFromBlock": dead, "aliveAtBlock": alive,
-                    "blocks": alive - dead, "seconds": times[chain][alive] - times[chain][dead], "tx": tx}
-                   for chain, target, dead, alive, tx in rows]
-        by_chain = {}
-        for chain in sorted(blocks):
-            of_chain = [entry for entry in entries if entry["chain"] == chain]
-            seconds = sorted(entry["seconds"] for entry in of_chain)
-            spans = sorted(entry["blocks"] for entry in of_chain)
-            by_chain[chain] = {
-                "rescues": len(of_chain),
-                "medianSeconds": seconds[(len(seconds) - 1) // 2], "largestSeconds": seconds[-1],
-                "medianBlocks": spans[(len(spans) - 1) // 2], "largestBlocks": spans[-1],
-            }
-        return {"byChain": by_chain, "rescues": entries}
+        entries = [{"chain": chain, "target": target, "trigger": trigger, "deadFromBlock": dead,
+                    "aliveAtBlock": alive, "blocks": alive - dead,
+                    "seconds": times[chain][alive] - times[chain][dead], "tx": tx}
+                   for chain, target, trigger, dead, alive, tx in rows]
+
+        def figures(trigger: str) -> dict:
+            by_chain = {}
+            for chain in sorted(blocks):
+                of_chain = [entry for entry in entries if entry["chain"] == chain and entry["trigger"] == trigger]
+                if of_chain:
+                    seconds = sorted(entry["seconds"] for entry in of_chain)
+                    spans = sorted(entry["blocks"] for entry in of_chain)
+                    by_chain[chain] = {
+                        "rescues": len(of_chain),
+                        "medianSeconds": seconds[(len(seconds) - 1) // 2], "largestSeconds": seconds[-1],
+                        "medianBlocks": spans[(len(spans) - 1) // 2], "largestBlocks": spans[-1],
+                    }
+            return by_chain
+
+        return {"byChain": figures("debt event"), "sweepByChain": figures("sweep"), "rescues": entries}
 
     # Fleet ------------------------------------------------------------------------------------
 
@@ -654,18 +674,24 @@ def render_judge(data: dict, table: str) -> str:
     lines += ["", "## Rescue latency", "",
               "Each row is one rescue that a debt log started: the time from the `BlacklistContract` log of the "
               "target to the payment that ended the debt, on the chain of the target. The seconds are the "
-              "difference of the two block timestamps, in whole seconds. The median is the lower middle value.",
+              "difference of the two block timestamps, in whole seconds. The median is the lower middle value. "
+              "`debt event`: the debt log started the rescue, by a reaction of the hub on lasna or by a relay "
+              "request of the hub. `sweep`: the target waited for a sweep, for example while its vault was down.",
               ""]
+    order = lambda item: (item[0] != LASNA, item[0])  # noqa: E731
     lines += _table(
-        ("Chain", "Rescues", "Median seconds", "Largest seconds", "Median blocks", "Largest blocks"),
-        [(chain, figures["rescues"], figures["medianSeconds"], figures["largestSeconds"], figures["medianBlocks"],
-          figures["largestBlocks"])
-         for chain, figures in sorted(latency["byChain"].items(), key=lambda item: (item[0] != LASNA, item[0]))])
+        ("Started by", "Chain", "Rescues", "Median seconds", "Largest seconds", "Median blocks", "Largest blocks"),
+        [(trigger, chain, figures["rescues"], figures["medianSeconds"], figures["largestSeconds"],
+          figures["medianBlocks"], figures["largestBlocks"])
+         for trigger, name in (("debt event", "byChain"), ("sweep", "sweepByChain"))
+         for chain, figures in sorted(latency[name].items(), key=order)])
     if latency["rescues"]:
         lines += [""] + _table(
-            ("Chain", "Target", "Debt log block", "Rescue block", "Blocks", "Seconds", "Rescue transaction"),
-            [(entry["chain"], f"`{entry['target']}`", entry["deadFromBlock"], entry["aliveAtBlock"],
-              entry["blocks"], entry["seconds"], _hash(entry["tx"])) for entry in latency["rescues"]])
+            ("Started by", "Chain", "Target", "Debt log block", "Rescue block", "Blocks", "Seconds",
+             "Rescue transaction"),
+            [(entry["trigger"], entry["chain"], f"`{entry['target']}`", entry["deadFromBlock"],
+              entry["aliveAtBlock"], entry["blocks"], entry["seconds"], _hash(entry["tx"]))
+             for entry in latency["rescues"]])
 
     lines += ["", "## Fleet report", "",
               "The fleet is each enrollment of the manifest that is not a guest and not a fixture of the "
