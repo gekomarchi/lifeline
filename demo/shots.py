@@ -1,6 +1,6 @@
 """The shot list of the demo video: the order of the surfaces, the camera, the cursor and the marks.
 
-`compose.py` reads this file. `demo/script.md` is written from it, so the two cannot differ.
+`compose.py` reads this file and writes the shot list `demo/build/script.md` from it.
 
 Times are anchors on the narration, not seconds typed by hand:
 

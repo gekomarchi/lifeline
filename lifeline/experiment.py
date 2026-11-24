@@ -180,7 +180,7 @@ def add_step(record: dict, step: str, chain: str, block, tx=None) -> None:
 
 
 # ----------------------------------------------------------------------------------------------
-# Poke and wait: unit 11 uses these two
+# Poke and wait: the capture step of the demo uses these two
 # ----------------------------------------------------------------------------------------------
 
 
@@ -359,7 +359,7 @@ def require_guardian(session: ops.Session, dest: str = None, what="the load") ->
 
 
 # ----------------------------------------------------------------------------------------------
-# Operator commands of unit 6
+# Operator commands of `lifeline.ops`
 # ----------------------------------------------------------------------------------------------
 
 
@@ -1194,7 +1194,7 @@ def cmd_junk(args) -> int:
         step("Pending", LASNA, expect("Pending of the hub for waiting.callback", lasna.rpc, hub,
                                       [hub_abi.topic("Pending"), chain_topic, waiting_topic], lasna_start))
 
-    # 5. The recovery command of unit 6, then the catch-up: `VaultUp` with 0 remaining, and the rescue of the
+    # 5. The recovery command of `lifeline.ops`, then the catch-up: `VaultUp` with 0 remaining, and the rescue of the
     #    canary that waits in one of the sweeps of this recovery.
     if not find_step(record, "VaultUp"):
         run_ops(args, "recover", "--chain", args.chain)
@@ -1314,7 +1314,7 @@ FEE_SCOPES = {
 
 class Measurement:
     """The three-arm metrics and the junk evidence at the heights of one snapshot. Event scans over
-    `from..to` and state reads go through the reader and the snapshot of unit 1."""
+    `from..to` and state reads go through the reader and the snapshot of `lifeline.stats`."""
 
     def __init__(self, manifest: dict, readers: dict, snapshot: Snapshot):
         self.manifest, self.readers, self.snapshot = manifest, readers, snapshot

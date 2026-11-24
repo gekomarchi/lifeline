@@ -29,15 +29,15 @@ from .reader import (
     first_block_at,
 )
 
-# The specification gives its dates in EET. `from` is the first block at or after this time.
+# The dates of the window are in EET. `from` is the first block at or after this time.
 WINDOW_START = "2026-11-05T00:00:00+02:00"
 
 DEFAULT_PARAMS = {
     "windowStart": WINDOW_START,
     "windowStartTimestamp": int(datetime.fromisoformat(WINDOW_START).timestamp()),
-    # Start value: the largest deposit-to-fill time in specification section 1 row 10.
+    # Start value: the largest deposit-to-fill time that was measured.
     "latencyMarginSeconds": 5,
-    # "A few runs" of reserve. The fees are samples, not protocol constants (specification F8).
+    # "A few runs" of reserve. The fees are samples, not protocol constants.
     "guestFewRuns": 3,
     "sampleFeeWei": {"reactive": "12500000000000000", "destination": "700000000000"},
 }

@@ -48,7 +48,7 @@ contract HubVaultLinkTest is TwoForkHarness {
     uint256 internal constant DAILY_CAP = 1e14;
     uint32 internal constant WINDOW = 1 hours;
 
-    /// @dev `sweepBase` is `90,000 + _extraGas + _maxChargeGas` of the proxy (spec §4.4).
+    /// @dev `sweepBase` is `90,000 + _extraGas + _maxChargeGas` of the proxy.
     uint256 internal constant SWEEP_BASE_GAS = 90_000;
     uint256 internal constant BASE_SEPOLIA_SWEEP_BASE = 220_000;
     uint256 internal constant ETHEREUM_SEPOLIA_SWEEP_BASE = 290_000;
@@ -921,10 +921,10 @@ contract HubVaultLinkTest is TwoForkHarness {
     }
 
     // ------------------------------------------------------------------------------------------
-    // Relay limit (spec §4.3)
+    // Relay limit
     // ------------------------------------------------------------------------------------------
 
-    /// @dev Spec §4.9: three relays answered with a skip by the vault leave the target subscribed and not
+    /// @dev Three relays answered with a skip by the vault leave the target subscribed and not
     ///      quarantined on either chain. The hub counts requests, and a request is not a rescue.
     function test_relayCountNeverQuarantines() public {
         // Each debt is above `maxDebt` of the vault: the vault answers `DebtAboveCap`.
@@ -985,7 +985,7 @@ contract HubVaultLinkTest is TwoForkHarness {
         }
     }
 
-    /// @dev Spec §4.9: at `maxRelays` the hub emits `RelayLimited`, unsubscribes one tuple, and other targets
+    /// @dev At `maxRelays` the hub emits `RelayLimited`, unsubscribes one tuple, and other targets
     ///      still work. `rearm` restores the first.
     function test_relayLimit_parksOnlyThatTuple() public {
         // `maxRescues` 1: `maxRelays = 2 x 1 + 2 = 4`.
@@ -1135,7 +1135,7 @@ contract HubVaultLinkTest is TwoForkHarness {
         _assertState(canary, TargetState.Parked);
     }
 
-    /// @dev Spec §4.9: the wrong order costs one `NoPolicy` result; `setPolicy` then clears the debt locally.
+    /// @dev The wrong order costs one `NoPolicy` result; `setPolicy` then clears the debt locally.
     function test_enrollBeforePolicy_selfHeals() public {
         address canary = _deployCanary();
         uint256 mark = _lasnaMark();
@@ -1336,7 +1336,7 @@ contract HubVaultLinkTest is TwoForkHarness {
     }
 
     // ------------------------------------------------------------------------------------------
-    // Sweep gas limit (spec §4.4)
+    // Sweep gas limit
     // ------------------------------------------------------------------------------------------
 
     /// @dev One catch-up sweep of `n` enrolled targets in debt: the targets go into debt while the vault is
@@ -1404,7 +1404,7 @@ contract HubVaultLinkTest is TwoForkHarness {
         _setVault(ETHEREUM_SEPOLIA_SWEEP_BASE);
     }
 
-    /// @dev Spec §4.9 (fuzz): for n = 1..8 with all targets topped up, the sweep completes inside the computed
+    /// @dev Fuzz: for n = 1..8 with all targets topped up, the sweep completes inside the computed
     ///      limit on each proxy configuration: `sweepBase` 220,000 with the Base Sepolia proxy values, and
     ///      290,000 with the Ethereum Sepolia proxy values.
     function test_sweepFitsItsGasLimit(uint256 n) public {
@@ -1426,10 +1426,10 @@ contract HubVaultLinkTest is TwoForkHarness {
     }
 
     // ------------------------------------------------------------------------------------------
-    // Vault down, pending and catch-up (spec §4.5)
+    // Vault down, pending and catch-up
     // ------------------------------------------------------------------------------------------
 
-    /// @dev Spec §4.9: float emptied, `VaultDown`, no further requests, `depositTo`, `vaultUp`, pending
+    /// @dev Float emptied, `VaultDown`, no further requests, `depositTo`, `vaultUp`, pending
     ///      targets rescued.
     function test_vaultDownUp_catchUp() public {
         address[] memory targets = _armedCanaries(2);

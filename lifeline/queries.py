@@ -27,7 +27,7 @@ from .events import (
     parse_event,
 )
 
-# Spec section 1 row 1. Used only to report the difference from the query result.
+# An earlier count of dropped callbacks. Used only to report the difference from the query result.
 SPEC_DROPPED_CALLBACKS = 206
 REPEAT_DEBT_EVENTS = 3
 
@@ -331,7 +331,7 @@ def dropped_callbacks(scan):
         (f"uncertain: within {margin} s of an interval edge or of the end of the window",
          result["uncertain"], everywhere),
         ("not scanned: destination chain is not configured", result["notScanned"]["requests"], [scan.reactive]),
-        (f"difference from the specification figure {SPEC_DROPPED_CALLBACKS}",
+        (f"difference from the earlier figure {SPEC_DROPPED_CALLBACKS}",
          result["differenceFromSpecification"], everywhere),
     ]
     return result, rows
@@ -503,7 +503,7 @@ def guest_candidates(scan):
         rows.append(("guest candidates with a debt event or debt at to", in_debt, [chain]))
         rows.append(("guest candidates with low reserve only", len(entries) - in_debt, [chain]))
     result = {
-        "sampleFeeNote": "The sample fees are samples, not protocol constants (specification F8).",
+        "sampleFeeNote": "The sample fees are samples, not protocol constants.",
         "fewRuns": params["guestFewRuns"],
         "lowReserveThresholdWei": thresholds,
         "count": len(candidates),

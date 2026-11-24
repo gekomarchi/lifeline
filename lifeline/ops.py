@@ -41,11 +41,11 @@ LASNA = "lasna"
 CHAIN_NAMES = (LASNA, "unichain-sepolia", "base-sepolia")
 MANIFEST_VERSION = 1
 
-# The gas limit of one trigger transaction on Lasna (spec F3).
+# The gas limit of one trigger transaction on Lasna.
 TRIGGER_GAS = 900_000
 # `SWEEP_MAX` of `src/LifelineHub.sol`: a file-level constant, so it is not in the ABI.
 SWEEP_MAX = 8
-# The vault float covers this number of full sweeps (spec §4.4).
+# The vault float covers this number of full sweeps.
 FLOAT_SWEEPS = 4
 # Wildcard topic of a subscription: `REACTIVE_IGNORE` of `src/interfaces/ISystemContract.sol`.
 REACTIVE_IGNORE = 0xA65F96FC951C35EAD38878E0F0B7A3C744A6F5CCC1476B313353CE31712313AD

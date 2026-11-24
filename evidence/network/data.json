@@ -17071,7 +17071,7 @@
      "lasna": "37500000000000000",
      "unichain-sepolia": "2100000000000"
     },
-    "sampleFeeNote": "The sample fees are samples, not protocol constants (specification F8)."
+    "sampleFeeNote": "The sample fees are samples, not protocol constants."
    },
    "status": "ok"
   },

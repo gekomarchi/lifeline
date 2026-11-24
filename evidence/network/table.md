@@ -41,7 +41,7 @@ Parameters: `{"guestFewRuns": 3, "latencyMarginSeconds": 5, "sampleFeeWei": {"de
 | `dropped_callbacks` | requests sooner than 10800 s after the debt event | 127 | lasna<br>base-sepolia<br>unichain-sepolia | 7546598<br>54538656<br>66977172 | 9140577<br>63026754<br>68674790 |
 | `dropped_callbacks` | uncertain: within 5 s of an interval edge or of the end of the window | 73 | lasna<br>base-sepolia<br>unichain-sepolia | 7546598<br>54538656<br>66977172 | 9140577<br>63026754<br>68674790 |
 | `dropped_callbacks` | not scanned: destination chain is not configured | 1677 | lasna | 7546598 | 9140577 |
-| `dropped_callbacks` | difference from the specification figure 206 | -47 | lasna<br>base-sepolia<br>unichain-sepolia | 7546598<br>54538656<br>66977172 | 9140577<br>63026754<br>68674790 |
+| `dropped_callbacks` | difference from the earlier figure 206 | -47 | lasna<br>base-sepolia<br>unichain-sepolia | 7546598<br>54538656<br>66977172 | 9140577<br>63026754<br>68674790 |
 | `fastfill_fill_times` | fills | 38 | base-sepolia<br>unichain-sepolia | 54538656<br>66977172 | 63026754<br>68674790 |
 | `fastfill_fill_times` | deposit to fill, median seconds | 2 | base-sepolia<br>unichain-sepolia | 54538656<br>66977172 | 63026754<br>68674790 |
 | `fastfill_fill_times` | deposit to fill, 90th percentile seconds | 3 | base-sepolia<br>unichain-sepolia | 54538656<br>66977172 | 63026754<br>68674790 |

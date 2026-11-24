@@ -953,7 +953,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         }
     }
 
-    /// @dev Spec §4.9: a target quarantined on the vault gets `Result(Quarantined, 0)` in every sweep and no
+    /// @dev A target quarantined on the vault gets `Result(Quarantined, 0)` in every sweep and no
     ///      payment.
     function test_vaultQuarantine_sweepSkips() public {
         (address broken,) = _armedCanaryInDebt(_debtLoopPolicy(2, WINDOW));
@@ -1439,7 +1439,7 @@ contract LifelineVaultTest is ProxyDeliveryHarness {
         assertEq(proxy.debt(canary), debt, "junk does not rescue");
     }
 
-    /// @dev Spec §4.9: after any number of junk callbacks, the balance loss is at most `selfCareDailyCap`
+    /// @dev After any number of junk callbacks, the balance loss is at most `selfCareDailyCap`
     ///      per day.
     function test_junkFlood_lossBound() public {
         (address canary, uint256 canaryDebt) = _armedCanaryInDebt(_policy());

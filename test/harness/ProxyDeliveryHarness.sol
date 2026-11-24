@@ -29,7 +29,7 @@ abstract contract ProxyDelivery is Test {
 
     uint256 internal constant BASE_SEPOLIA_CHAIN_ID = 84532;
 
-    /// @dev The block of the fork rehearsal.
+    /// @dev The block of the fork.
     uint256 internal constant BASE_SEPOLIA_FORK_BLOCK = 61_846_945;
 
     address internal constant PROXY_ADDRESS = 0x476F44b11F5C942c58f4c8E3d0300E5710743585;

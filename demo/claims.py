@@ -1,4 +1,5 @@
-"""Writes `demo/claims.md`: one row for each number, hash, address, block and factual statement of the video.
+"""Writes `demo/build/claims.md` (not committed): one row for each number, hash, address, block and factual
+statement of the video.
 
     python demo/claims.py [--offline]
 
@@ -33,7 +34,7 @@ import compose  # noqa: E402
 from lifeline import ops  # noqa: E402
 
 WORDS = {1: "one", 2: "two", 3: "three", 24: "twenty-four", 25: "twenty-five", 60: "sixty"}
-# Words that the narration must not have: the claim limits of the specification.
+# Words that the narration must not have: the claim limits of the project.
 FORBIDDEN = ("zero loss", "nobody else", "no one else", "first to", "faster", "better", "best", "pitstop",
              "reactivate", "guarantee")
 
@@ -549,7 +550,7 @@ def main() -> int:
     args = parser.parse_args()
     table = Table(args.offline)
     build(table)
-    (HERE / "claims.md").write_text(render(table))
+    (compose.BUILD / "claims.md").write_text(render(table))
     unchecked = sum(1 for row in table.rows if row[5] == "not checked")
     print(f"claims: {len(table.rows)} rows, {table.failed} not equal, {unchecked} not checked")
     for row in table.rows:

@@ -63,7 +63,7 @@ contract GaugeTest is CronRelay {
     /// @dev Below one callback fee: each callback after a rescue is a new debt.
     uint256 internal constant DEST_HIGH_BELOW_ONE_FEE = 1e11;
 
-    /// @dev `sweepBase` of Base Sepolia: `90,000 + _extraGas + _maxChargeGas` of the proxy (spec §4.4).
+    /// @dev `sweepBase` of Base Sepolia: `90,000 + _extraGas + _maxChargeGas` of the proxy.
     uint256 internal constant SWEEP_BASE = 220_000;
 
     /// @dev A second destination chain: Unichain Sepolia. It has a vault record in the hub and no fork. The
@@ -492,7 +492,7 @@ contract GaugeTest is CronRelay {
     // Constants, ABI and access
     // ------------------------------------------------------------------------------------------
 
-    /// @dev `ITER_RESERVE` and `MAX_PER_TICK` have their start values of spec §4.4. `TAIL_RESERVE` started at
+    /// @dev `ITER_RESERVE` and `MAX_PER_TICK` have their start values. `TAIL_RESERVE` started at
     ///      150,000.
     function test_constants_haveTheFinalValues() public pure {
         assertEq(MAX_PER_TICK, 12);
@@ -990,7 +990,7 @@ contract GaugeTest is CronRelay {
         );
     }
 
-    /// @dev Spec §4.3: the hub does not know the quarantine state of the vault. A target that the vault
+    /// @dev The hub does not know the quarantine state of the vault. A target that the vault
     ///      quarantined stays in the payload of each tick and gets `Result(tickId, target, Quarantined, 0)`.
     ///      After `hub.disarm` it is in no payload.
     function test_sweep_aTargetQuarantinedOnTheVaultStaysInThePayloadUntilDisarm() public {
@@ -1334,7 +1334,7 @@ contract GaugeTest is CronRelay {
         if (second.length > SWEEP_MAX) c.second = (c.second + n) % second.length;
     }
 
-    /// @dev Spec §4.9. For any fleet size and any mix of empty targets, with two registered vaults that have
+    /// @dev For any fleet size and any mix of empty targets, with two registered vaults that have
     ///      enrolled targets: the trigger succeeds inside its 900,000 gas, the system contract reports no
     ///      reverted reaction, the cursor moves by exactly the number processed, and the two sweep requests
     ///      are emitted. The second tick continues at the cursors.

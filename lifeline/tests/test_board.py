@@ -22,7 +22,7 @@ pytestmark = pytest.mark.skipif(not BUILT, reason="the build of the board needs 
 
 MANIFEST = json.loads(ops.DEFAULT_MANIFEST.read_text())
 
-# The declarations of the events that the page reads, as unit 2, unit 3 and the platform sources give them.
+# The declarations of the events that the page reads, as the hub, the vault and the platform sources give them.
 EVENTS = {
     ("hub", "HubLow"): "HubLow(uint256 balance, uint256 principalFloor)",
     ("hub", "Rescued"): "Rescued(address indexed target, uint256 debt, uint256 paid)",

@@ -124,7 +124,7 @@ def _event(abi: ops.Abi, name: str, count_only=False) -> dict:
 
 
 def abi_fragments(artifacts: Path = None) -> dict:
-    """The functions and events that the page uses, from the build output of unit 2 and unit 3."""
+    """The functions and events that the page uses, from the build output of the hub and the vault."""
     hub = ops.load_artifact("LifelineHub", artifacts).abi
     vault = ops.load_artifact("LifelineVault", artifacts).abi
     ledger = ops.load_artifact("ICallbackProxy", artifacts).abi

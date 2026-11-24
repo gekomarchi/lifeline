@@ -582,7 +582,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         assertEq(system.reserves(canary), HIGH - _lastTrigger(canary).fee);
     }
 
-    /// @dev F4: the hub listens to enrolled targets only. Another contract's debt costs the hub nothing.
+    /// @dev The hub listens to enrolled targets only. Another contract's debt costs the hub nothing.
     function test_airbag_aStrangersDebtDoesNotWakeTheHub() public {
         _enroll(address(_deployCanary()), _policy());
         address other = address(_deployCanary());
@@ -696,7 +696,7 @@ contract LifelineHubLasnaTest is LasnaForkHarness {
         _assertSkipped(mark, LASNA_CHAIN_ID, canary, LifelineHub.SkipReason.DailyCap);
     }
 
-    /// @dev F8: `dailyCap` is a cap of the calendar day. The next day has a new cap.
+    /// @dev `dailyCap` is a cap of the calendar day. The next day has a new cap.
     function test_dailyCap_isACapOfTheCalendarDay() public {
         // Ten minutes before the end of a day.
         _skipTime(_secondsToNextDay() + 1 days - 10 minutes);

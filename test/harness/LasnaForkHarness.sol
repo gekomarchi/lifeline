@@ -49,7 +49,7 @@ abstract contract LasnaForkHarness is Test {
 
     uint256 internal constant LASNA_CHAIN_ID = 5318007;
 
-    /// @dev The block of the fork rehearsal.
+    /// @dev The block of the fork.
     uint256 internal constant LASNA_FORK_BLOCK = 8_918_212;
 
     address internal constant SYSTEM_ADDRESS = 0x8888888888888888888888888888888888888888;

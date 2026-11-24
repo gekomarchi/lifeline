@@ -180,7 +180,7 @@ class Fleet:
         self.target(LASNA, T_LASNA_Q, "Quarantined", debt=11 * 10**15, label="lasna quarantined")
         # Quarantined on the vault, and the hub still has it in its sweep list (count change 8).
         self.target(BASE, T_VAULT_Q, "Active", debt=3 * 10**12, quarantined=True, label="base vault-quarantined")
-        # Removed with the unit 6 command: no list entry, the hub keeps the record, the vault has no policy.
+        # Removed with the `remove` command: no list entry, the hub keeps the record, the vault has no policy.
         self.target(BASE, T_DISARMED, "Disarmed", reserves=5 * 10**13, listed=False, vault_policy=False,
                     label="base removed", removed=True)
         # In the hub list, and the manifest has no enrollment of it.

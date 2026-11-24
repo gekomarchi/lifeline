@@ -57,9 +57,9 @@ def test_policy_rule():
 
 
 def test_fees():
-    # Spec F3: a full trigger of 900,000 gas at 100 gwei is 0.09 lREACT.
+    # A full trigger of 900,000 gas at 100 gwei is 0.09 lREACT.
     assert ops.trigger_fee(100 * 10**9, 1000) == 9 * 10**16
-    # REHEARSAL §2: (`_extraGas` + gas of the call) x price x coefficient / 1000.
+    # The sweep fee: (`_extraGas` + gas of the call) x price x coefficient / 1000.
     assert ops.sweep_fee(80_000, 619_221, 5_000_000, 1100) == (80_000 + 619_221) * 5_000_000 * 1100 // 1000
 
 

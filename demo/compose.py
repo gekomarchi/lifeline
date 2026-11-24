@@ -12,7 +12,7 @@ Input (nothing here is typed by hand):
 Output:
     demo/build/lifeline-demo.mp4  the video, 1920x1080, 30 frames per second (not committed)
     demo/subtitles.srt            the subtitles of this cut
-    demo/script.md                the shot list with the narration and the times of this cut
+    demo/build/script.md          the shot list with the narration and the times of this cut (not committed)
     demo/build/timeline.json      the times of each clip, shot, cue and claim anchor
 
 The same footage gives the same cut: no random value and no clock is used. `--frames` writes single pictures
@@ -801,7 +801,7 @@ def main() -> int:
             cut.frame(float(value)).save(BUILD / "frames" / f"{float(value):07.2f}.png")
         return 0
     write_srt(cut.cues, HERE / "subtitles.srt")
-    cut.write_script(HERE / "script.md")
+    cut.write_script(BUILD / "script.md")
     cut.write_timeline(BUILD / "timeline.json")
     part = args.begin is not None or args.end is not None
     out = Path(args.out)

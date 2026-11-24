@@ -140,7 +140,7 @@ Gaps: none.
 |---|---|---|---|
 | 62489494 | 62489499 | 5 | `0xd19743a00790ed97d97e0a4d830759dbf1293d2257fd61eb0f56f47b25091adf` |
 
-The specification does not define a fill. This report reads it as a fill event of the fleet itself, as `subjects.fastfill.fill` of `config/network.json` defines it: the count is the number of these logs from the first block of the fill chain at or after the enrollment, by the block timestamps, to `to`. A guardian top-up is a separate figure. For a lasna target a gap is a `Gap` log of the hub. For a target of a destination chain a gap is a debt interval at the callback proxy: from a `BlacklistContract` log to the next `WhitelistContract` log, or to `to`. The block count of a gap starts at the enrollment block if the debt started before it.
+This report reads a fill as a fill event of the fleet itself, as `subjects.fastfill.fill` of `config/network.json` defines it: the count is the number of these logs from the first block of the fill chain at or after the enrollment, by the block timestamps, to `to`. A guardian top-up is a separate figure. For a lasna target a gap is a `Gap` log of the hub. For a target of a destination chain a gap is a debt interval at the callback proxy: from a `BlacklistContract` log to the next `WhitelistContract` log, or to `to`. The block count of a gap starts at the enrollment block if the debt started before it.
 
 ## Guardian cost
 
