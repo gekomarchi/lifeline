@@ -195,8 +195,9 @@ class Capture:
             logs = logs_now(dest, self.dest.ledger, debt_topics, dest_start)
             if logs:
                 return logs[0]
-            self.left("debtEvent")
             self.require_room()
+            # The check of the guard takes time: no poke() goes to the node after the timeout.
+            self.left("debtEvent")
             # The nonce binds each poke to the state that decided it: see `experiment.poke`.
             sent = poke(self.lasna.rpc, self.account, self.reactive, nonce)
             nonce += 1
@@ -224,6 +225,9 @@ class Capture:
         # capture is after the two start blocks.
         lasna_start, nonce = idle_block(lasna.rpc, self.account.address)
         dest_start, debt = self.debt(dest, self.callback)
+        # No later read of the destination chain is below this block: a node that is behind then gives no
+        # answer in place of an older state, in which a rescue of the window is not counted yet.
+        dest.rpc.floor = max(dest.rpc.floor, dest_start)
         if debt:
             raise OpsError(f"{CALLBACK} is in debt already ({amount(debt)}) at block {dest_start} of "
                            f"{self.dest_name}: the capture needs a new debt event. No transaction was sent")
@@ -261,9 +265,10 @@ class Capture:
         block = blocks["result"]
         while True:
             block, debt = self.debt(dest, self.callback, block)
+            # A read that ends after the timeout is not a success: the capture then saves nothing.
+            self.left("debtZero")
             if debt == 0:
                 break
-            self.left("debtZero")
             time.sleep(ops.POLL_SECONDS)
             block = max(block, dest.rpc.head())
         blocks["debtZero"] = block

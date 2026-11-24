@@ -31,7 +31,7 @@ A reactive contract on Lasna needs no callback: the hub pays in its own reaction
 | Time from the debt event to the rescue it started, Base Sepolia | [8 rescues](JUDGE.md#rescue-latency): median [1 s](JUDGE.md#rescue-latency), largest [1 s](JUDGE.md#rescue-latency) |
 | A canary that reverts in a loop | [Quarantined after 2 rescues](JUDGE.md#quarantine); the hub paid [0 after the quarantine](JUDGE.md#quarantine) |
 | A flood of [556 junk callbacks](JUDGE.md#junk-flood) pushed the Base Sepolia vault offline | It took the fee float and [0.000122 ETH](JUDGE.md#junk-flood) of self-care, and no other principal ([0 unexplained](JUDGE.md#junk-flood)). [One deposit and one `hub.vaultUp` call of the owner brought the vault back, and the hub then repeated the waiting rescue](JUDGE.md#junk-recovery), [25 s](JUDGE.md#rescue-latency) after its debt event |
-| Tests | 193 Solidity tests on forks of the real ledgers (`forge test`); 217 Python tests of the real commands (`python -m pytest`) |
+| Tests | 193 Solidity tests on forks of the real ledgers (`forge test`); 222 Python tests of the real commands (`python -m pytest`) |
 
 **Check it yourself.** Open the [live board](https://gekomarchi.github.io/lifeline/board/): it needs no install and reads the three chains in your browser. Or ask the ledger of Lasna for the debt of the hub with Foundry (the answer is `0` while the hub is healthy):
 

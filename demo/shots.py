@@ -161,8 +161,8 @@ SHOTS = [
      "views": [("n17|-0.3", 0, top("junkFlood", 1.5, -14))],
      "marks": [("n17|+0.35", "n17@It lost|-0.2", "junkFailures"),
                ("n17@It lost|+0.1", "n17@and a little|-0.12", "junkReservesEnd"),
-               ("n17@and a little|+0.0", "n17@and nothing|-0.12", "junkSelfCare"),
-               ("n17@and nothing|+0.0", "n17$|+0.25", "junkUnexplained")]},
+               ("n17@and a little|+0.0", "n17@Its other|-0.12", "junkSelfCare"),
+               ("n17@Its other|+0.0", "n17$|+0.25", "junkUnexplained")]},
 
     {"id": "s16", "part": 7, "surface": "judge", "start": "n18|-0.3",
      "action": "JUDGE.md, section Junk recovery: the steps. Marks: the deposit and `VaultUp` of the owner, then "

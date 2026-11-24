@@ -88,7 +88,7 @@ def fonts() -> dict:
     return {"subtitle": font("Inter:medium", 38), "chip": font("JetBrains Mono:regular", 19)}
 
 
-def panel(width: int, height: int, fill=SURFACE, alpha=236, ring=LINE_2, radius=RADIUS, stroke=0, outline=None):
+def panel(width: int, height: int, fill=SURFACE, alpha=255, ring=LINE_2, radius=RADIUS, stroke=0, outline=None):
     """A rounded box as a picture with transparency, with smooth corners (drawn three times as large)."""
     k = 3
     big = Image.new("RGBA", (width * k, height * k), (0, 0, 0, 0))
@@ -545,14 +545,15 @@ class Shot:
         pieces = [(typing, typed - 0.35), (pokes - 0.9, term.when("capture: arm C") - 0.3)]
         if pokes - 0.9 - typing < entered - typed + 0.45:
             raise SystemExit(f"shots.py: {self.id}: the cut after the typing comes before the Enter key")
+        # One wait for each poke() with a callback before the debt event. A capture can have none.
         waits = sum(1 for _, text in term.events if "callback Pong(" in text)
-        step = (real - pokes) / waits
+        step = (real - pokes) / max(waits, 1)
         for n in range(waits):
             pieces.append((pokes + n * step, term.when("poke()", n) - 0.2))
             pieces.append((pokes + (n + 0.5) * step, term.when("callback Pong(", n) - 0.15))
         # From here to the end: one piece, at real speed. The line of the debt event comes at `debtEventAt`.
         start_of_real = term.when("1 debt event") - (at(plan["debtEventAt"]) - real)
-        if start_of_real <= pieces[-1][1] + step:
+        if start_of_real <= pieces[-1][1]:
             raise SystemExit(f"shots.py: {self.id}: the real-speed part would start before the last cut")
         pieces.append((real, start_of_real))
         self.pieces, self.real_from = pieces, real

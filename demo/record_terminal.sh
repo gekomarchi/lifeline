@@ -57,14 +57,35 @@ clear
 RC
 
 rm -f "$OUT/$NAME".{mkv,typescript,timing,json}
+XTERM= RECORDER=
+# On each exit: stop the recorder and the terminal with the command in it. A capture does not go on with
+# no recording.
+stop_recorder() {
+  # An interrupt lets ffmpeg close its file. If it does not end in 10 s, it is killed.
+  [ -n "$RECORDER" ] || return 0
+  kill -INT "$RECORDER" 2>/dev/null || true
+  for _ in $(seq 100); do kill -0 "$RECORDER" 2>/dev/null || break; sleep 0.1; done
+  kill -KILL "$RECORDER" 2>/dev/null || true
+  wait "$RECORDER" 2>/dev/null || true
+  RECORDER=
+}
+cleanup() {
+  stop_recorder
+  [ -n "$XTERM" ] && kill "$XTERM" 2>/dev/null
+  rm -f "$RC" "$DONE"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+WINDOW_NAME="lifeline-demo-$$"
 TERMINAL_START=$(date +%s.%N)
-xterm -fa 'JetBrains Mono' -fs "$POINTS" -bg "$BACKGROUND" -fg "$FOREGROUND" -cr "$FOREGROUND" \
+xterm -name "$WINDOW_NAME" -fa 'JetBrains Mono' -fs "$POINTS" -bg "$BACKGROUND" -fg "$FOREGROUND" -cr "$FOREGROUND" \
   -b $BORDER -bw 0 +sb -geometry 200x60+0+0 -xrm 'XTerm*allowBoldFonts: false' -xrm 'XTerm*cursorBlink: false' \
   -xrm 'XTerm*faceSize: '"$POINTS" -xrm 'XTerm*scaleHeight: 1.12' \
   -e script -q -f --log-out "$OUT/$NAME.typescript" --log-timing "$OUT/$NAME.timing" \
      -c "bash --rcfile $RC -i" &
 XTERM=$!
-WINDOW=$(timeout 20 bash -c "until xdotool search --class xterm 2>/dev/null | tail -1 | grep .; do sleep 0.2; done")
+# The window of this recording, by its own name: not another terminal of the display.
+WINDOW=$(timeout 20 bash -c "until xdotool search --classname '^$WINDOW_NAME\$' 2>/dev/null | tail -1 | grep .; do sleep 0.2; done")
 xdotool windowmove "$WINDOW" 0 0 windowsize "$WINDOW" $WIDTH $HEIGHT
 sleep 1.5
 
@@ -72,6 +93,11 @@ RECORDER_START=$(date +%s.%N)
 ffmpeg -nostdin -loglevel error -y -f x11grab -framerate 30 -draw_mouse 0 -video_size ${WIDTH}x${HEIGHT} \
   -i "${DISPLAY_NAME}+0,0" -c:v libx264 -preset ultrafast -qp 0 -pix_fmt yuv444p "$OUT/$NAME.mkv" &
 RECORDER=$!
+# The command is typed only while the recorder runs and writes its file.
+if ! timeout 30 bash -c "until [ -s '$OUT/$NAME.mkv' ]; do kill -0 $RECORDER 2>/dev/null || exit 1; sleep 0.2; done"; then
+  echo "error: the screen recorder did not start: the command was not typed" >&2
+  exit 1
+fi
 sleep 1.5
 
 # Type the command as a person types it: an uneven delay between two keys, then Enter.
@@ -89,13 +115,17 @@ PY
 ENTERED=$(date +%s.%N)
 
 # The prompt after the command writes the exit status.
-while [ ! -s "$DONE" ]; do sleep 0.2; done
+while [ ! -s "$DONE" ]; do
+  if ! kill -0 "$RECORDER" 2>/dev/null; then
+    echo "error: the screen recorder stopped before the command ended: the recording is not complete" >&2
+    exit 1
+  fi
+  sleep 0.2
+done
 ENDED=$(date +%s.%N)
 STATUS=$(cat "$DONE")
 sleep "$TAIL"
-kill -INT $RECORDER; wait $RECORDER || true
-kill $XTERM 2>/dev/null || true
-rm -f "$RC" "$DONE"
+stop_recorder
 
 python3 - "$OUT/$NAME.json" <<PY
 import json, sys

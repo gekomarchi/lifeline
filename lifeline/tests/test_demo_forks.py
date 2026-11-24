@@ -164,6 +164,36 @@ def test_capture_sends_no_poke_when_the_next_debt_would_quarantine(net, tmp_path
     assert net.blocks() == blocks and net.proxy.sent(mark) == [] and not out.exists()
 
 
+def test_capture_sends_no_poke_when_the_destination_node_goes_back(net, tmp_path):
+    # After the first debt read of the capture, the node of the destination chain answers for an older
+    # block: a state in which a rescue of the window is not counted yet. The capture does not decide a
+    # poke() from it: it waits for the block that it saw, and then stops.
+    out = tmp_path / "capture.json"
+    callback = net.address(demo.CALLBACK)
+    debt_call = "0x" + net.ledger_abi.encode("debt", callback).hex()
+    seen = {"debt": False}
+
+    def goes_back(chain, method, params, result):
+        if chain == BASE and method == "eth_call" and params[0].get("data") == debt_call:
+            seen["debt"] = True
+        elif chain == BASE and method == "eth_blockNumber" and seen["debt"]:
+            return hex(int(result, 16) - 3)
+        return result
+
+    blocks, mark = net.blocks(), net.proxy.mark()
+    net.proxy.tamper = goes_back
+    try:
+        command = [sys.executable, "-m", "lifeline.demo", "capture", "--manifest", str(net.manifest),
+                   *net._rpc_arguments(), "--out", str(out)]
+        result = subprocess.run(command, env={**net.env, "LIFELINE_RECEIPT_TIMEOUT": "3"}, capture_output=True,
+                                text=True, timeout=300, cwd=ops.ROOT)
+    finally:
+        net.proxy.tamper = None
+    assert seen["debt"] and result.returncode == 1, result.stdout + result.stderr
+    assert f"{BASE}: the node is at block {blocks[BASE] - 3}, behind block {blocks[BASE]}" in result.stderr
+    assert net.blocks() == blocks and net.proxy.sent(mark) == [] and not out.exists()
+
+
 def test_capture_times_out_without_the_node_and_keeps_the_earlier_file(net, tmp_path):
     out = tmp_path / "capture.json"
     out.write_text("the capture of an earlier run")

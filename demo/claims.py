@@ -255,10 +255,12 @@ def build(table: Table) -> None:
         t.typed(f"{name} {fixtures[name]['address']}", f"{M}: fixtures.{name}.address", when="n08@This command")
     pieces = table.shots["s09"].pieces
     real = table.shots["s09"].real_span
+    recording = table.shots["s09"].terminal
+    last_poke = recording.when("poke()", sum(1 for _, text in recording.events if "poke()" in text) - 1)
     t.said("n09", "at real speed, with no cut", "demo/build/timeline.json: terminal.pieces; the last piece of the "
            "recording starts before the last poke() and has no cut to the end",
            f"one piece from {pieces[-1][1]:.2f} s of the recording; debt() 0 at {real[1]:.2f} s",
-           pieces[-1][1] < real[0] + 4 and pieces[-1][1] < table.shots["s09"].terminal.when("poke()", 5) < real[1])
+           pieces[-1][1] < last_poke < real[1] and pieces[-1][0] == max(a for a, _ in pieces))
     blocks = capture["blocks"]
     for step, key, entry, chain in (("1 debt event", "debtEvent", "debtEvent", capture["chain"]),
                                     ("2 hub reaction", "relayed", "relayed", "lasna"),
@@ -372,9 +374,15 @@ def build(table: Table) -> None:
             "and no debt event", "README.md, the comparison table: the row is shown as the README has it",
             "| Restarts a stopped reactive contract | Yes | - | No: its source has no `depositTo` and no debt event |",
             when="n15@Lifeline pays")
-    t.add("n15|+0.5", "shown", "the comparison table (each row in the picture)",
-          "README.md, section Lifeline against the alternatives: the page of github.com, not changed",
-          "the table of the README", "| What it refills |" in t.readme)
+    # Each row of the comparison table of the README, cell by cell, against the table of the page.
+    plain = lambda text: " ".join(text.replace("`", "").replace("|", " ").split())  # noqa: E731
+    start = t.readme.index("| | Lifeline | Against Reactivate |")
+    rows = [line for line in t.readme[start:].split("\n\n")[0].splitlines() if not line.startswith("|---")]
+    on_page = plain(t.page_text("readme", "comparison"))
+    absent = [plain(row) for row in rows if plain(row) not in on_page]
+    t.add("n15|+0.5", "shown", f"the comparison table: {len(rows)} rows",
+          "README.md, section Lifeline against the alternatives: each row of the table, cell by cell",
+          f"{len(rows) - len(absent)} of {len(rows)} rows are on the page", len(rows) == 11 and not absent)
 
     # Part 7: when things break --------------------------------------------------------------
     quarantine = judge["quarantine"]
@@ -422,8 +430,8 @@ def build(table: Table) -> None:
            f"{int(flood['selfCareAdded']) / 10**18:.6f} ETH" in t.readme)
     t.shown("s15", "junkUnexplained", f"Balance change that the payments do not explain "
             f"{flood['unexplainedBalanceChange']}", f"{E}: junk.unexplainedBalanceChange; {J}: "
-            "junkRecovery.unexplainedChange", flood["unexplainedBalanceChange"], when="n17@and nothing")
-    t.said("n17", "and nothing else", f"{E}: junk.unexplainedBalanceChange, .resultPaid",
+            "junkRecovery.unexplainedChange", flood["unexplainedBalanceChange"], when="n17@Its other")
+    t.said("n17", "Its other funds were not touched", f"{E}: junk.unexplainedBalanceChange, .resultPaid",
            f"{flood['unexplainedBalanceChange']}, {flood['resultPaid']}",
            flood["unexplainedBalanceChange"] == "0" == judge["junkRecovery"]["unexplainedChange"]
            and int(flood["balanceStart"]) - int(flood["balanceEnd"]) == int(flood["selfCareAdded"]))
@@ -452,11 +460,17 @@ def build(table: Table) -> None:
     t.said("n18", "twenty-five seconds after its debt event", f"{J}: latency.rescues[trigger sweep].seconds; "
            "latency.sweepByChain.base-sepolia.largestSeconds", sweep["seconds"],
            WORDS[sweep["seconds"]] == "twenty-five" and sweep["tx"] == by_step["Result(waiting.callback)"])
+    # The rows above the mark: each row of the page is a row of the evidence, with its blocks and seconds.
     others = [r for r in judge["latency"]["rescues"] if r["trigger"] == "debt event" and r["chain"] == "base-sepolia"]
-    t.add("n18@twenty|+0.1", "shown", "each row above the mark: a rescue that a debt event started, 5 blocks, 1 s",
-          f"{J}: latency.rescues[trigger debt event, base-sepolia] (the rows of the page are the first "
-          f"{len(others) - 2} of {len(others)}: see the note below)",
-          sorted({(r["blocks"], r["seconds"]) for r in others}), all(r["seconds"] == 1 for r in others))
+    page_rows = t.page_text("judge", "latencyRows")
+    # The column of the transaction is outside the width of the page: a row is known by its blocks.
+    found = [r for r in others if f"debt event {r['chain']} {r['target']} {r['deadFromBlock']} {r['aliveAtBlock']} "
+                                  f"{r['blocks']} {r['seconds']} " in page_rows + " "]
+    t.add("n18@twenty|+0.1", "shown", f"the {len(found)} rows above the mark: a rescue that a debt event started, "
+          "5 blocks, 1 s", f"{J}: latency.rescues[trigger debt event, base-sepolia] ({len(found)} of {len(others)} "
+          "are on the page: see the note below)", sorted({(r["blocks"], r["seconds"]) for r in found}),
+          len(found) == page_rows.count("debt event base-sepolia") > 0
+          and all((r["blocks"], r["seconds"]) == (5, 1) for r in found))
 
     # Part 8: guests -------------------------------------------------------------------------
     t.shown("s18", "guests", "No guest enrolled.", f"{J}: guests", judge["guests"])

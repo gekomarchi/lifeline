@@ -4,7 +4,7 @@ This file is written by `python demo/claims.py`. Do not edit it by hand.
 
 Each row is one number, hash, address, block or factual statement that the video shows or says. The command builds the text of the video from the value at the source and then looks for that text in the narration, in the terminal recording, or in the text of the framed element as the page showed it when its picture was made. "Equal" is the result of that check.
 
-Rows: 127. Not equal: 0. Not checked: 0. Length of the cut: 175.2 s.
+Rows: 127. Not equal: 0. Not checked: 0. Length of the cut: 176.5 s.
 
 | Time | Shown or said | Text in the video | Source | Value there | Equal |
 |---|---|---|---|---|---|
@@ -92,7 +92,7 @@ Rows: 127. Not equal: 0. Not checked: 0. Length of the cut: 175.2 s.
 | 1:48.6 | shown | `The 169 blocks of vault downtime` | evidence/judge/data.json: experiment.arms.C.guardianDowntimeBlocks.base-sepolia | 169 | yes |
 | 1:50.0 | said | "dead for about two hours" | evidence/network/data.json: queries.cron_poller_ward_dead_time.result.longestSeconds | 7369 s = 2.05 h | yes |
 | 1:52.7 | said | "Lifeline is not a wallet refiller" | README.md, section Lifeline against the alternatives (the sentence is on screen) | Lifeline is not a wallet refiller. A wallet refiller sends native currency to an account. Lifeline pays the debt of a contract at the gas ledger of Reactive Network: a stopped contract starts again only when that debt is paid. | yes |
-| 1:53.2 | shown | the comparison table (each row in the picture) | README.md, section Lifeline against the alternatives: the page of github.com, not changed | the table of the README | yes |
+| 1:53.2 | shown | the comparison table: 11 rows | README.md, section Lifeline against the alternatives: each row of the table, cell by cell | 11 of 11 rows are on the page | yes |
 | 1:55.9 | said | "A refiller sends currency to an account" | README.md, section Lifeline against the alternatives (the sentence is on screen) | Lifeline is not a wallet refiller. A wallet refiller sends native currency to an account. Lifeline pays the debt of a contract at the gas ledger of Reactive Network: a stopped contract starts again only when that debt is paid. | yes |
 | 1:58.9 | said | "Lifeline pays a contract's debt at the gas ledger" | README.md, section Lifeline against the alternatives (the sentence is on screen) | Lifeline is not a wallet refiller. A wallet refiller sends native currency to an account. Lifeline pays the debt of a contract at the gas ledger of Reactive Network: a stopped contract starts again only when that debt is paid. | yes |
 | 1:58.9 | shown | `Restarts a stopped reactive contract Yes - No: its source has no depositTo and no debt event` | README.md, the comparison table: the row is shown as the README has it | \| Restarts a stopped reactive contract \| Yes \| - \| No: its source has no `depositTo` and no debt event \| | yes |
@@ -109,32 +109,32 @@ Rows: 127. Not equal: 0. Not checked: 0. Length of the cut: 175.2 s.
 | 2:15.8 | shown | `Balance of the vault at the start block 1873018247944628` | evidence/experiment/data.json: junk.balanceStart | Balance of the vault at the start block 1873018247944628 | yes |
 | 2:15.8 | shown | `Balance of the vault at the end block 1751053458275459` | evidence/experiment/data.json: junk.balanceEnd | Balance of the vault at the end block 1751053458275459 | yes |
 | 2:16.1 | shown | `CallbackFailure logs of the vault 556` | evidence/experiment/data.json: junk.callbackFailures | 556 | yes |
-| 2:19.7 | shown | `Reserves of the vault at the end block 0` | evidence/experiment/data.json: junk.reservesEnd (start: junk.reservesStart 198831813200000) | 0 | yes |
-| 2:19.7 | said | "It lost its small fee float" | evidence/experiment/data.json: junk.reservesStart, .reservesEnd | 198831813200000 to 0 wei (0.0001988318132 ETH) | yes |
-| 2:21.7 | shown | `Sum of SelfCare.added 121964789669169` | evidence/experiment/data.json: junk.selfCareAdded | 121964789669169 | yes |
-| 2:21.8 | said | "a little self-care" | evidence/experiment/data.json: junk.selfCareAdded; README.md, section Proof: 0.000122 ETH | 121964789669169 wei = 0.000121964789669169 ETH | yes |
-| 2:23.3 | shown | `Balance change that the payments do not explain 0` | evidence/experiment/data.json: junk.unexplainedBalanceChange; evidence/judge/data.json: junkRecovery.unexplainedChange | 0 | yes |
-| 2:23.3 | said | "and nothing else" | evidence/experiment/data.json: junk.unexplainedBalanceChange, .resultPaid | 0, 0 | yes |
-| 2:24.9 | said | "Recovery needed two transactions from the owner" | deployments/manifest.json: contracts.vaults.base-sepolia.recoveries[-1].deposit, .vaultUp[] | 0x36224a76be7bdcfd0960e296317016046f9bb4dae2637d35bb7054515133b298, 0x916427a8591de24459f4e4639528a95d6e12fe8cdb6819c958435e2bb397f89e | yes |
-| 2:25.3 | shown | `BlacklistContract(vault) base-sepolia 63038541 0x0d376cab18c7c5517f4ad9d30818feb65571a5b5a605be246889f613d414180a` | evidence/judge/data.json: junkRecovery.steps[BlacklistContract(vault)] | BlacklistContract(vault) base-sepolia 63038541 0x0d376cab18c7c5517f4ad9d30818feb65571a5b5a605be246889f613d414180a | yes |
-| 2:25.3 | shown | `VaultDown lasna 9142807 0x61abedad9eab8ee3ceedd0ebf00220644f1d468a4112150f4b17c942f0fcd6a0` | evidence/judge/data.json: junkRecovery.steps[VaultDown] | VaultDown lasna 9142807 0x61abedad9eab8ee3ceedd0ebf00220644f1d468a4112150f4b17c942f0fcd6a0 | yes |
-| 2:25.3 | shown | `Pending lasna 9142827 0xe9938f65b4d2989ede98cb3ec5e33cdadeeb50c1caf70cff3a72684b801637b0` | evidence/judge/data.json: junkRecovery.steps[Pending] | Pending lasna 9142827 0xe9938f65b4d2989ede98cb3ec5e33cdadeeb50c1caf70cff3a72684b801637b0 | yes |
-| 2:25.3 | shown | `WhitelistContract(vault) base-sepolia 63038710 0x36224a76be7bdcfd0960e296317016046f9bb4dae2637d35bb7054515133b298` | evidence/judge/data.json: junkRecovery.steps[WhitelistContract(vault)] | WhitelistContract(vault) base-sepolia 63038710 0x36224a76be7bdcfd0960e296317016046f9bb4dae2637d35bb7054515133b298 | yes |
-| 2:25.3 | shown | `VaultUp lasna 9142849 0x916427a8591de24459f4e4639528a95d6e12fe8cdb6819c958435e2bb397f89e` | evidence/judge/data.json: junkRecovery.steps[VaultUp] | VaultUp lasna 9142849 0x916427a8591de24459f4e4639528a95d6e12fe8cdb6819c958435e2bb397f89e | yes |
-| 2:25.3 | shown | `Result(waiting.callback) base-sepolia 63038773 0x77633be6a468669993383edddfe263c025fbcd20e083bcffcfb5964e71453f50` | evidence/judge/data.json: junkRecovery.steps[Result(waiting.callback)] | Result(waiting.callback) base-sepolia 63038773 0x77633be6a468669993383edddfe263c025fbcd20e083bcffcfb5964e71453f50 | yes |
-| 2:28.5 | said | "The hub then repeated the waiting rescue" | evidence/judge/data.json: junkRecovery.waitingRescue | {"outcome": "Rescued", "paid": "50559145400000", "requestId": "340282366920938463463374607431768211463", "target": "0xC67C2BDE920E75378eB71c9011abd3F4C1775289"} | yes |
-| 2:30.9 | said | "twenty-five seconds after its debt event" | evidence/judge/data.json: latency.rescues[trigger sweep].seconds; latency.sweepByChain.base-sepolia.largestSeconds | 25 | yes |
-| 2:31.0 | shown | `sweep base-sepolia 0xC67C2BDE920E75378eB71c9011abd3F4C1775289 63038646 63038773 127 25` | evidence/judge/data.json: latency.rescues[trigger sweep] | sweep base-sepolia 0xC67C2BDE920E75378eB71c9011abd3F4C1775289 63038646 63038773 127 25 | yes |
-| 2:31.0 | shown | each row above the mark: a rescue that a debt event started, 5 blocks, 1 s | evidence/judge/data.json: latency.rescues[trigger debt event, base-sepolia] (the rows of the page are the first 6 of 8: see the note below) | [(5, 1), (6, 1)] | yes |
-| 2:34.3 | shown | `No guest enrolled.` | evidence/judge/data.json: guests | [] | yes |
-| 2:34.3 | said | "No guest is enrolled yet" | evidence/judge/data.json: guests | [] | yes |
-| 2:37.0 | said | "Lifeline restores future delivery" | README.md, section Limits (on screen) | Lifeline restores future delivery. Work that arrives while a target is in debt is lost. | yes |
-| 2:40.1 | said | "Work that arrives during a debt is lost" | README.md, section Limits (on screen) | Lifeline restores future delivery. Work that arrives while a target is in debt is lost. | yes |
-| 2:43.0 | said | "Testnet only" | README.md, section Demo versus production (on screen) | Demo: testnet, one owner | yes |
-| 2:44.7 | said | "A public pool and automatic vault recovery are not built" | README.md, section Not built (on screen) | Public rescue pool; ...; automatic recovery of a vault that is in debt | yes |
-| 2:50.4 | said | "the repository, the live board, and JUDGE.md" | README.md, line 1: the links of the title | https://gekomarchi.github.io/lifeline/board/, JUDGE.md | yes |
-| 2:55.2 | said | the whole narration and each subtitle | the claim limits: no "zero loss", no "nobody else", no name of another team, no "faster" or "better" | words found: none | yes |
-| 2:55.2 | said | each subtitle is a part of the narration text | demo/narration.json | 73 subtitles | yes |
+| 2:19.8 | shown | `Reserves of the vault at the end block 0` | evidence/experiment/data.json: junk.reservesEnd (start: junk.reservesStart 198831813200000) | 0 | yes |
+| 2:19.8 | said | "It lost its small fee float" | evidence/experiment/data.json: junk.reservesStart, .reservesEnd | 198831813200000 to 0 wei (0.0001988318132 ETH) | yes |
+| 2:21.8 | shown | `Sum of SelfCare.added 121964789669169` | evidence/experiment/data.json: junk.selfCareAdded | 121964789669169 | yes |
+| 2:22.0 | said | "a little self-care" | evidence/experiment/data.json: junk.selfCareAdded; README.md, section Proof: 0.000122 ETH | 121964789669169 wei = 0.000121964789669169 ETH | yes |
+| 2:23.7 | shown | `Balance change that the payments do not explain 0` | evidence/experiment/data.json: junk.unexplainedBalanceChange; evidence/judge/data.json: junkRecovery.unexplainedChange | 0 | yes |
+| 2:23.7 | said | "Its other funds were not touched" | evidence/experiment/data.json: junk.unexplainedBalanceChange, .resultPaid | 0, 0 | yes |
+| 2:26.3 | said | "Recovery needed two transactions from the owner" | deployments/manifest.json: contracts.vaults.base-sepolia.recoveries[-1].deposit, .vaultUp[] | 0x36224a76be7bdcfd0960e296317016046f9bb4dae2637d35bb7054515133b298, 0x916427a8591de24459f4e4639528a95d6e12fe8cdb6819c958435e2bb397f89e | yes |
+| 2:26.7 | shown | `BlacklistContract(vault) base-sepolia 63038541 0x0d376cab18c7c5517f4ad9d30818feb65571a5b5a605be246889f613d414180a` | evidence/judge/data.json: junkRecovery.steps[BlacklistContract(vault)] | BlacklistContract(vault) base-sepolia 63038541 0x0d376cab18c7c5517f4ad9d30818feb65571a5b5a605be246889f613d414180a | yes |
+| 2:26.7 | shown | `VaultDown lasna 9142807 0x61abedad9eab8ee3ceedd0ebf00220644f1d468a4112150f4b17c942f0fcd6a0` | evidence/judge/data.json: junkRecovery.steps[VaultDown] | VaultDown lasna 9142807 0x61abedad9eab8ee3ceedd0ebf00220644f1d468a4112150f4b17c942f0fcd6a0 | yes |
+| 2:26.7 | shown | `Pending lasna 9142827 0xe9938f65b4d2989ede98cb3ec5e33cdadeeb50c1caf70cff3a72684b801637b0` | evidence/judge/data.json: junkRecovery.steps[Pending] | Pending lasna 9142827 0xe9938f65b4d2989ede98cb3ec5e33cdadeeb50c1caf70cff3a72684b801637b0 | yes |
+| 2:26.7 | shown | `WhitelistContract(vault) base-sepolia 63038710 0x36224a76be7bdcfd0960e296317016046f9bb4dae2637d35bb7054515133b298` | evidence/judge/data.json: junkRecovery.steps[WhitelistContract(vault)] | WhitelistContract(vault) base-sepolia 63038710 0x36224a76be7bdcfd0960e296317016046f9bb4dae2637d35bb7054515133b298 | yes |
+| 2:26.7 | shown | `VaultUp lasna 9142849 0x916427a8591de24459f4e4639528a95d6e12fe8cdb6819c958435e2bb397f89e` | evidence/judge/data.json: junkRecovery.steps[VaultUp] | VaultUp lasna 9142849 0x916427a8591de24459f4e4639528a95d6e12fe8cdb6819c958435e2bb397f89e | yes |
+| 2:26.7 | shown | `Result(waiting.callback) base-sepolia 63038773 0x77633be6a468669993383edddfe263c025fbcd20e083bcffcfb5964e71453f50` | evidence/judge/data.json: junkRecovery.steps[Result(waiting.callback)] | Result(waiting.callback) base-sepolia 63038773 0x77633be6a468669993383edddfe263c025fbcd20e083bcffcfb5964e71453f50 | yes |
+| 2:29.8 | said | "The hub then repeated the waiting rescue" | evidence/judge/data.json: junkRecovery.waitingRescue | {"outcome": "Rescued", "paid": "50559145400000", "requestId": "340282366920938463463374607431768211463", "target": "0xC67C2BDE920E75378eB71c9011abd3F4C1775289"} | yes |
+| 2:32.3 | said | "twenty-five seconds after its debt event" | evidence/judge/data.json: latency.rescues[trigger sweep].seconds; latency.sweepByChain.base-sepolia.largestSeconds | 25 | yes |
+| 2:32.4 | shown | `sweep base-sepolia 0xC67C2BDE920E75378eB71c9011abd3F4C1775289 63038646 63038773 127 25` | evidence/judge/data.json: latency.rescues[trigger sweep] | sweep base-sepolia 0xC67C2BDE920E75378eB71c9011abd3F4C1775289 63038646 63038773 127 25 | yes |
+| 2:32.4 | shown | the 6 rows above the mark: a rescue that a debt event started, 5 blocks, 1 s | evidence/judge/data.json: latency.rescues[trigger debt event, base-sepolia] (6 of 8 are on the page: see the note below) | [(5, 1)] | yes |
+| 2:35.7 | shown | `No guest enrolled.` | evidence/judge/data.json: guests | [] | yes |
+| 2:35.7 | said | "No guest is enrolled yet" | evidence/judge/data.json: guests | [] | yes |
+| 2:38.3 | said | "Lifeline restores future delivery" | README.md, section Limits (on screen) | Lifeline restores future delivery. Work that arrives while a target is in debt is lost. | yes |
+| 2:41.4 | said | "Work that arrives during a debt is lost" | README.md, section Limits (on screen) | Lifeline restores future delivery. Work that arrives while a target is in debt is lost. | yes |
+| 2:44.3 | said | "Testnet only" | README.md, section Demo versus production (on screen) | Demo: testnet, one owner | yes |
+| 2:46.0 | said | "A public pool and automatic vault recovery are not built" | README.md, section Not built (on screen) | Public rescue pool; ...; automatic recovery of a vault that is in debt | yes |
+| 2:51.7 | said | "the repository, the live board, and JUDGE.md" | README.md, line 1: the links of the title | https://gekomarchi.github.io/lifeline/board/, JUDGE.md | yes |
+| 2:56.5 | said | the whole narration and each subtitle | the claim limits: no "zero loss", no "nobody else", no name of another team, no "faster" or "better" | words found: none | yes |
+| 2:56.5 | said | each subtitle is a part of the narration text | demo/narration.json | 73 subtitles | yes |
 
 ## Notes
 
