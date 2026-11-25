@@ -1,4 +1,4 @@
-# lifeline | [![live board](https://img.shields.io/badge/live-board-2ea44f)](https://gekomarchi.github.io/lifeline/board/) [![evidence](https://img.shields.io/badge/evidence-JUDGE.md-blue)](JUDGE.md) [![license](https://img.shields.io/badge/license-Apache--2.0-lightgrey)](LICENSE)
+# <img src="board/logo.png" alt="" width="40" height="40" align="absmiddle"> lifeline | [![live board](https://img.shields.io/badge/live-board-2ea44f)](https://gekomarchi.github.io/lifeline/board/) [![evidence](https://img.shields.io/badge/evidence-JUDGE.md-blue)](JUDGE.md) [![license](https://img.shields.io/badge/license-Apache--2.0-lightgrey)](LICENSE)
 
 **Lifeline: the gas guardian for my reactive automations.** Reactive automations stop without a warning when their gas credit runs out. Lifeline is the guardian I set once: it refuels them across chains inside my budget, and it stops feeding one that breaks.
 
